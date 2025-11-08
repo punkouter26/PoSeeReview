@@ -1,0 +1,93 @@
+{
+  "restaurants": [
+    {
+      "id": "test-restaurant-1",
+      "name": "The Quirky Spoon",
+      "address": "123 Main St, Seattle, WA 98101",
+      "rating": 4.5,
+      "latitude": 47.6062,
+      "longitude": -122.3321,
+      "reviews": [
+        {
+          "id": "review-1",
+          "author": "John Doe",
+          "rating": 5,
+          "text": "The waiter accidentally spilled soup on my lap and then served me a bowl of ice cream as an apology. Best dining experience ever!",
+          "strangenessScore": 8.5,
+          "timestamp": "2025-10-20T18:30:00Z"
+        },
+        {
+          "id": "review-2",
+          "author": "Jane Smith",
+          "rating": 4,
+          "text": "They have a live parrot that critiques your food choices. It called my pasta selection 'pedestrian'.",
+          "strangenessScore": 9.2,
+          "timestamp": "2025-10-21T19:15:00Z"
+        }
+      ]
+    },
+    {
+      "id": "test-restaurant-2",
+      "name": "Pasta Paradise",
+      "address": "456 Pike St, Seattle, WA 98101",
+      "rating": 4.2,
+      "latitude": 47.6097,
+      "longitude": -122.3331,
+      "reviews": [
+        {
+          "id": "review-3",
+          "author": "Bob Wilson",
+          "rating": 5,
+          "text": "The chef came out and sang opera while preparing my carbonara tableside. Magnificent!",
+          "strangenessScore": 7.8,
+          "timestamp": "2025-10-22T20:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "test-restaurant-3",
+      "name": "Burger Bonanza",
+      "address": "789 1st Ave, Seattle, WA 98104",
+      "rating": 3.9,
+      "latitude": 47.6041,
+      "longitude": -122.3344,
+      "reviews": [
+        {
+          "id": "review-4",
+          "author": "Alice Johnson",
+          "rating": 3,
+          "text": "Decent burger, but the chef insists on high-fiving every customer who orders the 'Ultimate Stack'.",
+          "strangenessScore": 6.5,
+          "timestamp": "2025-10-23T12:30:00Z"
+        }
+      ]
+    }
+  ],
+  "comics": [
+    {
+      "id": "comic-1",
+      "restaurantId": "test-restaurant-1",
+      "reviewId": "review-1",
+      "title": "The Soup Incident",
+      "panels": [
+        {
+          "imageUrl": "https://example.blob.core.windows.net/comics/comic-1-panel-1.png",
+          "caption": "Panel 1: Waiter trips with soup bowl"
+        },
+        {
+          "imageUrl": "https://example.blob.core.windows.net/comics/comic-1-panel-2.png",
+          "caption": "Panel 2: Soup lands on customer's lap"
+        },
+        {
+          "imageUrl": "https://example.blob.core.windows.net/comics/comic-1-panel-3.png",
+          "caption": "Panel 3: Waiter brings ice cream as apology"
+        },
+        {
+          "imageUrl": "https://example.blob.core.windows.net/comics/comic-1-panel-4.png",
+          "caption": "Panel 4: Customer smiling with ice cream"
+        }
+      ],
+      "createdAt": "2025-10-25T10:00:00Z"
+    }
+  ]
+}

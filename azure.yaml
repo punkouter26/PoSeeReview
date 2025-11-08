@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: seereview
+metadata:
+  template: seereview@0.0.1-beta
+
+services:
+  api:
+    project: ./src/Po.SeeReview.Api
+    language: csharp
+    host: appservice
+    
+  client:
+    project: ./src/Po.SeeReview.Client
+    language: csharp
+    host: staticwebapp

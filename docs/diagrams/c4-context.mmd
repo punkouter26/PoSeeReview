@@ -1,0 +1,24 @@
+graph TB
+    User[User<br/>Restaurant Discoverer]
+    
+    System[SeeReview<br/>Restaurant Review to Comic App<br/><br/>Transforms restaurant reviews into<br/>entertaining comic strips]
+    
+    GoogleMaps[Google Maps Platform<br/>Places API<br/><br/>Restaurant search and reviews]
+    
+    AzureOpenAI[Azure OpenAI<br/>AI Service<br/><br/>Comic narrative and image generation]
+    
+    AzureStorage[Azure Storage<br/>Cloud Storage<br/><br/>Comic data and images]
+    
+    User -->|Discovers restaurants,<br/>views comics,<br/>shares content| System
+    
+    System -->|Searches restaurants,<br/>fetches reviews| GoogleMaps
+    
+    System -->|Generates narratives<br/>and comic images| AzureOpenAI
+    
+    System -->|Stores and retrieves<br/>comics and images| AzureStorage
+    
+    style User fill:#08427b
+    style System fill:#1168bd
+    style GoogleMaps fill:#999999
+    style AzureOpenAI fill:#999999
+    style AzureStorage fill:#999999

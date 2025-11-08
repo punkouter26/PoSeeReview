@@ -1,0 +1,172 @@
+@page "/"
+@using Po.SeeReview.Client.Services
+@using Po.SeeReview.Client.Components
+@using Po.SeeReview.Shared.Dtos
+@inject GeolocationService GeolocationService
+@inject UserPreferencesService UserPreferencesService
+@inject ApiClient ApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
+
+<div class="index-container">
+    <header class="app-header">
+        <h1>🍽️ PoSeeReview</h1>
+        <p class="tagline">Discover the strangest restaurant stories near you</p>
+    </header>
+
+    @if (!_locationGranted && !_locationDenied && !_isLoading)
+    {
+        <div class="location-prompt">
+            <div class="prompt-card">
+                <h2>📍 Find Nearby Restaurants</h2>
+                <p>We need your location to discover restaurants with strange reviews</p>
+                <button class="btn-primary" @onclick="RequestLocationAsync">
+                    Enable Location
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (_isLoading)
+    {
+        <LoadingIndicator Message="@_loadingMessage" />
+    }
+
+    @if (_locationDenied)
+    {
+        <div class="error-message">
+            <h2>❌ Location Access Denied</h2>
+            <p>@_errorMessage</p>
+            <p>Please enable location access in your browser settings and try again.</p>
+            <button class="btn-secondary" @onclick="RequestLocationAsync">
+                Try Again
+            </button>
+        </div>
+    }
+
+    @if (_hasError && !_locationDenied)
+    {
+        <div class="error-message">
+            <h2>⚠️ Something Went Wrong</h2>
+            <p>@_errorMessage</p>
+            <button class="btn-secondary" @onclick="RequestLocationAsync">
+                Retry
+            </button>
+        </div>
+    }
+
+    @if (_restaurants.Count > 0)
+    {
+        <div class="restaurants-grid">
+            <p class="results-info">Found @_totalCount restaurants near you</p>
+            @foreach (var restaurant in _restaurants)
+            {
+                <RestaurantCard 
+                    Restaurant="restaurant" 
+                    OnRestaurantClick="HandleRestaurantClick" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _locationGranted = false;
+    private bool _locationDenied = false;
+    private bool _isLoading = false;
+    private bool _hasError = false;
+    private string _loadingMessage = "Getting your location...";
+    private string _errorMessage = string.Empty;
+    private List<RestaurantDto> _restaurants = new();
+    private int _totalCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if user previously granted location permission
+        var locationEnabled = await UserPreferencesService.IsLocationEnabledAsync();
+        
+        if (locationEnabled)
+        {
+            // Automatically fetch location and load restaurants
+            await RequestLocationAsync();
+        }
+    }
+
+    private async Task RequestLocationAsync()
+    {
+        _isLoading = true;
+        _hasError = false;
+        _locationDenied = false;
+        _loadingMessage = "Getting your location...";
+        StateHasChanged();
+
+        try
+        {
+            var result = await GeolocationService.GetCurrentPositionAsync();
+
+            if (!result.Success)
+            {
+                _locationDenied = result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase);
+                _errorMessage = result.ErrorMessage;
+                _hasError = true;
+                
+                // If denied, clear the saved preference
+                if (_locationDenied)
+                {
+                    await UserPreferencesService.SetLocationEnabledAsync(false);
+                }
+                
+                return;
+            }
+
+            _locationGranted = true;
+            
+            // Save user preference that location is enabled
+            await UserPreferencesService.SetLocationEnabledAsync(true);
+            
+            _loadingMessage = "Finding nearby restaurants...";
+            StateHasChanged();
+
+            await LoadNearbyRestaurantsAsync(result.Latitude, result.Longitude);
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Unable to access your location. Please try again.";
+            _hasError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadNearbyRestaurantsAsync(double latitude, double longitude)
+    {
+        try
+        {
+            var response = await ApiClient.GetNearbyRestaurantsAsync(latitude, longitude);
+
+            if (response == null || response.Restaurants.Count == 0)
+            {
+                _errorMessage = "No restaurants found nearby. Try a different location.";
+                _hasError = true;
+                return;
+            }
+
+            _restaurants = response.Restaurants;
+            _totalCount = response.TotalCount;
+        }
+        catch (Exception)
+        {
+            _errorMessage = "Failed to load restaurants. Please try again later.";
+            _hasError = true;
+        }
+    }
+
+    private void HandleRestaurantClick(RestaurantDto restaurant)
+    {
+        // Navigate to comic view page (to be implemented in Phase 4)
+        Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
+    }
+}

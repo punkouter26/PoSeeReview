@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Po.SeeReview.WebTests": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:59643;http://localhost:59644"
+    }
+  }
+}

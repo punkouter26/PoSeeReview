@@ -1,0 +1,262 @@
+.diagnostics-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+.diagnostics-container h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: #1a1a1a;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+/* Loading State */
+.loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    text-align: center;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #1168bd;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Health Summary */
+.health-summary {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 2rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.health-summary.status-healthy {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+    border-left: 6px solid #28a745;
+}
+
+.health-summary.status-degraded {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border-left: 6px solid #ffc107;
+}
+
+.health-summary.status-unhealthy {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+    border-left: 6px solid #dc3545;
+}
+
+.status-icon {
+    font-size: 3rem;
+}
+
+.status-details h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.75rem;
+}
+
+.status-details p {
+    margin: 0.25rem 0;
+    color: #333;
+}
+
+/* Health Checks */
+.health-checks {
+    margin-bottom: 2rem;
+}
+
+.health-checks h3 {
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    color: #1a1a1a;
+}
+
+.health-check-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    border-left: 4px solid #ccc;
+}
+
+.health-check-card.status-healthy {
+    border-left-color: #28a745;
+}
+
+.health-check-card.status-degraded {
+    border-left-color: #ffc107;
+}
+
+.health-check-card.status-unhealthy {
+    border-left-color: #dc3545;
+}
+
+.check-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.check-icon {
+    font-size: 1.5rem;
+}
+
+.check-header h4 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+
+.check-status {
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+}
+
+.status-healthy .check-status {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-degraded .check-status {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-unhealthy .check-status {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.check-description {
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.check-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.875rem;
+    color: #666;
+}
+
+.error-summary {
+    cursor: pointer;
+    color: #dc3545;
+    font-weight: 600;
+}
+
+.error-details {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+/* Actions */
+.actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn {
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.btn-primary {
+    background: #1168bd;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0d5299;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .diagnostics-container {
+        padding: 1rem;
+    }
+
+    .diagnostics-container h1 {
+        font-size: 2rem;
+    }
+
+    .health-summary {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .actions {
+        flex-direction: column;
+    }
+
+    .btn {
+        width: 100%;
+    }
+}
+
+/* Alert */
+.alert {
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
+.alert h3 {
+    margin-top: 0;
+}

@@ -1,0 +1,272 @@
+/* Leaderboard Container */
+.leaderboard-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.leaderboard-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.leaderboard-header h1 {
+    font-size: 3rem;
+    font-weight: bold;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-size: 1.2rem;
+    color: #7f8c8d;
+}
+
+/* Region Selector */
+.region-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.region-selector label {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.region-selector .form-select {
+    width: auto;
+    min-width: 150px;
+}
+
+/* Last Updated */
+.last-updated {
+    text-align: center;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+}
+
+/* No Entries */
+.no-entries {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #7f8c8d;
+    font-size: 1.1rem;
+}
+
+/* Leaderboard List */
+.leaderboard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Leaderboard Card */
+.leaderboard-card {
+    display: grid;
+    grid-template-columns: 80px 200px 1fr auto;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    align-items: center;
+}
+
+.leaderboard-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+}
+
+/* Rank Badge */
+.rank-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+}
+
+.trophy {
+    font-size: 3rem;
+}
+
+.rank-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #7f8c8d;
+}
+
+/* Rank Colors */
+.rank-gold {
+    border-left: 5px solid #ffd700;
+}
+
+.rank-silver {
+    border-left: 5px solid #c0c0c0;
+}
+
+.rank-bronze {
+    border-left: 5px solid #cd7f32;
+}
+
+/* Comic Thumbnail */
+.comic-thumbnail {
+    width: 200px;
+    height: 150px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #f8f9fa;
+}
+
+.comic-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Entry Details */
+.entry-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.restaurant-name {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2c3e50;
+    margin: 0;
+}
+
+.address {
+    color: #7f8c8d;
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+/* Score Badge */
+.score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 20px;
+    font-weight: 600;
+    width: fit-content;
+}
+
+.score-label {
+    font-size: 0.9rem;
+}
+
+.score-value {
+    font-size: 1.2rem;
+}
+
+/* Entry Actions */
+.entry-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.entry-actions .btn {
+    white-space: nowrap;
+}
+
+.btn-share-small {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    font-size: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    line-height: 1;
+}
+
+.btn-share-small:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(245, 87, 108, 0.4);
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+    .leaderboard-card {
+        grid-template-columns: 60px 150px 1fr;
+        gap: 1rem;
+    }
+
+    .entry-actions {
+        grid-column: 2 / -1;
+        justify-content: center;
+        margin-top: 1rem;
+    }
+
+    .comic-thumbnail {
+        width: 150px;
+        height: 112px;
+    }
+}
+
+@media (max-width: 768px) {
+    .leaderboard-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .rank-badge {
+        justify-content: center;
+    }
+
+    .comic-thumbnail {
+        width: 100%;
+        max-width: 300px;
+        margin: 0 auto;
+        height: 200px;
+    }
+
+    .entry-details {
+        align-items: center;
+    }
+
+    .score-badge {
+        margin: 0 auto;
+    }
+
+    .view-button {
+        grid-column: 1;
+        margin-top: 0.5rem;
+    }
+
+    .leaderboard-header h1 {
+        font-size: 2rem;
+    }
+
+    .region-selector {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .region-selector .form-select {
+        width: 100%;
+    }
+}
+
+/* Loading State */
+.spinner-border-sm {
+    vertical-align: middle;
+}
+
+/* Alert Styling */
+.alert {
+    border-radius: 8px;
+}

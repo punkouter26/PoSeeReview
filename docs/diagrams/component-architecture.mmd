@@ -1,0 +1,58 @@
+graph LR
+    subgraph Frontend["Frontend Layer"]
+        Pages[Blazor Pages<br/>Home, Comic View, Leaderboard]
+        Components[Reusable Components<br/>RestaurantCard, ComicViewer,<br/>ShareButton]
+        Services[Client Services<br/>ApiClient, GeolocationService]
+    end
+    
+    subgraph API["API Layer"]
+        Controllers[Controllers<br/>RestaurantsController,<br/>HealthController]
+        Middleware[Middleware<br/>Request Logging,<br/>Problem Details,<br/>Error Handling]
+    end
+    
+    subgraph Business["Business Logic Layer"]
+        Core[Core Entities<br/>Restaurant, Review,<br/>Comic, LeaderboardEntry]
+        Interfaces[Interfaces<br/>IRestaurantRepository,<br/>IComicService,<br/>IOpenAIService]
+    end
+    
+    subgraph Infrastructure["Infrastructure Layer"]
+        Repos[Repositories<br/>Table Storage Repos,<br/>Blob Storage Repos]
+        ExtServices[External Services<br/>GoogleMapsService,<br/>OpenAIService]
+        Config[Configuration<br/>ServiceCollectionExtensions,<br/>Options Classes]
+    end
+    
+    subgraph Shared["Shared"]
+        DTOs[Data Transfer Objects<br/>RestaurantDto, ComicDto,<br/>LeaderboardDto]
+    end
+    
+    Pages --> Components
+    Components --> Services
+    Services --> DTOs
+    Services -.HTTP.-> Controllers
+    
+    Controllers --> Middleware
+    Controllers --> Interfaces
+    Middleware --> Interfaces
+    
+    Interfaces -.implemented by.-> Repos
+    Interfaces -.implemented by.-> ExtServices
+    
+    Repos --> Core
+    ExtServices --> Core
+    Config --> Repos
+    Config --> ExtServices
+    
+    Controllers --> DTOs
+    Repos --> DTOs
+    
+    style Pages fill:#1168bd
+    style Components fill:#1168bd
+    style Services fill:#1168bd
+    style Controllers fill:#438dd5
+    style Middleware fill:#438dd5
+    style Core fill:#85bbf0
+    style Interfaces fill:#85bbf0
+    style Repos fill:#cfe2f3
+    style ExtServices fill:#cfe2f3
+    style Config fill:#cfe2f3
+    style DTOs fill:#d9d9d9

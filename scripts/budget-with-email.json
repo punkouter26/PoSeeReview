@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "category": "Cost",
+    "amount": 60,
+    "timeGrain": "Monthly",
+    "timePeriod": {
+      "startDate": "2025-11-01T00:00:00Z",
+      "endDate": "2026-11-01T00:00:00Z"
+    },
+    "notifications": {
+      "actual_GreaterThan_80_Percent": {
+        "enabled": true,
+        "operator": "GreaterThan",
+        "threshold": 80,
+        "contactEmails": [
+          "punkouter26@gmail.com"
+        ]
+      },
+      "actual_GreaterThan_100_Percent": {
+        "enabled": true,
+        "operator": "GreaterThan",
+        "threshold": 100,
+        "contactEmails": [
+          "punkouter26@gmail.com"
+        ]
+      },
+      "actual_GreaterThan_120_Percent": {
+        "enabled": true,
+        "operator": "GreaterThan",
+        "threshold": 120,
+        "contactEmails": [
+          "punkouter26@gmail.com"
+        ]
+      }
+    }
+  }
+}

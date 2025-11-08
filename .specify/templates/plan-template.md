@@ -31,7 +31,18 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+- [ ] .NET 9.0 SDK enforced (build fails on version mismatch)
+- [ ] Vertical Slice Architecture planned; no file exceeds 500 lines
+- [ ] TDD workflow defined (xUnit unit + integration tests, manual Playwright E2E)
+- [ ] API exposes Swagger, /api/health, Problem Details middleware, Serilog logging
+- [ ] Azure Table Storage default (Azurite local); tables follow PoAppName[Name] pattern
+- [ ] Blazor uses built-in components (Radzen only if UX-justified)
+- [ ] Mobile-first responsive design validated (desktop + narrow emulation)
+- [ ] Repository follows /src, /tests, /docs, /scripts layout
+- [ ] Project names follow Po.AppName.* pattern
+- [ ] API binds to HTTP 5000 and HTTPS 5001 only
+- [ ] dotnet format enforced; CI validates SDK version, ports, naming, health endpoint
+- [ ] Operations use one-line CLI commands; docs in /docs only
 
 ## Project Structure
 

@@ -1,0 +1,426 @@
+.comic-view {
+    min-height: 100vh;
+    padding: 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.error-container {
+    max-width: 600px;
+    margin: 4rem auto;
+    background: white;
+    border-radius: 12px;
+    padding: 3rem 2rem;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.error-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.error-container h2 {
+    color: #333;
+    margin-bottom: 1rem;
+    font-size: 1.75rem;
+}
+
+.error-message {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 2rem;
+}
+
+.comic-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.comic-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.comic-header h1 {
+    font-size: 2rem;
+    color: #333;
+    margin: 0;
+    flex: 1;
+}
+
+.strangeness-badge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    min-width: 100px;
+}
+
+.strangeness-badge .score {
+    font-size: 2.5rem;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.strangeness-badge .label {
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+}
+
+.narrative-section {
+    margin: 2rem 0;
+}
+
+.narrative-section h3 {
+    color: #333;
+    margin-bottom: 1rem;
+    font-size: 1.5rem;
+}
+
+.narrative {
+    color: #666;
+    line-height: 1.8;
+    font-size: 1.125rem;
+    background: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.comic-meta {
+    display: flex;
+    gap: 1.5rem;
+    margin: 2rem 0;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 8px;
+    flex-wrap: wrap;
+}
+
+.meta-item {
+    color: #666;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-share {
+    padding: 0.875rem 1.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex: 1;
+    min-width: 150px;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: white;
+    color: #667eea;
+    border: 2px solid #667eea;
+}
+
+.btn-secondary:hover {
+    background: #f5f5f5;
+    transform: translateY(-2px);
+}
+
+.btn-share {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.btn-share:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+}
+
+.btn-share:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.copied-message {
+    text-align: center;
+    background: #10b981;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    margin-top: 1rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.link-button {
+    background: none;
+    border: none;
+    color: #667eea;
+    font-size: 0.95rem;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    margin-top: 0.5rem;
+    text-decoration: underline;
+    transition: color 0.2s;
+}
+
+.link-button:hover {
+    color: #764ba2;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 800px;
+    width: 100%;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    color: #333;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 2rem;
+    color: #999;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.modal-close:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.modal-body {
+    padding: 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.no-reviews {
+    text-align: center;
+    color: #999;
+    padding: 2rem;
+}
+
+.loading-reviews {
+    text-align: center;
+    padding: 3rem;
+    color: #667eea;
+}
+
+.loading-reviews p {
+    font-size: 1.1rem;
+}
+
+.reviews-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.api-limitation-notice {
+    background: #fff4e6;
+    border-left: 4px solid #f59e0b;
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #92400e;
+}
+
+.review-item {
+    background: #f9f9f9;
+    border-radius: 8px;
+    padding: 1.25rem;
+    border-left: 4px solid #667eea;
+}
+
+.review-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    gap: 1rem;
+}
+
+.review-author {
+    font-weight: 600;
+    color: #333;
+    font-size: 1rem;
+}
+
+.review-rating {
+    color: #f59e0b;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
+.review-text {
+    color: #555;
+    line-height: 1.6;
+    margin: 0.5rem 0;
+}
+
+.review-date {
+    font-size: 0.85rem;
+    color: #999;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .comic-view {
+        padding: 0.5rem;
+    }
+
+    .comic-container {
+        padding: 1.5rem;
+        border-radius: 8px;
+    }
+
+    .comic-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .comic-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .strangeness-badge {
+        align-self: flex-end;
+    }
+
+    .narrative {
+        font-size: 1rem;
+        padding: 1rem;
+    }
+
+    .comic-meta {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .action-buttons {
+        flex-direction: column;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        width: 100%;
+    }
+
+    .modal-content {
+        max-height: 90vh;
+        border-radius: 8px;
+    }
+
+    .modal-header h2 {
+        font-size: 1.25rem;
+    }
+
+    .review-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+@media (max-width: 480px) {
+    .error-container {
+        margin: 2rem auto;
+        padding: 2rem 1rem;
+    }
+
+    .comic-container {
+        border-radius: 0;
+        padding: 1rem;
+    }
+}

@@ -1,0 +1,64 @@
+sequenceDiagram
+    participant User
+    participant Blazor as Blazor WASM Client
+    participant API as ASP.NET Core API
+    participant Cache as Table Storage<br/>(Cache)
+    participant GMaps as Google Maps API
+    participant OpenAI as Azure OpenAI
+    participant Blob as Blob Storage
+    participant Leaderboard as Table Storage<br/>(Leaderboard)
+    
+    User->>Blazor: Tap restaurant card
+    Blazor->>API: GET /api/restaurants/{id}/comic
+    
+    Note over API: Check for cached comic
+    API->>Cache: Query comic by RestaurantId<br/>(age < 24 hours)
+    
+    alt Comic found in cache
+        Cache-->>API: Return cached comic
+        API-->>Blazor: Comic data (JSON)
+        Blazor->>Blob: GET image URL
+        Blob-->>Blazor: Comic image
+        Blazor-->>User: Display comic
+    else Cache miss - Generate new comic
+        Note over API: Fetch restaurant reviews
+        API->>GMaps: GET Place Details
+        GMaps-->>API: Restaurant data
+        API->>GMaps: GET Place Reviews
+        GMaps-->>API: Review list (JSON)
+        
+        Note over API: Filter reviews (min 5, strange experiences)
+        
+        alt Insufficient reviews
+            API-->>Blazor: 404 Not Found<br/>"Restaurant has too few reviews"
+            Blazor-->>User: Friendly error message
+        else Sufficient reviews
+            Note over API: Generate comic content
+            API->>OpenAI: POST /chat/completions<br/>(GPT-4o-mini)<br/>Analyze reviews, create narrative
+            OpenAI-->>API: Narrative paragraph +<br/>strangeness score
+            
+            API->>OpenAI: POST /images/generations<br/>(DALL-E 3)<br/>Generate 4-panel comic
+            OpenAI-->>API: Comic image (base64)
+            
+            Note over API: Store comic
+            API->>Blob: Upload comic image
+            Blob-->>API: Image URL
+            
+            API->>Cache: Insert comic entity<br/>(RestaurantId, Narrative, Score, ImageUrl)
+            Cache-->>API: Success
+            
+            Note over API: Check leaderboard eligibility
+            API->>Leaderboard: Query top 10 comics
+            Leaderboard-->>API: Current leaderboard
+            
+            alt Score in top 10
+                API->>Leaderboard: Insert/Update leaderboard entry
+                Leaderboard-->>API: Success
+            end
+            
+            API-->>Blazor: Comic data (JSON)
+            Blazor->>Blob: GET image URL
+            Blob-->>Blazor: Comic image
+            Blazor-->>User: Display comic
+        end
+    end

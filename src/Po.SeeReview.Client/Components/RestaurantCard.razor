@@ -1,0 +1,80 @@
+@using Po.SeeReview.Shared.Dtos
+
+<div class="restaurant-card @GetCardClass()" 
+     @onclick="OnClickIfEnabled" 
+     title="@GetTooltipText()">
+    <div class="card-header">
+        <h3 class="restaurant-name">@Restaurant.Name</h3>
+        <div class="rating">
+            <span class="stars">@GetStars(Restaurant.AverageRating)</span>
+            <span class="rating-value">@Restaurant.AverageRating.ToString("F1")</span>
+        </div>
+    </div>
+    
+    <p class="address">@Restaurant.Address</p>
+    
+    <div class="card-footer">
+        <span class="distance">@FormatDistance(Restaurant.Distance)</span>
+        <span class="review-count">@Restaurant.TotalReviews reviews</span>
+    </div>
+    
+    @if (!IsEnabled)
+    {
+        <div class="disabled-overlay">
+            <span class="disabled-message">Requires 5+ reviews</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public RestaurantDto Restaurant { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<RestaurantDto> OnRestaurantClick { get; set; }
+
+    private bool IsEnabled => Restaurant.TotalReviews >= 5;
+
+    private string GetCardClass() => IsEnabled ? "" : "disabled";
+
+    private string GetTooltipText()
+    {
+        return IsEnabled 
+            ? "Click to generate a comic based on reviews" 
+            : "This restaurant needs at least 5 reviews to generate a comic";
+    }
+
+    private async Task OnClickIfEnabled()
+    {
+        if (IsEnabled)
+        {
+            await OnRestaurantClick.InvokeAsync(Restaurant);
+        }
+    }
+
+    private string GetStars(double rating)
+    {
+        var fullStars = (int)Math.Floor(rating);
+        var hasHalfStar = rating - fullStars >= 0.5;
+        var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+        var stars = new string('★', fullStars);
+        if (hasHalfStar) stars += "⯨";
+        stars += new string('☆', emptyStars);
+
+        return stars;
+    }
+
+    private string FormatDistance(double kilometers)
+    {
+        if (kilometers < 1.0)
+        {
+            var meters = kilometers * 1000;
+            return $"{Math.Round(meters)}m away";
+        }
+        else
+        {
+            return $"{kilometers:F1}km away";
+        }
+    }
+}

@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Po.SeeReview.Core\Po.SeeReview.Core.csproj" />
+    <ProjectReference Include="..\..\src\Po.SeeReview.Infrastructure\Po.SeeReview.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Po.SeeReview.Client\Po.SeeReview.Client.csproj" />
+    <ProjectReference Include="..\..\src\Po.SeeReview.Api\Po.SeeReview.Api.csproj" />
+  </ItemGroup>
+
+</Project>

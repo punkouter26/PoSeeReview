@@ -1,0 +1,151 @@
+@page "/diag"
+@inject HttpClient Http
+@inject ILogger<Diagnostics> Logger
+
+<PageTitle>Diagnostics - SeeReview</PageTitle>
+
+<div class="diagnostics-container">
+    <h1>System Diagnostics</h1>
+    <p class="subtitle">Real-time health status of all application dependencies</p>
+
+    @if (isLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Checking system health...</p>
+        </div>
+    }
+    else if (healthStatus == null)
+    {
+        <div class="alert alert-danger">
+            <h3>⚠️ Unable to retrieve health status</h3>
+            <p>@errorMessage</p>
+            <button class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="health-summary @GetStatusClass(healthStatus.Status)">
+            <div class="status-icon">@GetStatusIcon(healthStatus.Status)</div>
+            <div class="status-details">
+                <h2>Overall Status: @healthStatus.Status</h2>
+                <p><strong>Checked:</strong> @healthStatus.Timestamp.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                <p><strong>Duration:</strong> @healthStatus.Duration.TotalMilliseconds.ToString("F0") ms</p>
+            </div>
+        </div>
+
+        <div class="health-checks">
+            <h3>Dependency Health Checks</h3>
+            @foreach (var check in healthStatus.Checks)
+            {
+                <div class="health-check-card @GetStatusClass(check.Status)">
+                    <div class="check-header">
+                        <span class="check-icon">@GetStatusIcon(check.Status)</span>
+                        <h4>@FormatCheckName(check.Name)</h4>
+                        <span class="check-status">@check.Status</span>
+                    </div>
+                    <div class="check-body">
+                        <p class="check-description">@check.Description</p>
+                        <div class="check-meta">
+                            <span><strong>Duration:</strong> @check.Duration.TotalMilliseconds.ToString("F0") ms</span>
+                            @if (!string.IsNullOrEmpty(check.Exception))
+                            {
+                                <details>
+                                    <summary class="error-summary">Error Details</summary>
+                                    <pre class="error-details">@check.Exception</pre>
+                                </details>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" @onclick="LoadHealthStatus">
+                🔄 Refresh Status
+            </button>
+            <a href="/" class="btn btn-secondary">← Back to Home</a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private HealthStatusResponse? healthStatus;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHealthStatus();
+    }
+
+    private async Task LoadHealthStatus()
+    {
+        isLoading = true;
+        errorMessage = null;
+        healthStatus = null;
+
+        try
+        {
+            Logger.LogInformation("Fetching health status from /api/health");
+            healthStatus = await Http.GetFromJsonAsync<HealthStatusResponse>("/api/health");
+            Logger.LogInformation("Health status retrieved: {Status}", healthStatus?.Status);
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Failed to fetch health status");
+            errorMessage = $"HTTP error: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error fetching health status");
+            errorMessage = $"Unexpected error: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetStatusClass(string status) => status.ToLowerInvariant() switch
+    {
+        "healthy" => "status-healthy",
+        "degraded" => "status-degraded",
+        "unhealthy" => "status-unhealthy",
+        _ => "status-unknown"
+    };
+
+    private string GetStatusIcon(string status) => status.ToLowerInvariant() switch
+    {
+        "healthy" => "✅",
+        "degraded" => "⚠️",
+        "unhealthy" => "❌",
+        _ => "❓"
+    };
+
+    private string FormatCheckName(string name) => name
+        .Replace("_", " ")
+        .Replace("azure", "Azure")
+        .Replace("table storage", "Table Storage")
+        .Replace("blob storage", "Blob Storage")
+        .Replace("google maps api", "Google Maps API")
+        .Replace("openai", "OpenAI");
+
+    private class HealthStatusResponse
+    {
+        public string Status { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public TimeSpan Duration { get; set; }
+        public List<HealthCheckDetail> Checks { get; set; } = new();
+    }
+
+    private class HealthCheckDetail
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public TimeSpan Duration { get; set; }
+        public string? Exception { get; set; }
+    }
+}

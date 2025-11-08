@@ -1,0 +1,210 @@
+@page "/leaderboard"
+@using Po.SeeReview.Shared.Models
+@using Po.SeeReview.Client.Services
+@inject HttpClient Http
+@inject ILogger<Leaderboard> Logger
+@inject ShareService ShareService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Hall of Fame - PoSeeReview</PageTitle>
+
+<div class="leaderboard-container">
+    <div class="leaderboard-header">
+        <h1>🏆 Hall of Fame</h1>
+        <p class="subtitle">The strangest restaurant experiences from around the world</p>
+    </div>
+
+    <div class="region-selector">
+        <label for="region">Region:</label>
+        <select id="region" @bind="selectedRegion" @bind:after="LoadLeaderboardAsync" class="form-select">
+            <option value="US">United States</option>
+            <option value="CA">Canada</option>
+            <option value="GB">United Kingdom</option>
+            <option value="AU">Australia</option>
+            <option value="NZ">New Zealand</option>
+            <option value="IE">Ireland</option>
+            <option value="IN">India</option>
+            <option value="SG">Singapore</option>
+        </select>
+
+        <label for="limit" class="ms-4">Show:</label>
+        <select id="limit" @bind="limit" @bind:after="LoadLeaderboardAsync" class="form-select">
+            <option value="10">Top 10</option>
+            <option value="25">Top 25</option>
+            <option value="50">Top 50</option>
+        </select>
+
+        @if (isLoading)
+        {
+            <span class="spinner-border spinner-border-sm ms-3" role="status"></span>
+        }
+    </div>
+
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger mt-3" role="alert">
+            ⚠️ @errorMessage
+        </div>
+    }
+    else if (leaderboardEntries == null || leaderboardEntries.Count == 0)
+    {
+        <div class="no-entries">
+            <p>No entries yet for this region. Be the first to add a strange restaurant experience!</p>
+        </div>
+    }
+    else
+    {
+        <div class="last-updated">
+            Last updated: @lastUpdated.ToString("g")
+        </div>
+
+        <div class="leaderboard-list">
+            @foreach (var entry in leaderboardEntries)
+            {
+                <div class="leaderboard-card @GetRankClass(entry.Rank)">
+                    <div class="rank-badge">
+                        @if (entry.Rank == 1)
+                        {
+                            <span class="trophy">🥇</span>
+                        }
+                        else if (entry.Rank == 2)
+                        {
+                            <span class="trophy">🥈</span>
+                        }
+                        else if (entry.Rank == 3)
+                        {
+                            <span class="trophy">🥉</span>
+                        }
+                        else
+                        {
+                            <span class="rank-number">#@entry.Rank</span>
+                        }
+                    </div>
+
+                    <div class="comic-thumbnail">
+                        <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
+                    </div>
+
+                    <div class="entry-details">
+                        <h3 class="restaurant-name">@entry.RestaurantName</h3>
+                        <p class="address">@entry.Address</p>
+                        <div class="score-badge">
+                            <span class="score-label">Strangeness Score:</span>
+                            <span class="score-value">@entry.StrangenessScore.ToString("F0")</span>
+                        </div>
+                    </div>
+
+                    <div class="entry-actions">
+                        <a href="/comic/@entry.PlaceId" class="btn btn-primary">View Comic</a>
+                        <button class="btn btn-share-small" @onclick="() => ShareComicAsync(entry)" title="Share this comic">
+                            📤
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<LeaderboardEntryDto>? leaderboardEntries;
+    private string selectedRegion = "US";
+    private int limit = 10;
+    private DateTimeOffset lastUpdated = DateTimeOffset.MinValue;
+    private string? errorMessage;
+    private bool isLoading = false;
+    private Timer? refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLeaderboardAsync();
+        
+        // Set up 30-second auto-refresh
+        refreshTimer = new Timer(async _ => 
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadLeaderboardAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private async Task LoadLeaderboardAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            Logger.LogInformation("Fetching leaderboard for region {Region} with limit {Limit}", selectedRegion, limit);
+            
+            var response = await Http.GetFromJsonAsync<LeaderboardResponse>(
+                $"api/leaderboard?region={selectedRegion}&limit={limit}");
+
+            if (response != null)
+            {
+                leaderboardEntries = response.Entries;
+                lastUpdated = response.LastUpdated;
+                Logger.LogInformation("Loaded {Count} leaderboard entries", leaderboardEntries.Count);
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            Logger.LogError(ex, "Error loading leaderboard");
+            errorMessage = "Unable to load leaderboard. Please try again later.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error loading leaderboard");
+            errorMessage = "An unexpected error occurred.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetRankClass(int rank)
+    {
+        return rank switch
+        {
+            1 => "rank-gold",
+            2 => "rank-silver",
+            3 => "rank-bronze",
+            _ => ""
+        };
+    }
+
+    private async Task ShareComicAsync(LeaderboardEntryDto entry)
+    {
+        try
+        {
+            var comicUrl = $"{Navigation.BaseUri}comic/{entry.PlaceId}";
+            var title = $"Strange Review Comic - {entry.RestaurantName}";
+            var text = $"Check out this weird review comic! Strangeness: {entry.StrangenessScore:F0}/100 🎨 #PoSeeReview";
+
+            var shareSupported = await ShareService.IsShareSupportedAsync();
+            
+            if (shareSupported)
+            {
+                await ShareService.ShareComicAsync(title, text, comicUrl);
+            }
+            else
+            {
+                await ShareService.CopyToClipboardAsync(comicUrl);
+                // Could show a toast notification here
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sharing comic for {PlaceId}", entry.PlaceId);
+        }
+    }
+
+    public void Dispose()
+    {
+        refreshTimer?.Dispose();
+    }
+}

@@ -1,0 +1,60 @@
+.comic-strip-container {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    margin: 2rem auto;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.cached-indicator {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    z-index: 10;
+}
+
+.comic-strip-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    /* DALL-E 3 generates 1792x1024 (landscape 4-panel layout) */
+    aspect-ratio: 1792 / 1024;
+    object-fit: contain;
+    background: #f5f5f5;
+}
+
+/* Mobile-responsive scaling for landscape comic */
+@media (max-width: 768px) {
+    .comic-strip-container {
+        margin: 1rem 0;
+        border-radius: 8px;
+    }
+
+    .cached-indicator {
+        top: 0.5rem;
+        right: 0.5rem;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .comic-strip-image {
+        border-radius: 0;
+    }
+}
+
+/* Ensure comic is scrollable horizontally on very small screens */
+@media (max-width: 480px) {
+    .comic-strip-container {
+        border-radius: 0;
+        box-shadow: none;
+    }
+}

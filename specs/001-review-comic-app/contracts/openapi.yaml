@@ -1,0 +1,569 @@
+openapi: 3.0.3
+info:
+  title: PoSeeReview API
+  description: |
+    REST API for the PoSeeReview application - generates comic strips from strange restaurant reviews.
+    
+    **Key Features:**
+    - Discover nearby restaurants using geolocation
+    - Generate AI-powered comics from reviews
+    - View real-time strangeness leaderboard
+    
+    **Tech Stack:** ASP.NET Core 9.0, Azure Table Storage, Azure OpenAI, DALL-E 3
+  version: 1.0.0
+  contact:
+    name: PoSeeReview Team
+  license:
+    name: MIT
+
+servers:
+  - url: https://localhost:5001
+    description: Local development (HTTPS)
+  - url: http://localhost:5000
+    description: Local development (HTTP)
+  - url: https://poseereview.azurewebsites.net
+    description: Production (Azure App Service)
+
+tags:
+  - name: Restaurants
+    description: Restaurant discovery and metadata
+  - name: Comics
+    description: Comic generation and retrieval
+  - name: Leaderboard
+    description: Strangeness ranking
+  - name: Health
+    description: Service health checks
+
+paths:
+  /api/restaurants/nearby:
+    get:
+      tags:
+        - Restaurants
+      summary: Get nearby restaurants
+      description: |
+        Discovers restaurants within 5km radius of provided coordinates using Google Maps API.
+        Results are cached for 24 hours to minimize API costs.
+      operationId: getNearbyRestaurants
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          description: User's latitude (-90 to 90)
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+          example: 47.6062
+        - name: longitude
+          in: query
+          required: true
+          description: User's longitude (-180 to 180)
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+          example: -122.3321
+        - name: limit
+          in: query
+          required: false
+          description: Maximum number of results (default 10)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Successfully retrieved restaurants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restaurants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RestaurantDto'
+                  totalCount:
+                    type: integer
+                    description: Total restaurants found
+                  cachedAt:
+                    type: string
+                    format: date-time
+                    description: When this result was cached
+              example:
+                restaurants:
+                  - placeId: "ChIJabcdef123"
+                    name: "The Flying Saucer Café"
+                    address: "123 Space Needle Way, Seattle, WA"
+                    latitude: 47.6205
+                    longitude: -122.3493
+                    averageRating: 4.5
+                    totalReviews: 247
+                    distance: 1.2
+                totalCount: 8
+                cachedAt: "2025-01-22T14:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/restaurants/{placeId}:
+    get:
+      tags:
+        - Restaurants
+      summary: Get restaurant details
+      description: Retrieves detailed information about a specific restaurant, including reviews.
+      operationId: getRestaurantDetails
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          description: Google Maps place ID
+          schema:
+            type: string
+          example: "ChIJabcdef123"
+      responses:
+        '200':
+          description: Successfully retrieved restaurant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestaurantDetailsDto'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/comics/{placeId}:
+    post:
+      tags:
+        - Comics
+      summary: Generate comic for restaurant
+      description: |
+        Generates a four-panel comic strip from the restaurant's strangest reviews.
+        Returns cached comic if generated within last 24 hours.
+        
+        **Generation Time:** 8-10 seconds (DALL-E API latency)
+      operationId: generateComic
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          description: Google Maps place ID
+          schema:
+            type: string
+          example: "ChIJabcdef123"
+        - name: forceRegenerate
+          in: query
+          required: false
+          description: Force regeneration even if cache valid
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Comic generated successfully (or returned from cache)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComicDto'
+              example:
+                comicId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                placeId: "ChIJabcdef123"
+                restaurantName: "The Flying Saucer Café"
+                strangenessScore: 87
+                blobUrl: "https://poseereviews.blob.core.windows.net/comics/ChIJabcdef123/a1b2c3d4.png"
+                generatedAt: "2025-01-22T14:35:00Z"
+                expiresAt: "2025-01-23T14:35:00Z"
+                isCached: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          description: Comic generation failed
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1"
+                title: "Internal Server Error"
+                status: 500
+                detail: "DALL-E API failed: Rate limit exceeded"
+                instance: "/api/comics/ChIJabcdef123"
+                traceId: "00-abc123-def456-00"
+
+    get:
+      tags:
+        - Comics
+      summary: Get cached comic
+      description: Retrieves the most recent cached comic for a restaurant (if exists and not expired).
+      operationId: getCachedComic
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          description: Google Maps place ID
+          schema:
+            type: string
+          example: "ChIJabcdef123"
+      responses:
+        '200':
+          description: Cached comic found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComicDto'
+        '404':
+          description: No cached comic found (not generated or expired)
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /api/leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Get strangeness leaderboard
+      description: |
+        Returns top 10 restaurants ranked by highest strangeness score.
+        Results are scoped to user's region for relevance.
+      operationId: getLeaderboard
+      parameters:
+        - name: region
+          in: query
+          required: true
+          description: Region code (e.g., US-CA-SF)
+          schema:
+            type: string
+            pattern: '^[A-Z]{2}-[A-Z]{2}-[A-Z]+$'
+          example: "US-WA-SEA"
+        - name: limit
+          in: query
+          required: false
+          description: Number of entries to return (default 10, max 50)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        '200':
+          description: Successfully retrieved leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntryDto'
+                  region:
+                    type: string
+                  lastUpdated:
+                    type: string
+                    format: date-time
+              example:
+                entries:
+                  - rank: 1
+                    placeId: "ChIJabcdef123"
+                    restaurantName: "The Flying Saucer Café"
+                    address: "123 Space Needle Way, Seattle, WA"
+                    strangenessScore: 95
+                    comicBlobUrl: "https://poseereviews.blob.core.windows.net/comics/ChIJabcdef123/xyz.png"
+                  - rank: 2
+                    placeId: "ChIJxyz789"
+                    restaurantName: "Alien Burger Bar"
+                    address: "456 Mars Ave, Seattle, WA"
+                    strangenessScore: 87
+                    comicBlobUrl: "https://poseereviews.blob.core.windows.net/comics/ChIJxyz789/abc.png"
+                region: "US-WA-SEA"
+                lastUpdated: "2025-01-22T14:40:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns service health status and dependency availability.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  version:
+                    type: string
+                  dependencies:
+                    type: object
+                    properties:
+                      azureTableStorage:
+                        type: string
+                        enum: [ok, failed]
+                      azureBlobStorage:
+                        type: string
+                        enum: [ok, failed]
+                      azureOpenAI:
+                        type: string
+                        enum: [ok, failed]
+                      googleMapsAPI:
+                        type: string
+                        enum: [ok, failed]
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                dependencies:
+                  azureTableStorage: "ok"
+                  azureBlobStorage: "ok"
+                  azureOpenAI: "ok"
+                  googleMapsAPI: "ok"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [unhealthy]
+                  dependencies:
+                    type: object
+
+components:
+  schemas:
+    RestaurantDto:
+      type: object
+      required:
+        - placeId
+        - name
+        - address
+        - latitude
+        - longitude
+      properties:
+        placeId:
+          type: string
+          description: Google Maps place ID (unique identifier)
+        name:
+          type: string
+          maxLength: 255
+        address:
+          type: string
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+        averageRating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+          description: Google average rating
+        totalReviews:
+          type: integer
+          minimum: 0
+        distance:
+          type: number
+          format: double
+          description: Distance from user in kilometers
+          
+    RestaurantDetailsDto:
+      allOf:
+        - $ref: '#/components/schemas/RestaurantDto'
+        - type: object
+          properties:
+            reviews:
+              type: array
+              items:
+                $ref: '#/components/schemas/ReviewDto'
+              maxItems: 10
+              description: Top 10 reviews sorted by strangeness score
+            
+    ReviewDto:
+      type: object
+      required:
+        - text
+        - rating
+        - strangenessScore
+      properties:
+        authorName:
+          type: string
+        text:
+          type: string
+          minLength: 5
+          description: Review content (minimum 5 words)
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        time:
+          type: string
+          format: date-time
+        strangenessScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          description: AI-calculated strangeness (0=normal, 100=very strange)
+          
+    ComicDto:
+      type: object
+      required:
+        - comicId
+        - placeId
+        - restaurantName
+        - strangenessScore
+        - blobUrl
+        - generatedAt
+        - expiresAt
+      properties:
+        comicId:
+          type: string
+          format: uuid
+        placeId:
+          type: string
+        restaurantName:
+          type: string
+        strangenessScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        blobUrl:
+          type: string
+          format: uri
+          description: HTTPS URL to comic PNG in Azure Blob Storage
+        generatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          description: Cache expiration (generatedAt + 24 hours)
+        isCached:
+          type: boolean
+          description: True if returned from cache, false if newly generated
+          
+    LeaderboardEntryDto:
+      type: object
+      required:
+        - rank
+        - placeId
+        - restaurantName
+        - strangenessScore
+        - comicBlobUrl
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+          description: 1-based ranking
+        placeId:
+          type: string
+        restaurantName:
+          type: string
+        address:
+          type: string
+        strangenessScore:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+        comicBlobUrl:
+          type: string
+          format: uri
+          
+    ProblemDetails:
+      type: object
+      description: RFC 7807 Problem Details for HTTP APIs
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI reference identifying the problem type
+        title:
+          type: string
+          description: Short human-readable summary
+        status:
+          type: integer
+          description: HTTP status code
+        detail:
+          type: string
+          description: Human-readable explanation specific to this occurrence
+        instance:
+          type: string
+          format: uri
+          description: URI reference identifying the specific occurrence
+        traceId:
+          type: string
+          description: Correlation ID for logging (W3C Trace Context format)
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc7231#section-6.5.1"
+            title: "Bad Request"
+            status: 400
+            detail: "Invalid latitude: must be between -90 and 90"
+            instance: "/api/restaurants/nearby"
+            traceId: "00-abc123-def456-00"
+            
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc7231#section-6.5.4"
+            title: "Not Found"
+            status: 404
+            detail: "Restaurant with placeId 'ChIJinvalid' does not exist"
+            instance: "/api/restaurants/ChIJinvalid"
+            traceId: "00-xyz789-uvw123-00"
+            
+    ServiceUnavailable:
+      description: External dependency unavailable
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+          example:
+            type: "https://tools.ietf.org/html/rfc7231#section-6.6.4"
+            title: "Service Unavailable"
+            status: 503
+            detail: "Google Maps API is temporarily unavailable"
+            instance: "/api/restaurants/nearby"
+            traceId: "00-qrs456-tuv789-00"
+
+  securitySchemes: {}
+
+security: []

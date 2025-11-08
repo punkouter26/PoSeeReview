@@ -1,0 +1,46 @@
+graph TB
+    subgraph Browser["User's Browser"]
+        BlazorWASM[Blazor WebAssembly<br/>SPA<br/><br/>Restaurant grid, comic viewer,<br/>leaderboard, sharing]
+        AppInsightsJS[Application Insights<br/>JavaScript SDK<br/><br/>Client-side telemetry]
+    end
+    
+    subgraph Azure["Azure Cloud"]
+        API[ASP.NET Core Web API<br/>REST API<br/><br/>Orchestrates services,<br/>caches comics, health checks]
+        
+        AppInsights[Application Insights<br/>Monitoring<br/><br/>Telemetry, logs, traces,<br/>alerts, dashboards]
+        
+        TableStorage[Azure Table Storage<br/>NoSQL Database<br/><br/>Comic metadata,<br/>leaderboard entries]
+        
+        BlobStorage[Azure Blob Storage<br/>Object Storage<br/><br/>Comic strip images]
+        
+        KeyVault[Azure Key Vault<br/>Secret Management<br/><br/>API keys, connection strings]
+    end
+    
+    subgraph External["External Services"]
+        GoogleMaps[Google Maps Places API<br/><br/>Restaurant search,<br/>place details, reviews]
+        
+        AzureOpenAI[Azure OpenAI<br/><br/>GPT-4o-mini narrative generation,<br/>DALL-E 3 comic image generation]
+    end
+    
+    User[User] -->|HTTPS| BlazorWASM
+    BlazorWASM -->|REST API calls| API
+    BlazorWASM -->|Telemetry| AppInsightsJS
+    
+    API -->|Query/Store comics| TableStorage
+    API -->|Upload/Retrieve images| BlobStorage
+    API -->|Search restaurants| GoogleMaps
+    API -->|Generate content| AzureOpenAI
+    API -->|Get secrets| KeyVault
+    API -->|Telemetry| AppInsights
+    AppInsightsJS -->|Telemetry| AppInsights
+    
+    style User fill:#08427b
+    style BlazorWASM fill:#1168bd
+    style API fill:#1168bd
+    style AppInsightsJS fill:#1168bd
+    style AppInsights fill:#438dd5
+    style TableStorage fill:#438dd5
+    style BlobStorage fill:#438dd5
+    style KeyVault fill:#438dd5
+    style GoogleMaps fill:#999999
+    style AzureOpenAI fill:#999999

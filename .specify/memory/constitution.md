@@ -1,50 +1,170 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+SYNC IMPACT REPORT
+==================
+Version Change: N/A → 1.0.0 (Initial ratification)
+Rationale: This is the initial constitution defining governance for Po.* .NET 9.0 projects.
+
+Modified/Added Principles:
+  ✅ I. .NET 9.0 Enforcement (NEW) - SDK version enforcement, build failure on mismatch
+  ✅ II. Vertical Slice Architecture (NEW) - Clean Architecture boundaries, file size limits
+  ✅ III. Test-First Development (NEW) - TDD with xUnit, isolated integration tests
+  ✅ IV. API Observability (NEW) - Swagger, health endpoints, Problem Details, Serilog
+  ✅ V. Azure Table Storage Default (NEW) - Azurite local, naming conventions
+  ✅ VI. Mobile-First UI (NEW) - Responsive design, Blazor with optional Radzen
+  ✅ VII. Automation & Simplicity (NEW) - CLI-only operations, minimal docs
+
+Template Updates:
+  ✅ plan-template.md - Constitution Check section aligns with principles
+  ✅ spec-template.md - Scope/requirements match architecture constraints
+  ✅ tasks-template.md - Task categories support testing discipline, observability
+
+Deferred Items: None
+
+Suggested Commit Message:
+  docs: ratify constitution v1.0.0 (Po.* .NET 9.0 governance)
+-->
+
+# PoSeeReview Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. .NET 9.0 Enforcement (REQUIRED)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Projects MUST use .NET 9.0 SDK (latest patch). Builds MUST fail if a different SDK major
+version is detected. All project files MUST target `net9.0`. CI/CD pipelines MUST validate
+SDK version before build execution.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Rationale**: Version consistency prevents runtime surprises, dependency conflicts, and
+ensures teams leverage the latest performance, security, and language features.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Vertical Slice Architecture (REQUIRED)
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Use Vertical Slice Architecture with Clean Architecture boundaries where complexity requires
+separation. Each file MUST NOT exceed 500 lines; enforce via linters or pre-commit checks.
+Prefer small, well-factored code following SOLID principles and appropriate Gang of Four
+patterns.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale**: Vertical slices reduce coupling and enable independent feature development.
+File size limits enforce cohesion. SOLID and design patterns ensure maintainability.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Test-First Development (REQUIRED)
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Follow TDD: write a failing xUnit test first, then implement code. Maintain unit and
+integration tests separately. Integration tests MUST include setup and teardown to leave no
+lingering data. E2E tests use Playwright MCP with TypeScript and are executed manually (not
+in CI).
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**Rationale**: TDD catches regressions early, drives better design, and documents intent.
+Isolated integration tests prevent side effects. Manual E2E avoids flaky CI builds.
+
+### IV. API Observability (REQUIRED)
+
+APIs MUST expose Swagger/OpenAPI from project start and document endpoints for manual
+testing. APIs MUST expose `/api/health` with readiness and liveness semantics. Global
+exception handling middleware MUST transform all errors into RFC 7807 Problem Details
+responses; raw exceptions or stack traces MUST NOT be returned. Use Serilog for structured
+logging with sensible local sinks following .NET best practices.
+
+**Rationale**: Swagger enables self-service exploration. Health endpoints support
+orchestration tooling. Problem Details standardize error contracts. Structured logging
+enables queryable diagnostics.
+
+### V. Azure Table Storage Default (REQUIRED)
+
+Default persistence MUST be Azure Table Storage using Azurite for local development.
+Alternative stores require explicit specification and approval. Table naming MUST follow
+the pattern `PoAppName[TableName]`. Database-using tests MUST run against Azurite or
+disposable test tables and clean up after themselves.
+
+**Rationale**: Azure Table Storage provides cost-effective, scalable NoSQL persistence.
+Azurite enables local-first development. Naming conventions prevent collisions. Test
+isolation ensures repeatability.
+
+### VI. Mobile-First UI (REQUIRED)
+
+Blazor Client MUST start with built-in components; adopt Radzen.Blazor only for advanced
+scenarios justified by UX need. Responsive design MUST prioritize mobile portrait
+experience: fluid grid, touch-friendly controls, readable typography, appropriate
+breakpoints. Main flows MUST be tested on desktop and narrow-screen mobile emulation to
+validate layout and interactions.
+
+**Rationale**: Mobile traffic dominates modern web usage. Built-in components reduce
+dependencies. Portrait-first ensures usability on the most constrained screens. Testing
+validates responsive behavior.
+
+### VII. Automation & Simplicity (REQUIRED)
+
+Automate operations using CLI commands only; one-line commands at a time for human
+execution. Do NOT create extra markdown or PowerShell files during conversations; Azure
+deployment files are the only exception. Documentation files created MUST reside in `/docs`
+at repository root. Start simple and follow YAGNI principles.
+
+**Rationale**: CLI commands are composable, versionable, and automatable. Avoiding script
+proliferation reduces maintenance burden. Centralized docs improve discoverability. YAGNI
+prevents over-engineering.
+
+## Repository Structure (REQUIRED)
+
+All Po.* projects MUST follow this repository layout at root:
+
+```
+/src/Po.AppName.Api
+/src/Po.AppName.Client       (Blazor WebAssembly)
+/src/Po.AppName.Shared
+/tests/Po.AppName.UnitTests
+/tests/Po.AppName.IntegrationTests
+/docs                        (PRD.MD, STEPS.MD, README.MD only)
+/scripts                     (CLI helpers only)
+```
+
+Project and table names MUST follow the `Po.AppName.*` pattern exactly. APIs MUST bind to
+HTTP 5000 and HTTPS 5001 only.
+
+**Rationale**: Standardized layout accelerates onboarding and enables tooling reuse. Naming
+conventions enforce branding and prevent conflicts. Fixed ports simplify local orchestration.
+
+## Tooling & Enforcement (REQUIRED)
+
+Enforce formatting with `dotnet format` as a pre-commit or CI gate; fail builds on format
+errors. CI checks MUST validate: .NET SDK major version is 9, required ports are
+configured, project prefix conforms to `Po.AppName`, `/api/health` exists, and Problem
+Details middleware is present. Provide one-line CLI commands in comments for required tasks
+only; avoid multi-step scripts in conversation.
+
+**Rationale**: Automated enforcement removes human judgment variance. Formatting consistency
+aids code review. CI gates prevent non-compliant code from merging.
+
+## Testing Workflow (REQUIRED)
+
+xUnit for unit and integration tests. Integration tests MUST include setup and teardown to
+leave no lingering data. E2E: Playwright MCP with TypeScript; E2E tests are executed
+manually and are NOT included in CI. Create a minimal, easy-to-invoke set of API methods
+surfaced in Swagger for manual verification during development and QA.
+
+**Rationale**: xUnit is idiomatic for .NET. Isolated integration tests ensure determinism.
+Manual E2E avoids CI flakiness. Swagger methods accelerate manual testing.
+
+## Rule Classification (INFORMATIONAL)
+
+Rules are tagged as REQUIRED, PREFERRED, or INFORMATIONAL. REQUIRED rules MUST be enforced
+and violations block merges. PREFERRED rules are defaults that can be overridden with
+justification. INFORMATIONAL rules provide guidance but are not enforced.
+
+**Rationale**: Explicit classification clarifies which rules are negotiable and which are
+non-negotiable, reducing ambiguity during reviews.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other practices. Amendments require documentation,
+approval, and a migration plan. All code reviews MUST verify compliance with REQUIRED
+principles. Complexity introduced MUST be justified against principles II (simplicity) and
+VII (YAGNI). Use `.specify/memory/constitution.md` for runtime development guidance.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+Versioning follows semantic versioning:
+- **MAJOR**: Backward incompatible governance/principle removals or redefinitions
+- **MINOR**: New principle/section added or materially expanded guidance
+- **PATCH**: Clarifications, wording, typo fixes, non-semantic refinements
+
+Amendments MUST increment the version number and update the Last Amended date.
+
+**Version**: 1.0.0 | **Ratified**: 2025-10-27 | **Last Amended**: 2025-10-27

@@ -1,0 +1,23 @@
+{
+  "name": "poseereviview-e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for PoSeeReview using Playwright with TypeScript",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:lacaj": "playwright test lacaj-comic-generation.spec.ts",
+    "test:lacaj:headed": "playwright test lacaj-comic-generation.spec.ts --headed",
+    "test:lacaj:debug": "playwright test lacaj-comic-generation.spec.ts --debug",
+    "report": "playwright show-report"
+  },
+  "keywords": ["playwright", "e2e", "testing"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  }
+}

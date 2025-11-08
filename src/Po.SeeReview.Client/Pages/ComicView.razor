@@ -1,0 +1,360 @@
+@page "/comic/{PlaceId}"
+@using Po.SeeReview.Shared.Dtos
+@using Po.SeeReview.Client.Services
+@inject ApiClient ApiClient
+@inject NavigationManager Navigation
+@inject ShareService ShareService
+
+<PageTitle>Comic - PoSeeReview</PageTitle>
+
+<div class="comic-view">
+    @if (_isLoading)
+    {
+        <LoadingIndicator Message="Reading the weird stuff..." />
+    }
+    else if (_error != null)
+    {
+        <div class="error-container">
+            <div class="error-icon">🤷</div>
+            <h2>@_errorTitle</h2>
+            <p class="error-message">@_error</p>
+            <button class="btn-primary" @onclick="GoBack">← Back to Restaurants</button>
+        </div>
+    }
+    else if (_comic != null)
+    {
+        <div class="comic-container">
+            <div class="comic-header">
+                <h1>@_comic.RestaurantName</h1>
+                <div class="strangeness-badge">
+                    <span class="score">@_comic.StrangenessScore</span>
+                    <span class="label">Strangeness</span>
+                </div>
+            </div>
+
+            <ComicStrip ImageUrl="@_comic.BlobUrl" 
+                       RestaurantName="@_comic.RestaurantName" 
+                       IsCached="@_comic.IsCached" />
+
+            <div class="comic-meta">
+                <span class="meta-item">
+                    @if (_comic.IsCached)
+                    {
+                        <text>📦 Cached</text>
+                    }
+                    else
+                    {
+                        <text>✨ Freshly Generated</text>
+                    }
+                </span>
+                <span class="meta-item">
+                    🕒 Generated @FormatTimestamp(_comic.GeneratedAt.DateTime)
+                </span>
+                <span class="meta-item">
+                    ⏳ Expires @FormatTimestamp(_comic.ExpiresAt.DateTime)
+                </span>
+            </div>
+
+            <div class="action-buttons">
+                <button class="btn-secondary" @onclick="GoBack">← Back to Restaurants</button>
+                <button class="btn-share" @onclick="ShareComic" disabled="@_isSharing">
+                    @if (_isSharing)
+                    {
+                        <text>📤 Sharing...</text>
+                    }
+                    else if (_shareSupported)
+                    {
+                        <text>📤 Share Comic</text>
+                    }
+                    else
+                    {
+                        <text>📋 Copy Link</text>
+                    }
+                </button>
+                <button class="btn-primary" @onclick="RegenerateComic" disabled="@_isRegenerating">
+                    @if (_isRegenerating)
+                    {
+                        <text>🔄 Regenerating...</text>
+                    }
+                    else
+                    {
+                        <text>🔄 Generate New</text>
+                    }
+                </button>
+            </div>
+            
+            @if (_showCopiedMessage)
+            {
+                <div class="copied-message">
+                    ✓ Link copied to clipboard!
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_showReviewsModal)
+{
+    <div class="modal-overlay" @onclick="CloseReviewsModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h2>Original Reviews</h2>
+                <button class="modal-close" @onclick="CloseReviewsModal">×</button>
+            </div>
+            <div class="modal-body">
+                @if (_reviews == null)
+                {
+                    <div class="loading-reviews">
+                        <p>Loading reviews...</p>
+                    </div>
+                }
+                else if (_reviews.Count == 0)
+                {
+                    <p class="no-reviews">No reviews available.</p>
+                }
+                else
+                {
+                    <div class="reviews-list">
+                        <div class="api-limitation-notice">
+                            ℹ️ Note: Google Maps API only provides 5 reviews (not all @(_reviews.Count == 5 ? "1000+" : "available") reviews). 
+                            We prioritize negative reviews for more interesting comics.
+                        </div>
+                        @foreach (var review in _reviews)
+                        {
+                            <div class="review-item">
+                                <div class="review-header">
+                                    <span class="review-author">@review.AuthorName</span>
+                                    <span class="review-rating">@GetStarDisplay(review.Rating)</span>
+                                </div>
+                                <p class="review-text">@review.Text</p>
+                                <span class="review-date">@review.Time.ToString("MMM dd, yyyy")</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string PlaceId { get; set; } = string.Empty;
+
+    private ComicDto? _comic;
+    private List<ReviewDto>? _reviews;
+    private bool _isLoading = true;
+    private bool _isRegenerating = false;
+    private bool _isSharing = false;
+    private bool _shareSupported = false;
+    private bool _showReviewsModal = false;
+    private bool _showCopiedMessage = false;
+    private string? _error;
+    private string _errorTitle = "Oops!";
+    private Timer? _copiedMessageTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadComic(forceRegenerate: false);
+        _shareSupported = await ShareService.IsShareSupportedAsync();
+    }
+
+    public void Dispose()
+    {
+        _copiedMessageTimer?.Dispose();
+    }
+
+    private async Task LoadComic(bool forceRegenerate)
+    {
+        _isLoading = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            if (forceRegenerate)
+            {
+                _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: true);
+            }
+            else
+            {
+                // Try to get cached comic first
+                try
+                {
+                    _comic = await ApiClient.GetCachedComicAsync(PlaceId);
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    // No cached comic, generate new one
+                    _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: false);
+                }
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            if (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                _errorTitle = "This Place is Refreshingly Normal! 😌";
+                _error = "This restaurant doesn't have enough reviews (minimum 5) to generate a comic. The reviews we found were probably too ordinary anyway!";
+            }
+            else if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _errorTitle = "Restaurant Not Found";
+                _error = "We couldn't find this restaurant. It might have closed or the Google Maps data is unavailable.";
+            }
+            else
+            {
+                _errorTitle = "Generation Failed";
+                _error = $"Something went wrong while generating the comic. Please try again in a moment. ({ex.Message})";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorTitle = "Unexpected Error";
+            _error = $"An unexpected error occurred: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            _isRegenerating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RegenerateComic()
+    {
+        _isRegenerating = true;
+        StateHasChanged();
+        await LoadComic(forceRegenerate: true);
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/");
+    }
+
+    private async Task ShareComic()
+    {
+        if (_comic == null) return;
+
+        _isSharing = true;
+        StateHasChanged();
+
+        try
+        {
+            var currentUrl = Navigation.Uri;
+            var title = $"Strange Review Comic - {_comic.RestaurantName}";
+            var text = $"Check out this weird review comic! Strangeness: {_comic.StrangenessScore}/100 🎨 #PoSeeReview";
+
+            if (_shareSupported)
+            {
+                // Use Web Share API
+                var shared = await ShareService.ShareComicAsync(title, text, currentUrl);
+                
+                if (!shared)
+                {
+                    // User cancelled or error - show message
+                    Console.WriteLine("Share cancelled or not supported, copying link instead");
+                    await CopyLinkToClipboard(currentUrl);
+                }
+            }
+            else
+            {
+                // Fallback to clipboard copy
+                await CopyLinkToClipboard(currentUrl);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sharing comic: {ex.Message}");
+            // Silently fail - user experience shouldn't be disrupted
+        }
+        finally
+        {
+            _isSharing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CopyLinkToClipboard(string url)
+    {
+        try
+        {
+            await ShareService.CopyToClipboardAsync(url);
+            _showCopiedMessage = true;
+            StateHasChanged();
+
+            // Hide message after 3 seconds
+            _copiedMessageTimer?.Dispose();
+            _copiedMessageTimer = new Timer(_ =>
+            {
+                _showCopiedMessage = false;
+                InvokeAsync(StateHasChanged);
+            }, null, 3000, Timeout.Infinite);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error copying to clipboard: {ex.Message}");
+        }
+    }
+
+    private string FormatTimestamp(DateTime timestamp)
+    {
+        var now = DateTime.UtcNow;
+        var diff = now - timestamp;
+
+        if (diff.TotalMinutes < 1)
+            return "just now";
+        if (diff.TotalHours < 1)
+            return $"{(int)diff.TotalMinutes} min ago";
+        if (diff.TotalDays < 1)
+            return $"{(int)diff.TotalHours} hours ago";
+        
+        return timestamp.ToString("MMM dd, yyyy");
+    }
+
+    private async Task ShowReviewsModal()
+    {
+        Console.WriteLine("ShowReviewsModal called");
+        
+        if (_reviews == null)
+        {
+            // Fetch reviews from API
+            try
+            {
+                Console.WriteLine($"Fetching reviews for PlaceId: {PlaceId}");
+                var restaurant = await ApiClient.GetRestaurantDetailsAsync(PlaceId);
+                _reviews = restaurant?.Reviews ?? new List<ReviewDto>();
+                Console.WriteLine($"Fetched {_reviews.Count} reviews");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching reviews: {ex.Message}");
+                _reviews = new List<ReviewDto>();
+            }
+        }
+        
+        _showReviewsModal = true;
+        Console.WriteLine($"Modal state set to: {_showReviewsModal}");
+        StateHasChanged();
+    }
+
+    private void CloseReviewsModal()
+    {
+        _showReviewsModal = false;
+        StateHasChanged();
+    }
+
+    private string GetStarDisplay(int rating)
+    {
+        return rating switch
+        {
+            1 => "⭐ (1 star - negative)",
+            2 => "⭐⭐ (2 stars - negative)",
+            3 => "⭐⭐⭐ (3 stars - mixed)",
+            4 => "⭐⭐⭐⭐ (4 stars)",
+            5 => "⭐⭐⭐⭐⭐ (5 stars)",
+            _ => $"⭐ {rating}"
+        };
+    }
+}
