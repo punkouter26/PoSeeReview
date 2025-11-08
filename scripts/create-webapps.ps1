@@ -5,8 +5,7 @@
 
 $resourceGroup = "PoSeeReview"
 $planId = "/subscriptions/bbb8dfbe-9169-432f-9b7a-fbf861b51037/resourceGroups/PoShared/providers/Microsoft.Web/serverfarms/PoSharedAppServicePlan1"
-$apiAppName = "poseereview-api"
-$clientAppName = "poseereview-client"
+$apiAppName = "PoSeeReview"
 $runtime = "dotnet:9"
 $maxRetries = 10
 $baseDelay = 5
@@ -56,15 +55,12 @@ function Create-WebApp {
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "Creating App Services in $resourceGroup" -ForegroundColor Cyan
+Write-Host "Creating App Service in $resourceGroup" -ForegroundColor Cyan
 Write-Host "Using plan: PoSharedAppServicePlan1" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# Create API App Service
+# Create App Service
 $apiSuccess = Create-WebApp -Name $apiAppName -ResourceGroup $resourceGroup -PlanId $planId -Runtime $runtime
-
-# Create Client App Service
-$clientSuccess = Create-WebApp -Name $clientAppName -ResourceGroup $resourceGroup -PlanId $planId -Runtime $runtime
 
 # Summary
 Write-Host "`n========================================" -ForegroundColor Cyan
@@ -72,24 +68,18 @@ Write-Host "Summary:" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 if ($apiSuccess) {
-    Write-Host "✅ API App Service: https://$apiAppName.azurewebsites.net" -ForegroundColor Green
+    Write-Host "✅ App Service: https://$apiAppName.azurewebsites.net" -ForegroundColor Green
 } else {
-    Write-Host "❌ API App Service: FAILED" -ForegroundColor Red
+    Write-Host "❌ App Service: FAILED" -ForegroundColor Red
 }
 
-if ($clientSuccess) {
-    Write-Host "✅ Client App Service: https://$clientAppName.azurewebsites.net" -ForegroundColor Green
-} else {
-    Write-Host "❌ Client App Service: FAILED" -ForegroundColor Red
-}
-
-if ($apiSuccess -and $clientSuccess) {
-    Write-Host "`n🎉 All webapps created successfully!" -ForegroundColor Green
+if ($apiSuccess) {
+    Write-Host "`n🎉 App Service created successfully!" -ForegroundColor Green
     Write-Host "`nNext steps:" -ForegroundColor Yellow
     Write-Host "1. Trigger GitHub Actions deployment: gh workflow run 'Build and Deploy to Azure'" -ForegroundColor White
     Write-Host "2. Or run the setup script to configure app settings: cd scripts && .\setup-azure-appservices.ps1" -ForegroundColor White
     exit 0
 } else {
-    Write-Host "`n⚠️ Some webapps failed to create. Check errors above." -ForegroundColor Red
+    Write-Host "`n⚠️ App Service failed to create. Check errors above." -ForegroundColor Red
     exit 1
 }
