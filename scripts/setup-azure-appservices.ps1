@@ -3,7 +3,7 @@
 # Setup script for Azure App Services and GitHub Actions CI/CD
 # This script creates the necessary Azure resources and configures GitHub secrets
 
-$resourceGroup = "PoSeeReview"
+$resourceGroup = "PoShared"
 $location = "eastus"
 $apiAppName = "poseereview-api"
 $clientAppName = "poseereview-client"

@@ -10,7 +10,7 @@ env:
   AZURE_WEBAPP_API_NAME: poseereview-api
   AZURE_WEBAPP_CLIENT_NAME: poseereview-client
   DOTNET_VERSION: '9.0.x'
-  RESOURCE_GROUP: PoSeeReview
+  RESOURCE_GROUP: PoShared
 
 jobs:
   build-and-deploy:
