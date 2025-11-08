@@ -3,42 +3,46 @@
 # Setup script for Azure App Services and GitHub Actions CI/CD
 # This script creates the necessary Azure resources and configures GitHub secrets
 
-$resourceGroup = "PoShared"
+$resourceGroup = "PoSeeReview"
 $location = "centralus"  # eastus has quota issues, centralus works
 $apiAppName = "poseereview-api"
 $clientAppName = "poseereview-client"
-$appServicePlan = "poseereview-plan"
+$appServicePlan = "PoSharedAppServicePlan1"
+$appServicePlanResourceGroup = "PoShared"
 
 Write-Host "Setting up Azure App Services for PoSeeReview..." -ForegroundColor Cyan
 
 # Check if App Service Plan already exists
-$existingPlan = az appservice plan show --name $appServicePlan --resource-group $resourceGroup 2>$null
+$existingPlan = az appservice plan show --name $appServicePlan --resource-group $appServicePlanResourceGroup 2>$null
 if ($existingPlan) {
-    Write-Host "`n✓ App Service Plan already exists" -ForegroundColor Green
+    Write-Host "`n✓ App Service Plan already exists in $appServicePlanResourceGroup" -ForegroundColor Green
 } else {
     # Create App Service Plan (Windows, Free F1 tier)
-    Write-Host "`nCreating App Service Plan (Free tier)..." -ForegroundColor Yellow
+    Write-Host "`nCreating App Service Plan (Free tier) in $appServicePlanResourceGroup..." -ForegroundColor Yellow
     az appservice plan create `
         --name $appServicePlan `
-        --resource-group $resourceGroup `
+        --resource-group $appServicePlanResourceGroup `
         --location $location `
         --sku F1
 }
 
-# Create API App Service (.NET 9.0 on Windows)
-Write-Host "`nCreating API App Service..." -ForegroundColor Yellow
+# Use the full plan ID (cross-resource group reference)
+$planId = "/subscriptions/bbb8dfbe-9169-432f-9b7a-fbf861b51037/resourceGroups/$appServicePlanResourceGroup/providers/Microsoft.Web/serverfarms/$appServicePlan"
+
+# Create API App Service (.NET 9.0 on Windows) in PoSeeReview resource group
+Write-Host "`nCreating API App Service in $resourceGroup..." -ForegroundColor Yellow
 az webapp create `
     --name $apiAppName `
     --resource-group $resourceGroup `
-    --plan $appServicePlan `
+    --plan $planId `
     --runtime "dotnet:9"
 
-# Create Client App Service (for Blazor WASM)
-Write-Host "`nCreating Client App Service..." -ForegroundColor Yellow
+# Create Client App Service (for Blazor WASM) in PoSeeReview resource group
+Write-Host "`nCreating Client App Service in $resourceGroup..." -ForegroundColor Yellow
 az webapp create `
     --name $clientAppName `
     --resource-group $resourceGroup `
-    --plan $appServicePlan `
+    --plan $planId `
     --runtime "dotnet:9"
 
 # Configure API App Settings
