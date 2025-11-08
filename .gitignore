@@ -138,3 +138,4 @@ playwright-report/
 test-results/
 playwright/.cache/
 scripts/github-credentials.json
+scripts/configure-app-settings.ps1
