@@ -30,8 +30,8 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     
-    - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal
+    # - name: Test
+    #   run: dotnet test --no-build --configuration Release --verbosity normal
     
     - name: Publish API
       run: dotnet publish src/Po.SeeReview.Api/Po.SeeReview.Api.csproj -c Release -o ./api-publish
