@@ -1,0 +1,60 @@
+name: Build and Deploy to Azure
+
+on:
+  push:
+    branches:
+      - clean-main
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_API_NAME: poseereview-api
+  AZURE_WEBAPP_CLIENT_NAME: poseereview-client
+  DOTNET_VERSION: '9.0.x'
+  RESOURCE_GROUP: PoSeeReview
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --no-restore --configuration Release
+    
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal
+    
+    - name: Publish API
+      run: dotnet publish src/Po.SeeReview.Api/Po.SeeReview.Api.csproj -c Release -o ./api-publish
+    
+    - name: Publish Client (Blazor WASM)
+      run: dotnet publish src/Po.SeeReview.Client/Po.SeeReview.Client.csproj -c Release -o ./client-publish
+    
+    - name: Azure Login
+      uses: azure/login@v2
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Deploy API to Azure App Service
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_API_NAME }}
+        package: ./api-publish
+    
+    - name: Deploy Client to Azure App Service
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_CLIENT_NAME }}
+        package: ./client-publish
+    
+    - name: Azure Logout
+      run: az logout
