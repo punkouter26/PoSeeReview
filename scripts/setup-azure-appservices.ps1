@@ -4,29 +4,34 @@
 # This script creates the necessary Azure resources and configures GitHub secrets
 
 $resourceGroup = "PoShared"
-$location = "eastus"
+$location = "centralus"  # eastus has quota issues, centralus works
 $apiAppName = "poseereview-api"
 $clientAppName = "poseereview-client"
 $appServicePlan = "poseereview-plan"
 
 Write-Host "Setting up Azure App Services for PoSeeReview..." -ForegroundColor Cyan
 
-# Create App Service Plan (Linux, Basic B1 tier)
-Write-Host "`nCreating App Service Plan..." -ForegroundColor Yellow
-az appservice plan create `
-    --name $appServicePlan `
-    --resource-group $resourceGroup `
-    --location $location `
-    --sku B1 `
-    --is-linux
+# Check if App Service Plan already exists
+$existingPlan = az appservice plan show --name $appServicePlan --resource-group $resourceGroup 2>$null
+if ($existingPlan) {
+    Write-Host "`n✓ App Service Plan already exists" -ForegroundColor Green
+} else {
+    # Create App Service Plan (Windows, Free F1 tier)
+    Write-Host "`nCreating App Service Plan (Free tier)..." -ForegroundColor Yellow
+    az appservice plan create `
+        --name $appServicePlan `
+        --resource-group $resourceGroup `
+        --location $location `
+        --sku F1
+}
 
-# Create API App Service (.NET 9.0)
+# Create API App Service (.NET 9.0 on Windows)
 Write-Host "`nCreating API App Service..." -ForegroundColor Yellow
 az webapp create `
     --name $apiAppName `
     --resource-group $resourceGroup `
     --plan $appServicePlan `
-    --runtime "DOTNETCORE:9.0"
+    --runtime "dotnet:9"
 
 # Create Client App Service (for Blazor WASM)
 Write-Host "`nCreating Client App Service..." -ForegroundColor Yellow
@@ -34,7 +39,7 @@ az webapp create `
     --name $clientAppName `
     --resource-group $resourceGroup `
     --plan $appServicePlan `
-    --runtime "DOTNETCORE:9.0"
+    --runtime "dotnet:9"
 
 # Configure API App Settings
 Write-Host "`nConfiguring API App Settings..." -ForegroundColor Yellow
