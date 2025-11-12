@@ -151,6 +151,47 @@ public class LeaderboardEndpointTests : IClassFixture<WebApplicationFactory<Prog
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("US", 10)]
+    [InlineData("CA", 25)]
+    [InlineData("GB", 50)]
+    public async Task GET_Leaderboard_Respects_Limit_Parameter_For_Each_Region(string region, int limit)
+    {
+        // Arrange
+        await SeedLeaderboardEntries(region, limit + 10); // Create more than limit
+
+        // Act
+        var response = await _client.GetAsync($"/api/leaderboard?region={region}&limit={limit}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        
+        var result = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
+        Assert.NotNull(result);
+        Assert.True(result.Entries.Count <= limit, $"Expected max {limit} entries, got {result.Entries.Count}");
+    }
+
+    [Fact]
+    public async Task GET_Leaderboard_Filters_By_Region_Only()
+    {
+        // Arrange - Create entries for multiple regions
+        await SeedLeaderboardEntries("US", 5);
+        await SeedLeaderboardEntries("CA", 5);
+
+        // Act
+        var response = await _client.GetAsync("/api/leaderboard?region=CA&limit=10");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        
+        var result = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
+        Assert.NotNull(result);
+        Assert.Equal("CA", result.Region);
+        
+        // Verify all entries are from CA region only
+        Assert.All(result.Entries, entry => Assert.Equal("CA", entry.Region));
+    }
+
     private async Task SeedLeaderboardEntries(string region, int count)
     {
         using var scope = _factory.Services.CreateScope();

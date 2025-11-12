@@ -56,14 +56,10 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
         // Setup repository with table storage
         var restaurantRepository = new RestaurantRepository(tableServiceClient, NullLogger<RestaurantRepository>.Instance);
 
-        // Setup null review scraper (not used in this test)
-        IReviewScraperService? reviewScraper = null;
-
         var restaurantLogger = NullLogger<RestaurantService>.Instance;
         _restaurantService = new RestaurantService(
             restaurantRepository,
             _googleMapsService,
-            reviewScraper!,
             restaurantLogger);
 
         await Task.CompletedTask;

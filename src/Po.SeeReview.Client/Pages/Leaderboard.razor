@@ -11,7 +11,7 @@
 
 <div class="leaderboard-container">
     <div class="leaderboard-header">
-        <h1>🏆 Hall of Fame</h1>
+        <h1>Hall of Fame</h1>
         <p class="subtitle">The strangest restaurant experiences from around the world</p>
     </div>
 
@@ -44,7 +44,7 @@
     @if (errorMessage != null)
     {
         <div class="alert alert-danger mt-3" role="alert">
-            ⚠️ @errorMessage
+            @errorMessage
         </div>
     }
     else if (leaderboardEntries == null || leaderboardEntries.Count == 0)
@@ -66,15 +66,15 @@
                     <div class="rank-badge">
                         @if (entry.Rank == 1)
                         {
-                            <span class="trophy">🥇</span>
+                            <span class="rank-number gold">#@entry.Rank</span>
                         }
                         else if (entry.Rank == 2)
                         {
-                            <span class="trophy">🥈</span>
+                            <span class="rank-number silver">#@entry.Rank</span>
                         }
                         else if (entry.Rank == 3)
                         {
-                            <span class="trophy">🥉</span>
+                            <span class="rank-number bronze">#@entry.Rank</span>
                         }
                         else
                         {

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI.Images;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Core.Utilities;
 using Polly;
 using Polly.Retry;
 
@@ -51,7 +52,7 @@ public class DalleComicService : IDalleComicService
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
 
         _imageRetryPolicy = Policy<byte[]>
-            .Handle<RequestFailedException>(IsTransientFailure)
+            .Handle<RequestFailedException>(AzureRetryUtils.IsTransientFailure)
             .Or<HttpRequestException>()
             .Or<InvalidOperationException>()
             .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)), (outcome, timespan, attempt, _) =>
@@ -188,10 +189,5 @@ ABSOLUTELY FORBIDDEN:
 
 REMEMBER: This is a SILENT visual comic. Text and dialogue will be added later as an overlay. Generate EXACTLY {panelCount} panel(s) with NO text elements whatsoever.
 """;
-    }
-
-    private static bool IsTransientFailure(RequestFailedException exception)
-    {
-        return exception.Status is 408 or 429 or >= 500;
     }
 }

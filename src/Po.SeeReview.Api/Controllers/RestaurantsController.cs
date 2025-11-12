@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Core.Utilities;
 using Po.SeeReview.Shared.Dtos;
 
 namespace Po.SeeReview.Api.Controllers;
@@ -75,7 +76,7 @@ public class RestaurantsController : ControllerBase
                 AverageRating = r.AverageRating,
                 TotalReviews = r.TotalReviews,
                 Region = r.Region ?? "US",
-                Distance = CalculateDistance(lat, lon, r.Latitude, r.Longitude)
+                Distance = GeoUtils.CalculateDistance(lat, lon, r.Latitude, r.Longitude)
             }).ToList();
 
             var response = new NearbyRestaurantsResponse
@@ -191,30 +192,6 @@ public class RestaurantsController : ControllerBase
                 Detail = "Unable to fetch restaurant data from Google Maps API"
             });
         }
-    }
-
-    /// <summary>
-    /// Calculates Haversine distance between two coordinates in kilometers
-    /// </summary>
-    private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double EarthRadiusKm = 6371;
-
-        var dLat = DegreesToRadians(lat2 - lat1);
-        var dLon = DegreesToRadians(lon2 - lon1);
-
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(DegreesToRadians(lat1)) * Math.Cos(DegreesToRadians(lat2)) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-        return EarthRadiusKm * c;
-    }
-
-    private double DegreesToRadians(double degrees)
-    {
-        return degrees * Math.PI / 180;
     }
 }
 

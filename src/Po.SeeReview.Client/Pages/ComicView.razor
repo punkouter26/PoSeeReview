@@ -14,22 +14,26 @@
     }
     else if (_error != null)
     {
-        <div class="error-container">
+        <FluentCard class="error-container">
             <div class="error-icon">🤷</div>
             <h2>@_errorTitle</h2>
             <p class="error-message">@_error</p>
-            <button class="btn-primary" @onclick="GoBack">← Back to Restaurants</button>
-        </div>
+            <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
+                ← Back to Restaurants
+            </FluentButton>
+        </FluentCard>
     }
     else if (_comic != null)
     {
-        <div class="comic-container">
+        <FluentCard class="comic-container">
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
-                <div class="strangeness-badge">
-                    <span class="score">@_comic.StrangenessScore</span>
-                    <span class="label">Strangeness</span>
-                </div>
+                <FluentBadge Appearance="Appearance.Accent" class="strangeness-badge-fluent">
+                    <div class="badge-content">
+                        <span class="score">@_comic.StrangenessScore</span>
+                        <span class="label">Strangeness</span>
+                    </div>
+                </FluentBadge>
             </div>
 
             <ComicStrip ImageUrl="@_comic.BlobUrl" 
@@ -37,7 +41,7 @@
                        IsCached="@_comic.IsCached" />
 
             <div class="comic-meta">
-                <span class="meta-item">
+                <FluentBadge Appearance="@(_comic.IsCached ? Appearance.Neutral : Appearance.Accent)">
                     @if (_comic.IsCached)
                     {
                         <text>📦 Cached</text>
@@ -46,18 +50,20 @@
                     {
                         <text>✨ Freshly Generated</text>
                     }
-                </span>
-                <span class="meta-item">
+                </FluentBadge>
+                <FluentBadge Appearance="Appearance.Lightweight">
                     🕒 Generated @FormatTimestamp(_comic.GeneratedAt.DateTime)
-                </span>
-                <span class="meta-item">
+                </FluentBadge>
+                <FluentBadge Appearance="Appearance.Lightweight">
                     ⏳ Expires @FormatTimestamp(_comic.ExpiresAt.DateTime)
-                </span>
+                </FluentBadge>
             </div>
 
             <div class="action-buttons">
-                <button class="btn-secondary" @onclick="GoBack">← Back to Restaurants</button>
-                <button class="btn-share" @onclick="ShareComic" disabled="@_isSharing">
+                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
+                    ← Back to Restaurants
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Outline" @onclick="ShareComic" Disabled="@_isSharing">
                     @if (_isSharing)
                     {
                         <text>📤 Sharing...</text>
@@ -70,8 +76,8 @@
                     {
                         <text>📋 Copy Link</text>
                     }
-                </button>
-                <button class="btn-primary" @onclick="RegenerateComic" disabled="@_isRegenerating">
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Accent" @onclick="RegenerateComic" Disabled="@_isRegenerating">
                     @if (_isRegenerating)
                     {
                         <text>🔄 Regenerating...</text>
@@ -80,16 +86,16 @@
                     {
                         <text>🔄 Generate New</text>
                     }
-                </button>
+                </FluentButton>
             </div>
             
             @if (_showCopiedMessage)
             {
-                <div class="copied-message">
+                <FluentMessageBar Intent="MessageIntent.Success" class="copied-message">
                     ✓ Link copied to clipboard!
-                </div>
+                </FluentMessageBar>
             }
-        </div>
+        </FluentCard>
     }
 </div>
 

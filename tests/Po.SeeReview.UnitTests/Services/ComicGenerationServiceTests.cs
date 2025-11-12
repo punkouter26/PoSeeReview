@@ -381,4 +381,231 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.Equal(restaurantName, result.RestaurantName);
     }
+
+    #region PrioritizeReviewsByRating Tests
+
+    [Fact]
+    public void PrioritizeReviewsByRating_Prioritizes_OneStarReviews_First()
+    {
+        // Arrange
+        var reviews = new List<Review>
+        {
+            new() { Rating = 5, Text = "Excellent!" },
+            new() { Rating = 1, Text = "Terrible place, worst experience ever!" },
+            new() { Rating = 3, Text = "Mediocre" },
+            new() { Rating = 1, Text = "Awful service!" },
+            new() { Rating = 4, Text = "Pretty good" }
+        };
+
+        var service = CreateService();
+
+        // Act - Use reflection to call private method
+        var method = typeof(ComicGenerationService).GetMethod(
+            "PrioritizeReviewsByRating",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<Review>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Equal(5, result.Count);
+        Assert.Equal(1, result[0].Rating); // First should be 1-star
+        Assert.Equal(1, result[1].Rating); // Second should be 1-star
+        Assert.Equal(3, result[2].Rating); // Third should be 3-star (next negative)
+    }
+
+    [Fact]
+    public void PrioritizeReviewsByRating_Orders_NegativeReviews_Before_Positive()
+    {
+        // Arrange
+        var reviews = new List<Review>
+        {
+            new() { Rating = 5, Text = "Amazing!" },
+            new() { Rating = 2, Text = "Not good at all" },
+            new() { Rating = 4, Text = "Very nice" },
+            new() { Rating = 1, Text = "Disgusting" },
+            new() { Rating = 3, Text = "Just okay" }
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "PrioritizeReviewsByRating",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<Review>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        var firstPositiveIndex = result.FindIndex(r => r.Rating >= 4);
+        var lastNegativeIndex = result.FindLastIndex(r => r.Rating <= 3);
+        
+        // All negative reviews should come before positive reviews
+        if (firstPositiveIndex >= 0 && lastNegativeIndex >= 0)
+        {
+            Assert.True(lastNegativeIndex < firstPositiveIndex,
+                "Negative reviews should all come before positive reviews");
+        }
+    }
+
+    [Fact]
+    public void PrioritizeReviewsByRating_Falls_Back_To_PositiveReviews_When_Insufficient_Negative()
+    {
+        // Arrange - Only 2 negative reviews, need 5 total
+        var reviews = new List<Review>
+        {
+            new() { Rating = 1, Text = "Terrible" },
+            new() { Rating = 2, Text = "Bad" },
+            new() { Rating = 5, Text = "Excellent!" },
+            new() { Rating = 5, Text = "Amazing!" },
+            new() { Rating = 4, Text = "Very good" }
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "PrioritizeReviewsByRating",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<Review>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Equal(5, result.Count);
+        Assert.Equal(2, result.Count(r => r.Rating <= 3)); // 2 negative
+        Assert.Equal(3, result.Count(r => r.Rating >= 4)); // 3 positive (fallback)
+        
+        // First two should be negative
+        Assert.True(result[0].Rating <= 3);
+        Assert.True(result[1].Rating <= 3);
+    }
+
+    [Fact]
+    public void PrioritizeReviewsByRating_Handles_AllPositiveReviews()
+    {
+        // Arrange - Only 5-star reviews
+        var reviews = new List<Review>
+        {
+            new() { Rating = 5, Text = "Perfect!" },
+            new() { Rating = 5, Text = "Excellent!" },
+            new() { Rating = 5, Text = "Amazing!" },
+            new() { Rating = 4, Text = "Very good" },
+            new() { Rating = 4, Text = "Good place" }
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "PrioritizeReviewsByRating",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<Review>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Equal(5, result.Count);
+        // Should prioritize 4-star before 5-star
+        Assert.Equal(4, result[0].Rating);
+        Assert.Equal(4, result[1].Rating);
+    }
+
+    #endregion
+
+    #region FilterInappropriateReviews Tests
+
+    [Theory]
+    [InlineData("This food is fuck terrible")]  // Exact word match
+    [InlineData("What a shit restaurant")]      // Exact word match
+    [InlineData("The service was ass")]         // Exact word match
+    [InlineData("The waiter was a bitch")]      // Exact word match
+    public void FilterInappropriateReviews_Removes_ProfanityContent(string inappropriateText)
+    {
+        // Arrange
+        var reviews = new List<string>
+        {
+            "Great place!",
+            inappropriateText,
+            "Decent food"
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "FilterInappropriateReviews",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Equal(2, result.Count);
+        Assert.DoesNotContain(inappropriateText, result);
+    }
+
+    [Fact]
+    public void FilterInappropriateReviews_CaseInsensitive()
+    {
+        // Arrange
+        var reviews = new List<string>
+        {
+            "This is FUCK terrible",      // Exact word match
+            "What a SHIT place",           // Exact word match
+            "Nice restaurant"
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "FilterInappropriateReviews",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Single(result);
+        Assert.Equal("Nice restaurant", result[0]);
+    }
+
+    [Fact]
+    public void FilterInappropriateReviews_Does_Not_Filter_Partial_Matches()
+    {
+        // Arrange - Words containing profanity but not exact matches
+        var reviews = new List<string>
+        {
+            "This restaurant is shitty",  // Contains "shit" but as part of "shitty"
+            "The fucking service",        // Contains "fuck" but as part of "fucking"
+            "Nice place"
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "FilterInappropriateReviews",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert - Should keep all reviews since words are not exact matches
+        Assert.Equal(3, result.Count);
+    }
+
+    [Fact]
+    public void FilterInappropriateReviews_Returns_AllCleanReviews()
+    {
+        // Arrange
+        var reviews = new List<string>
+        {
+            "Excellent food!",
+            "Great atmosphere",
+            "Friendly staff",
+            "Would recommend"
+        };
+
+        var service = CreateService();
+
+        // Act
+        var method = typeof(ComicGenerationService).GetMethod(
+            "FilterInappropriateReviews",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
+
+        // Assert
+        Assert.Equal(4, result.Count);
+    }
+
+    #endregion
 }

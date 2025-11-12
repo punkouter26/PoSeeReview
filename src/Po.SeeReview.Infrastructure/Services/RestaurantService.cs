@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Core.Utilities;
 using Po.SeeReview.Infrastructure.Repositories;
 
 namespace Po.SeeReview.Infrastructure.Services;
@@ -12,18 +13,15 @@ public class RestaurantService : IRestaurantService
 {
     private readonly RestaurantRepository _repository;
     private readonly GoogleMapsService _googleMapsService;
-    private readonly IReviewScraperService _reviewScraperService;
     private readonly ILogger<RestaurantService> _logger;
 
     public RestaurantService(
         RestaurantRepository repository,
         GoogleMapsService googleMapsService,
-        IReviewScraperService reviewScraperService,
         ILogger<RestaurantService> logger)
     {
         _repository = repository;
         _googleMapsService = googleMapsService;
-        _reviewScraperService = reviewScraperService;
         _logger = logger;
     }
 
@@ -67,7 +65,7 @@ public class RestaurantService : IRestaurantService
 
         // Return top N by distance
         return restaurants
-            .OrderBy(r => CalculateDistance(latitude, longitude, r.Latitude, r.Longitude))
+            .OrderBy(r => GeoUtils.CalculateDistance(latitude, longitude, r.Latitude, r.Longitude))
             .Take(limit)
             .ToList();
     }
@@ -145,29 +143,5 @@ public class RestaurantService : IRestaurantService
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Calculates Haversine distance between two coordinates in kilometers
-    /// </summary>
-    private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double EarthRadiusKm = 6371;
-
-        var dLat = DegreesToRadians(lat2 - lat1);
-        var dLon = DegreesToRadians(lon2 - lon1);
-
-        var a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                Math.Cos(DegreesToRadians(lat1)) * Math.Cos(DegreesToRadians(lat2)) *
-                Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-        return EarthRadiusKm * c;
-    }
-
-    private double DegreesToRadians(double degrees)
-    {
-        return degrees * Math.PI / 180;
     }
 }

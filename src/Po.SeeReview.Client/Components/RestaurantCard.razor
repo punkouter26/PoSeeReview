@@ -1,30 +1,40 @@
 @using Po.SeeReview.Shared.Dtos
 
-<div class="restaurant-card @GetCardClass()" 
-     @onclick="OnClickIfEnabled" 
-     title="@GetTooltipText()">
+<FluentCard Class="@($"restaurant-card {GetCardClass()}")" 
+            @onclick="OnClickIfEnabled" 
+            title="@GetTooltipText()">
     <div class="card-header">
         <h3 class="restaurant-name">@Restaurant.Name</h3>
         <div class="rating">
             <span class="stars">@GetStars(Restaurant.AverageRating)</span>
-            <span class="rating-value">@Restaurant.AverageRating.ToString("F1")</span>
+            <FluentBadge Appearance="Appearance.Neutral" class="rating-badge">
+                @Restaurant.AverageRating.ToString("F1")
+            </FluentBadge>
         </div>
     </div>
     
     <p class="address">@Restaurant.Address</p>
     
     <div class="card-footer">
-        <span class="distance">@FormatDistance(Restaurant.Distance)</span>
-        <span class="review-count">@Restaurant.TotalReviews reviews</span>
+        <FluentBadge Appearance="Appearance.Accent" class="distance-badge">
+            @FormatDistance(Restaurant.Distance)
+        </FluentBadge>
+        <span class="review-count">
+            <FluentBadge Appearance="Appearance.Lightweight">
+                @Restaurant.TotalReviews reviews
+            </FluentBadge>
+        </span>
     </div>
     
     @if (!IsEnabled)
     {
         <div class="disabled-overlay">
-            <span class="disabled-message">Requires 5+ reviews</span>
+            <FluentBadge Appearance="Appearance.Neutral" class="disabled-badge">
+                Requires 5+ reviews
+            </FluentBadge>
         </div>
     }
-</div>
+</FluentCard>
 
 @code {
     [Parameter]

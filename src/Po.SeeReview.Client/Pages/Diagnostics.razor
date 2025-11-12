@@ -18,7 +18,7 @@
     else if (healthStatus == null)
     {
         <div class="alert alert-danger">
-            <h3>⚠️ Unable to retrieve health status</h3>
+            <h3>Unable to retrieve health status</h3>
             <p>@errorMessage</p>
             <button class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button>
         </div>
@@ -118,10 +118,10 @@
 
     private string GetStatusIcon(string status) => status.ToLowerInvariant() switch
     {
-        "healthy" => "✅",
-        "degraded" => "⚠️",
-        "unhealthy" => "❌",
-        _ => "❓"
+        "healthy" => "✓",
+        "degraded" => "!",
+        "unhealthy" => "✗",
+        _ => "?"
     };
 
     private string FormatCheckName(string name) => name

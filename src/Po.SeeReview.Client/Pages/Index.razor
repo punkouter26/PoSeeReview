@@ -1,9 +1,9 @@
 @page "/"
 @using Po.SeeReview.Client.Services
-@using Po.SeeReview.Client.Components
 @using Po.SeeReview.Shared.Dtos
+@using Microsoft.JSInterop
 @inject GeolocationService GeolocationService
-@inject UserPreferencesService UserPreferencesService
+@inject IJSRuntime JS
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 
@@ -11,20 +11,20 @@
 
 <div class="index-container">
     <header class="app-header">
-        <h1>🍽️ PoSeeReview</h1>
+        <h1>PoSeeReview</h1>
         <p class="tagline">Discover the strangest restaurant stories near you</p>
     </header>
 
     @if (!_locationGranted && !_locationDenied && !_isLoading)
     {
         <div class="location-prompt">
-            <div class="prompt-card">
-                <h2>📍 Find Nearby Restaurants</h2>
+            <FluentCard class="prompt-card">
+                <h2>Find Nearby Restaurants</h2>
                 <p>We need your location to discover restaurants with strange reviews</p>
-                <button class="btn-primary" @onclick="RequestLocationAsync">
+                <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync">
                     Enable Location
-                </button>
-            </div>
+                </FluentButton>
+            </FluentCard>
         </div>
     }
 
@@ -36,43 +36,16 @@
     @if (_locationDenied)
     {
         <div class="error-message">
-            <h2>❌ Location Access Denied</h2>
-            <p>@_errorMessage</p>
-            <p>No problem! You can still search for restaurants manually.</p>
-            
-            <div class="manual-location-section">
-                <h3>Enter Your Location</h3>
-                <LocationInput 
-                    Placeholder="Enter city name or ZIP code..." 
-                    OnLocationSubmit="HandleManualLocationSearch" />
-            </div>
-            
-            <div class="divider">OR</div>
-            
-            <button class="btn-secondary" @onclick="RequestLocationAsync">
-                Try Automatic Location Again
-            </button>
+            <h2>Location Access Denied</h2>
+            <p>Location required. <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>Enable location</a> to discover restaurants.</p>
         </div>
     }
 
     @if (_hasError && !_locationDenied)
     {
         <div class="error-message">
-            <h2>⚠️ Something Went Wrong</h2>
-            <p>@_errorMessage</p>
-            
-            <div class="manual-location-section">
-                <h3>Try Manual Search</h3>
-                <LocationInput 
-                    Placeholder="Enter city name or ZIP code..." 
-                    OnLocationSubmit="HandleManualLocationSearch" />
-            </div>
-            
-            <div class="divider">OR</div>
-            
-            <button class="btn-secondary" @onclick="RequestLocationAsync">
-                Retry Automatic Location
-            </button>
+            <h2>Something Went Wrong</h2>
+            <p>@_errorMessage <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>Try again</a></p>
         </div>
     }
 
@@ -103,7 +76,8 @@
     protected override async Task OnInitializedAsync()
     {
         // Check if user previously granted location permission
-        var locationEnabled = await UserPreferencesService.IsLocationEnabledAsync();
+        var storedValue = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_location_enabled");
+        var locationEnabled = storedValue == "true";
         
         if (locationEnabled)
         {
@@ -133,7 +107,7 @@
                 // If denied, clear the saved preference
                 if (_locationDenied)
                 {
-                    await UserPreferencesService.SetLocationEnabledAsync(false);
+                    await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "false");
                 }
                 
                 return;
@@ -142,7 +116,7 @@
             _locationGranted = true;
             
             // Save user preference that location is enabled
-            await UserPreferencesService.SetLocationEnabledAsync(true);
+            await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "true");
             
             _loadingMessage = "Finding nearby restaurants...";
             StateHasChanged();
@@ -188,41 +162,5 @@
     {
         // Navigate to comic view page (to be implemented in Phase 4)
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
-    }
-
-    private async Task HandleManualLocationSearch(string locationQuery)
-    {
-        _isLoading = true;
-        _hasError = false;
-        _locationDenied = false;
-        _loadingMessage = $"Searching for restaurants near '{locationQuery}'...";
-        StateHasChanged();
-
-        try
-        {
-            // Call API with manual location query
-            var response = await ApiClient.SearchRestaurantsByLocationAsync(locationQuery);
-
-            if (response == null || response.Restaurants.Count == 0)
-            {
-                _errorMessage = $"No restaurants found near '{locationQuery}'. Try a different location.";
-                _hasError = true;
-                return;
-            }
-
-            _restaurants = response.Restaurants;
-            _totalCount = response.TotalCount;
-            _locationGranted = true; // Mark as successful search
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Failed to search '{locationQuery}': {ex.Message}";
-            _hasError = true;
-        }
-        finally
-        {
-            _isLoading = false;
-            StateHasChanged();
-        }
     }
 }

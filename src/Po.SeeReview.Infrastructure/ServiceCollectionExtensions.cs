@@ -78,7 +78,7 @@ public static class ServiceCollectionExtensions
                 options.Retry.UseJitter = true;
             });
         services.AddScoped<IRestaurantService, RestaurantService>();
-        services.AddScoped<IReviewScraperService, ReviewScraperService>();
+
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
         services.AddHttpClient<IDalleComicService, DalleComicService>()

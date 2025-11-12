@@ -118,6 +118,11 @@ Desktop.ini
 *.swp
 *.swo
 *~
+debug-*.html
+debug-*.png
+debug-*.txt
+package-inventory.txt
+build-output.txt
 
 # Blazor specific
 wwwroot/lib/

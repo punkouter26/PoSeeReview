@@ -1,12 +1,13 @@
 .index-container {
     max-width: 1200px;
     margin: 0 auto;
-    padding: 1rem;
+    padding: clamp(1rem, 3vw, 1.5rem);
+    min-height: 100dvh; /* Modern viewport height unit */
 }
 
 .app-header {
     text-align: center;
-    padding: 2rem 1rem;
+    padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 3vw, 2rem);
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border-radius: 12px;
@@ -14,15 +15,17 @@
 }
 
 .app-header h1 {
-    font-size: 2.5rem;
+    font-size: clamp(2rem, 5vw, 3rem);
     margin: 0 0 0.5rem 0;
     font-weight: 700;
+    line-height: 1.2;
 }
 
 .tagline {
-    font-size: 1.125rem;
+    font-size: clamp(1rem, 2.5vw, 1.25rem);
     margin: 0;
     opacity: 0.95;
+    line-height: 1.5;
 }
 
 .location-prompt {
@@ -116,57 +119,25 @@
 
 .restaurants-grid {
     margin-top: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+    gap: clamp(1rem, 2vw, 1.5rem);
+    container-type: inline-size;
+}
+
+/* Modern responsive grid using auto-fit */
+@supports (container-type: inline-size) {
+    .restaurants-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
 }
 
 .results-info {
     color: #666;
-    font-size: 0.875rem;
+    font-size: clamp(0.8125rem, 1.5vw, 0.875rem);
     margin-bottom: 1rem;
     text-align: center;
+    font-weight: 500;
 }
 
-/* Mobile-first responsive design */
-@media (min-width: 768px) {
-    .index-container {
-        padding: 1.5rem;
-    }
-
-    .app-header {
-        padding: 3rem 2rem;
-    }
-
-    .app-header h1 {
-        font-size: 3rem;
-    }
-
-    .tagline {
-        font-size: 1.25rem;
-    }
-
-    .restaurants-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
-    }
-}
-
-@media (min-width: 1024px) {
-    .restaurants-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1.5rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .app-header h1 {
-        font-size: 2rem;
-    }
-
-    .tagline {
-        font-size: 1rem;
-    }
-
-    .prompt-card {
-        padding: 1.5rem;
-    }
-}
+/* Remove old media queries - now using modern CSS Grid auto-fit */

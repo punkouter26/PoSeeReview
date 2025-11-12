@@ -291,15 +291,12 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
         {
             var restaurantService = services.GetService<Po.SeeReview.Core.Interfaces.IRestaurantService>();
             var googleMapsService = services.GetService<Po.SeeReview.Infrastructure.Services.GoogleMapsService>();
-            var reviewScraperService = services.GetService<Po.SeeReview.Core.Interfaces.IReviewScraperService>();
 
             _output.WriteLine($"IRestaurantService: {(restaurantService != null ? "✓ Registered" : "✗ Missing")}");
             _output.WriteLine($"GoogleMapsService: {(googleMapsService != null ? "✓ Registered" : "✗ Missing")}");
-            _output.WriteLine($"IReviewScraperService: {(reviewScraperService != null ? "✓ Registered" : "✗ Missing")}");
 
             Assert.NotNull(restaurantService);
             Assert.NotNull(googleMapsService);
-            Assert.NotNull(reviewScraperService);
         }
         catch (Exception ex)
         {

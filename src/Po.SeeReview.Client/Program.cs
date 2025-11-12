@@ -14,8 +14,7 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 builder.Services.AddFluentUIComponents();
 
 // Register application services
-builder.Services.AddScoped<LocalStorageService>();
-builder.Services.AddScoped<UserPreferencesService>();
+
 builder.Services.AddScoped<GeolocationService>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ShareService>();

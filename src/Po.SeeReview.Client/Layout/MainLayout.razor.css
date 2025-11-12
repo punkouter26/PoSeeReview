@@ -2,6 +2,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100dvh; /* Modern dynamic viewport height */
 }
 
 main {
@@ -53,7 +54,7 @@ main {
 
     .sidebar {
         width: 250px;
-        height: 100vh;
+        height: 100dvh; /* Modern dynamic viewport height */
         position: sticky;
         top: 0;
     }

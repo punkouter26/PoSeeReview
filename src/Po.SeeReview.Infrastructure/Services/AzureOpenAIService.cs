@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Core.Utilities;
 using Polly;
 using Polly.Retry;
 
@@ -45,7 +46,7 @@ public class AzureOpenAIService : IAzureOpenAIService
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
 
         _chatRetryPolicy = Policy<ClientResult<ChatCompletion>>
-            .Handle<RequestFailedException>(IsTransientFailure)
+            .Handle<RequestFailedException>(AzureRetryUtils.IsTransientFailure)
             .Or<HttpRequestException>()
             .WaitAndRetryAsync(3, attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)), (outcome, timespan, attempt, _) =>
             {
@@ -164,10 +165,5 @@ Return JSON in this exact format:
 
         [JsonPropertyName("narrative")]
         public string Narrative { get; set; } = string.Empty;
-    }
-
-    private static bool IsTransientFailure(RequestFailedException exception)
-    {
-        return exception.Status is 408 or 429 or >= 500;
     }
 }
