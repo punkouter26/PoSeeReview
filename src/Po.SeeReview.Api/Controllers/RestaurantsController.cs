@@ -111,6 +111,67 @@ public class RestaurantsController : ControllerBase
     }
 
     /// <summary>
+    /// Searches for restaurants by location query (city name, ZIP code, etc.)
+    /// </summary>
+    /// <param name="location">Location query string (e.g., "Seattle", "98101")</param>
+    /// <param name="limit">Maximum number of results (1-50, default 10)</param>
+    /// <returns>List of restaurants near the specified location</returns>
+    /// <response code="200">Successfully retrieved restaurants</response>
+    /// <response code="400">Invalid location query</response>
+    /// <response code="503">Google Maps API unavailable</response>
+    [HttpGet("search")]
+    [ProducesResponseType(typeof(NearbyRestaurantsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<NearbyRestaurantsResponse>> SearchRestaurantsByLocation(
+        [FromQuery] string location,
+        [FromQuery] int limit = 10)
+    {
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = 400,
+                Title = "Bad Request",
+                Detail = "Location query is required"
+            });
+        }
+
+        // For now, use hardcoded coordinates for common cities
+        // In production, this should use a geocoding service
+        var coordinates = GetCoordinatesForLocation(location);
+        if (coordinates == null)
+        {
+            // Default to Seattle if location not recognized
+            coordinates = (47.6062, -122.3321);
+            _logger.LogWarning("Location '{Location}' not recognized, defaulting to Seattle", location);
+        }
+
+        return await GetNearbyRestaurants(coordinates.Value.lat, coordinates.Value.lon, limit);
+    }
+
+    private (double lat, double lon)? GetCoordinatesForLocation(string location)
+    {
+        // Simplified geocoding - in production, use Google Geocoding API
+        var locationLower = location.ToLowerInvariant().Trim();
+        
+        return locationLower switch
+        {
+            "seattle" or "seattle, wa" or "98101" => (47.6062, -122.3321),
+            "san francisco" or "sf" or "94102" => (37.7749, -122.4194),
+            "new york" or "nyc" or "10001" => (40.7128, -74.0060),
+            "los angeles" or "la" or "90001" => (34.0522, -118.2437),
+            "chicago" or "60601" => (41.8781, -87.6298),
+            "boston" or "02101" => (42.3601, -71.0589),
+            "portland" or "portland, or" or "97201" => (45.5152, -122.6784),
+            "austin" or "78701" => (30.2672, -97.7431),
+            "denver" or "80201" => (39.7392, -104.9903),
+            "miami" or "33101" => (25.7617, -80.1918),
+            _ => null
+        };
+    }
+
+    /// <summary>
     /// Gets detailed restaurant information by Google place ID
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
