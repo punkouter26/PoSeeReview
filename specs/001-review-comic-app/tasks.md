@@ -74,6 +74,48 @@ Based on plan.md structure:
 
 ---
 
+## Phase 2.5: Constitution Compliance (Blocking Prerequisites)
+
+**Purpose**: Additional constitution v2.0.0 requirements that MUST be complete before user story implementation
+
+**⚠️ CRITICAL**: These tasks address constitution violations identified in analysis. Must complete before Phase 3.
+
+### Foundation Requirements
+
+- [ ] T136 [P] Create Directory.Packages.props at repository root with all NuGet package versions (Constitution 1. Foundation - Package Management)
+- [ ] T137 [P] Enable `<Nullable>enable</Nullable>` in all .csproj files (Po.SeeReview.Core, Infrastructure, Api, Client, Shared, UnitTests, IntegrationTests)
+
+### Quality & Testing Requirements
+
+- [ ] T138 [P] Configure 80% code coverage threshold in test projects and add coverage report generation to docs/coverage/ (Constitution 4. Quality & Testing)
+- [ ] T139 [P] Install bUnit NuGet package for Blazor component testing in Po.SeeReview.UnitTests
+- [ ] T140 [P] Create ComponentTests/ folder in tests/Po.SeeReview.UnitTests/
+- [ ] T141 [P] Create sample bUnit test for future components (e.g., RestaurantCardTests.cs) with setup/teardown pattern
+
+### Operations & Azure Requirements
+
+- [ ] T142 [P] Create /infra directory structure with main.bicep and /modules subdirectory
+- [ ] T143 [P] Create Bicep module for App Service in infra/modules/appservice.bicep
+- [ ] T144 [P] Create Bicep module for Storage Account in infra/modules/storage.bicep (Table + Blob)
+- [ ] T145 [P] Create Bicep module for Application Insights + Log Analytics in infra/modules/monitoring.bicep
+- [ ] T146 [P] Create Bicep module for budget alerts in infra/modules/budget.bicep with $5 monthly limit
+- [ ] T147 [P] Install OpenTelemetry packages (OpenTelemetry.Api, OpenTelemetry.Extensions.Hosting, OpenTelemetry.Instrumentation.AspNetCore)
+- [ ] T148 [P] Configure OpenTelemetry in Po.SeeReview.Api/Program.cs with ActivitySource for custom traces and Meter for custom metrics
+- [ ] T149 [P] Document Snapshot Debugger and Profiler enablement steps in docs/deployment.md (enabled via Azure Portal post-deployment)
+- [ ] T150 [P] Create docs/kql/ directory with essential queries: errors.kql, performance.kql, dependencies.kql, custom-metrics.kql
+
+### Additional Coverage Gaps
+
+- [ ] T151 [P] Add manual location entry UI component in Po.SeeReview.Client/Components/LocationInput.razor (addresses FR-018)
+- [ ] T152 [P] Create architecture diagrams in docs/diagrams/: c4-context.mmd, c4-container.mmd, c4-component.mmd, sequence-comic-generation.mmd
+- [ ] T153 Update Index.razor to support manual location entry when geolocation is denied or unavailable
+- [ ] T154 [P] Create edge case test scenarios in tests/Po.SeeReview.IntegrationTests/EdgeCases/ for all 7 edge cases listed in spec.md
+- [ ] T155 [P] Define content moderation policy document in docs/content-moderation-policy.md specifying profanity, hate speech, and explicit content rules
+
+**Checkpoint**: Constitution compliance complete - all v2.0.0 requirements satisfied
+
+---
+
 ## Phase 3: User Story 1 - Discover Nearby Restaurant Stories (Priority: P1) 🎯 MVP
 
 **Goal**: Users can discover nearby restaurants via geolocation and see restaurant cards with basic info
@@ -288,7 +330,7 @@ Based on plan.md structure:
 - [X] T126 [P] Add performance monitoring: track API response times in Application Insights
 - [X] T127 [P] Add cost monitoring: log Azure OpenAI and DALL-E API usage metrics
 - [X] T128 [P] Create deployment documentation in docs/deployment.md for Azure App Service
-- [ ] T129 [P] Add CI/CD pipeline validation per constitution (SDK version, ports, health endpoint, naming conventions)
+- [ ] T129 [P] Add GitHub Actions CI/CD workflow with OIDC federated credentials, validates .NET SDK version 9, HTTP 5000/HTTPS 5001 ports, Po.SeeReview.* naming pattern, /api/health endpoint exists, Problem Details middleware present (Constitution 5. Operations - CI/CD REQUIRED)
 - [X] T130 Run dotnet format across all projects to enforce code style
 - [X] T131 Run full test suite (unit + integration) and verify 100% pass rate
 - [ ] T132 Manual E2E testing with Playwright following quickstart.md scenarios
@@ -305,8 +347,9 @@ Based on plan.md structure:
 ```mermaid
 graph TD
     Setup[Phase 1: Setup] --> Foundation[Phase 2: Foundation]
-    Foundation --> US1[Phase 3: User Story 1 - P1]
-    Foundation --> US2[Phase 4: User Story 2 - P1]
+    Foundation --> Constitution[Phase 2.5: Constitution Compliance]
+    Constitution --> US1[Phase 3: User Story 1 - P1]
+    Constitution --> US2[Phase 4: User Story 2 - P1]
     US1 --> US3[Phase 5: User Story 3 - P2]
     US2 --> US3
     US2 --> US4[Phase 6: User Story 4 - P3]
@@ -316,10 +359,13 @@ graph TD
     US4 --> Polish
 ```
 
-**Critical Path**: Setup → Foundation → US1 + US2 (parallel) → US3 → Polish
+**Critical Path**: Setup → Foundation → Constitution → US1 + US2 (parallel) → US3 → Polish
+
+**⚠️ BLOCKING**: Phase 2.5 (Constitution Compliance) MUST complete before any user story work begins
 
 **Parallelization Opportunities**:
-- After Foundation: US1 and US2 can be developed in parallel (different entities, controllers, UI pages)
+- After Constitution: US1 and US2 can be developed in parallel (different entities, controllers, UI pages)
+- Within Constitution Phase: All tasks marked [P] can run concurrently (T136-T152)
 - Within US1: All tasks marked [P] can run concurrently (models, DTOs, services, components)
 - Within US2: All tasks marked [P] can run concurrently
 - US3 and US4 depend on US2 (need Comic entity and generation service)
@@ -367,48 +413,51 @@ git checkout -b feature/user-story-2
 
 ## Task Summary
 
-**Total Tasks**: 135
+**Total Tasks**: 155 (was 135, +20 for constitution compliance)
 **Setup Tasks**: 16 (T001-T016)
 **Foundation Tasks**: 14 (T017-T030)
+**Constitution Compliance Tasks**: 20 (T136-T155) ⚠️ **NEW - CRITICAL**
 **User Story 1 Tasks**: 29 (T031-T059)
 **User Story 2 Tasks**: 31 (T060-T090)
 **User Story 3 Tasks**: 20 (T091-T110)
 **User Story 4 Tasks**: 7 (T111-T117)
 **Polish Tasks**: 18 (T118-T135)
 
-**Parallelizable Tasks**: 78 marked with [P]
-**Sequential Tasks**: 57 (have dependencies)
+**Parallelizable Tasks**: 96 marked with [P] (was 78, +18 new)
+**Sequential Tasks**: 59 (have dependencies)
 
 **Estimated Timeline** (1 developer):
 - Phase 1: 2 days
 - Phase 2: 3 days
+- Phase 2.5 (Constitution): 3 days ⚠️ **NEW**
 - Phase 3 (US1): 5 days
 - Phase 4 (US2): 6 days
 - Phase 5 (US3): 3 days
 - Phase 6 (US4): 1 day
 - Phase 7: 3 days
-- **Total: 23 days** (single developer, sequential)
+- **Total: 26 days** (single developer, sequential)
 
 **Estimated Timeline** (3 developers, parallel work):
 - Phase 1: 1 day
 - Phase 2: 2 days
+- Phase 2.5 (Constitution): 2 days ⚠️ **NEW**
 - Phase 3 + 4 (parallel): 6 days
 - Phase 5: 2 days
 - Phase 6: 1 day
 - Phase 7: 2 days
-- **Total: 14 days** (3 developers, optimal parallelization)
+- **Total: 16 days** (3 developers, optimal parallelization)
 
 ---
 
 ## Implementation Strategy
 
-### Week 1: Foundation
+### Week 1: Foundation & Constitution
 - Days 1-2: Complete Phase 1 (Setup) + Phase 2 (Foundation)
-- Days 3-5: Begin Phase 3 (User Story 1)
-- **Deliverable**: Working app with restaurant discovery (no comics yet)
+- Days 3-5: Complete Phase 2.5 (Constitution Compliance) - Bicep, coverage, OpenTelemetry
+- **Deliverable**: Constitution-compliant foundation ready for user stories
 
 ### Week 2: Core Features
-- Days 1-3: Complete Phase 3 (User Story 1)
+- Days 1-3: Complete Phase 3 (User Story 1) - Restaurant discovery
 - Days 4-5: Begin Phase 4 (User Story 2) - domain models, tests
 - **Deliverable**: Restaurant discovery + review scraping complete
 

@@ -132,7 +132,7 @@ public class ShareServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _shareService.ShareComicAsync(invalidTitle, text, url));
+            async () => await _shareService.ShareComicAsync(invalidTitle!, text, url));
     }
 
     [Theory]
@@ -147,7 +147,7 @@ public class ShareServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _shareService.ShareComicAsync(title, text, invalidUrl));
+            async () => await _shareService.ShareComicAsync(title, text, invalidUrl!));
     }
 
     [Fact]

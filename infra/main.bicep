@@ -15,6 +15,9 @@ param azdEnvironmentName string = environmentName
 @description('Unique ID to ensure resource name uniqueness')
 param resourceGroupSuffix string = uniqueString(subscription().id, environmentName)
 
+@description('Email addresses for budget alerts')
+param budgetContactEmails array = []
+
 // Service names
 param apiServiceName string = 'api'
 param clientServiceName string = 'client'
@@ -127,6 +130,15 @@ module secrets './modules/secrets.bicep' = {
   params: {
     keyVaultName: keyVault.outputs.name
     storageConnectionString: storage.outputs.connectionString
+  }
+}
+
+// Budget - Monthly spending alerts
+module budget './modules/budget.bicep' = {
+  name: 'budget'
+  scope: rg
+  params: {
+    contactEmails: budgetContactEmails
   }
 }
 

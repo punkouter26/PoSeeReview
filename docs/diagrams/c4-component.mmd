@@ -1,0 +1,110 @@
+graph TB
+    subgraph API["Po.SeeReview.Api Container"]
+        subgraph Controllers["API Controllers"]
+            ComicsController[ComicsController<br/>Endpoint<br/><br/>POST /api/comics/{placeId}<br/>GET /api/comics/{comicId}]
+            RestaurantsController[RestaurantsController<br/>Endpoint<br/><br/>GET /api/restaurants<br/>POST /api/restaurants/search]
+            LeaderboardController[LeaderboardController<br/>Endpoint<br/><br/>GET /api/leaderboard/{region}]
+            TakedownController[TakedownController<br/>Endpoint<br/><br/>POST /api/takedown]
+        end
+        
+        subgraph Services["Business Services"]
+            ComicGenerationService[ComicGenerationService<br/>Service<br/><br/>Orchestrates comic creation,<br/>caching, expiration logic]
+            DalleComicService[DalleComicService<br/>Service<br/><br/>DALL-E 3 image generation,<br/>narrative composition]
+            RestaurantService[RestaurantService<br/>Service<br/><br/>Restaurant search,<br/>review aggregation]
+            LeaderboardService[LeaderboardService<br/>Service<br/><br/>Top comics ranking,<br/>regional filtering]
+            ShareService[ShareService<br/>Service<br/><br/>Social media sharing,<br/>URL generation]
+        end
+        
+        subgraph Repositories["Data Access"]
+            ComicRepository[ComicRepository<br/>Repository<br/><br/>CRUD operations for comics,<br/>Table Storage access]
+            LeaderboardRepository[LeaderboardRepository<br/>Repository<br/><br/>Leaderboard queries,<br/>Table Storage access]
+            BlobStorageService[BlobStorageService<br/>Service<br/><br/>Image upload/download,<br/>Blob Storage access]
+        end
+        
+        subgraph Infrastructure["Infrastructure Services"]
+            GoogleMapsClient[GoogleMapsClient<br/>HTTP Client<br/><br/>Places API integration,<br/>review fetching]
+            AzureOpenAIClient[AzureOpenAIClient<br/>HTTP Client<br/><br/>GPT-4o-mini and DALL-E 3<br/>API integration]
+            TelemetryService[PoSeeReviewTelemetry<br/>Observability<br/><br/>Custom metrics, traces,<br/>OpenTelemetry]
+        end
+        
+        subgraph Middleware["Middleware Pipeline"]
+            RateLimiter[RateLimiter<br/>Middleware<br/><br/>60 requests/min per IP]
+            ProblemDetails[ProblemDetailsMiddleware<br/>Middleware<br/><br/>RFC 7807 error responses]
+            UserAgentValidation[UserAgentValidationMiddleware<br/>Middleware<br/><br/>Bot detection]
+        end
+        
+        subgraph HealthChecks["Health Monitoring"]
+            TableStorageHealthCheck[AzureTableStorageHealthCheck<br/>Health Check<br/><br/>Verifies table connectivity]
+            BlobStorageHealthCheck[AzureBlobStorageHealthCheck<br/>Health Check<br/><br/>Verifies blob connectivity]
+            OpenAIHealthCheck[AzureOpenAIHealthCheck<br/>Health Check<br/><br/>Verifies AI service availability]
+            GoogleMapsHealthCheck[GoogleMapsHealthCheck<br/>Health Check<br/><br/>Verifies Maps API availability]
+        end
+        
+        subgraph HostedServices["Background Services"]
+            ExpiredComicCleanup[ExpiredComicCleanupService<br/>Hosted Service<br/><br/>Daily cleanup of expired comics]
+        end
+    end
+    
+    %% Controller dependencies
+    ComicsController -->|Uses| ComicGenerationService
+    RestaurantsController -->|Uses| RestaurantService
+    LeaderboardController -->|Uses| LeaderboardService
+    TakedownController -->|Uses| ComicGenerationService
+    TakedownController -->|Uses| LeaderboardService
+    
+    %% Service dependencies
+    ComicGenerationService -->|Uses| DalleComicService
+    ComicGenerationService -->|Uses| ComicRepository
+    ComicGenerationService -->|Uses| BlobStorageService
+    ComicGenerationService -->|Uses| TelemetryService
+    
+    DalleComicService -->|Uses| AzureOpenAIClient
+    DalleComicService -->|Uses| TelemetryService
+    
+    RestaurantService -->|Uses| GoogleMapsClient
+    RestaurantService -->|Uses| TelemetryService
+    
+    LeaderboardService -->|Uses| LeaderboardRepository
+    
+    ShareService -->|Uses| ComicRepository
+    
+    %% Repository dependencies
+    ComicRepository -->|Accesses| TableStorage[(Azure Table Storage)]
+    LeaderboardRepository -->|Accesses| TableStorage
+    BlobStorageService -->|Accesses| BlobStorage[(Azure Blob Storage)]
+    
+    %% External service dependencies
+    GoogleMapsClient -->|HTTP Calls| GoogleMaps[Google Maps API]
+    AzureOpenAIClient -->|HTTP Calls| AzureOpenAI[Azure OpenAI]
+    
+    %% Middleware flow
+    Request[HTTP Request] --> RateLimiter
+    RateLimiter --> UserAgentValidation
+    UserAgentValidation --> ProblemDetails
+    ProblemDetails --> Controllers
+    
+    %% Health check dependencies
+    TableStorageHealthCheck -->|Checks| TableStorage
+    BlobStorageHealthCheck -->|Checks| BlobStorage
+    OpenAIHealthCheck -->|Checks| AzureOpenAI
+    GoogleMapsHealthCheck -->|Checks| GoogleMaps
+    
+    %% Hosted service dependencies
+    ExpiredComicCleanup -->|Uses| ComicRepository
+    ExpiredComicCleanup -->|Uses| BlobStorageService
+    
+    %% Telemetry
+    TelemetryService -->|Exports to| AppInsights[Application Insights]
+    
+    style ComicsController fill:#1168bd
+    style RestaurantsController fill:#1168bd
+    style LeaderboardController fill:#1168bd
+    style TakedownController fill:#1168bd
+    style ComicGenerationService fill:#438dd5
+    style DalleComicService fill:#438dd5
+    style RestaurantService fill:#438dd5
+    style LeaderboardService fill:#438dd5
+    style ShareService fill:#438dd5
+    style ComicRepository fill:#85bbf0
+    style LeaderboardRepository fill:#85bbf0
+    style BlobStorageService fill:#85bbf0

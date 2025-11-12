@@ -1,0 +1,96 @@
+// Custom Business Metrics - PoSeeReview Operations
+// Tracks comic generation, cache performance, and strangeness scores
+// Uses OpenTelemetry custom metrics configured in Program.cs
+// Usage: Run in Application Insights → Logs blade
+// Time range: Last 24 hours
+
+// Comic Generation Metrics
+customMetrics
+| where timestamp > ago(24h)
+| where name == "po.seereview.comics.generated"
+| extend 
+    CacheHit = tostring(customDimensions.cache_hit),
+    ForceRegenerate = tostring(customDimensions.force_regenerate)
+| summarize 
+    TotalComics = sum(value),
+    CacheHits = sumif(value, CacheHit == "true"),
+    CacheMisses = sumif(value, CacheHit == "false"),
+    ForcedRegenerations = sumif(value, ForceRegenerate == "true")
+    by bin(timestamp, 1h)
+| extend CacheHitRate = round(100.0 * CacheHits / TotalComics, 2)
+| project 
+    Time = timestamp,
+    TotalComics,
+    CacheHits,
+    CacheMisses,
+    ['Cache Hit %'] = CacheHitRate,
+    ForcedRegenerations
+
+// Alternative: Comic generation rate trend
+// customMetrics
+// | where timestamp > ago(24h)
+// | where name == "po.seereview.comics.generated"
+// | summarize ComicsPerHour = sum(value) by bin(timestamp, 1h)
+// | render timechart
+
+// Comic Generation Errors by Type
+// customMetrics
+// | where timestamp > ago(24h)
+// | where name == "po.seereview.comics.errors"
+// | extend ErrorType = tostring(customDimensions.error_type)
+// | summarize ErrorCount = sum(value) by ErrorType
+// | order by ErrorCount desc
+
+// Comic Generation Duration Analysis
+// customMetrics
+// | where timestamp > ago(24h)
+// | where name == "po.seereview.comics.generation_duration"
+// | extend CacheHit = tostring(customDimensions.cache_hit)
+// | summarize 
+//     AvgDuration = avg(value),
+//     P50 = percentile(value, 50),
+//     P95 = percentile(value, 95),
+//     P99 = percentile(value, 99),
+//     Count = count()
+//     by CacheHit
+// | project 
+//     Scenario = iff(CacheHit == "true", "Cache Hit", "Fresh Generation"),
+//     Count,
+//     ['Avg (ms)'] = round(AvgDuration, 2),
+//     ['P50 (ms)'] = round(P50, 2),
+//     ['P95 (ms)'] = round(P95, 2),
+//     ['P99 (ms)'] = round(P99, 2)
+
+// Strangeness Score Distribution (from traces/custom events)
+// traces
+// | where timestamp > ago(24h)
+// | where message contains "strangeness"
+// | extend StrangenessScore = todouble(customDimensions.strangeness_score)
+// | where isnotnull(StrangenessScore)
+// | summarize 
+//     Count = count(),
+//     AvgScore = avg(StrangenessScore),
+//     MinScore = min(StrangenessScore),
+//     MaxScore = max(StrangenessScore),
+//     P50 = percentile(StrangenessScore, 50),
+//     P95 = percentile(StrangenessScore, 95)
+
+// Restaurant Lookup Metrics
+// customMetrics
+// | where timestamp > ago(24h)
+// | where name == "po.seereview.restaurants.lookups"
+// | extend 
+//     Source = tostring(customDimensions.source),
+//     Success = tostring(customDimensions.success)
+// | summarize 
+//     TotalLookups = sum(value),
+//     SuccessfulLookups = sumif(value, Success == "true"),
+//     FailedLookups = sumif(value, Success == "false")
+//     by Source
+// | extend SuccessRate = round(100.0 * SuccessfulLookups / TotalLookups, 2)
+// | project 
+//     Source,
+//     TotalLookups,
+//     SuccessfulLookups,
+//     FailedLookups,
+//     ['Success %'] = SuccessRate

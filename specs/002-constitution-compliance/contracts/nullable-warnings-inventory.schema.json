@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Nullable Warnings Inventory",
+  "description": "Schema for documenting nullable reference type warnings",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "generatedDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When inventory was generated"
+        },
+        "buildNumber": {
+          "type": "string",
+          "description": "CI build number if applicable"
+        },
+        "totalWarnings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of warnings"
+        },
+        "resolvedWarnings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of resolved warnings"
+        }
+      },
+      "required": ["generatedDate", "totalWarnings"]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Relative path to source file"
+          },
+          "lineNumber": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Line number where warning occurs"
+          },
+          "warningCode": {
+            "type": "string",
+            "pattern": "^CS[0-9]{4}$",
+            "description": "Compiler warning code (e.g., CS8600)"
+          },
+          "message": {
+            "type": "string",
+            "description": "Full compiler warning message"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "ControllerParameter",
+              "ServiceMethod",
+              "EntityProperty",
+              "RepositoryOperation",
+              "DependencyInjection",
+              "Other"
+            ],
+            "description": "Warning classification"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["High", "Medium", "Low"],
+            "description": "Priority for resolution"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["Open", "InProgress", "Resolved", "Suppressed"],
+            "description": "Resolution tracking"
+          },
+          "assignedTo": {
+            "type": "string",
+            "description": "Developer assigned to resolve (optional)"
+          },
+          "dateIdentified": {
+            "type": "string",
+            "format": "date",
+            "description": "When warning was first discovered"
+          },
+          "dateResolved": {
+            "type": "string",
+            "format": "date",
+            "description": "When warning was resolved (optional)"
+          },
+          "resolutionNotes": {
+            "type": "string",
+            "description": "How warning was resolved or why suppressed (optional)"
+          }
+        },
+        "required": [
+          "filePath",
+          "lineNumber",
+          "warningCode",
+          "message",
+          "category",
+          "severity",
+          "status",
+          "dateIdentified"
+        ]
+      }
+    }
+  },
+  "required": ["metadata", "warnings"]
+}

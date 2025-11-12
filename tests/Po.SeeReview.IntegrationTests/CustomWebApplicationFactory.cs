@@ -36,21 +36,30 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         builder.ConfigureAppConfiguration((context, config) =>
         {
             // Add in-memory configuration from environment variables
-            var testConfig = new Dictionary<string, string?>
-            {
-                // Azure Storage connection strings from environment
-                ["ConnectionStrings:AzureTableStorage"] = Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING"),
-                ["ConnectionStrings:AzureBlobStorage"] = Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING"),
-                // Azure OpenAI credentials from environment
-                ["AzureOpenAI:Endpoint"] = Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") ?? "https://eastus.api.cognitive.microsoft.com/",
-                ["AzureOpenAI:ApiKey"] = Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY"),
-                ["AzureOpenAI:DeploymentName"] = "gpt-4o-mini",
-                ["AzureOpenAI:DalleDeploymentName"] = "dall-e-3",
-                // Google Maps API key from environment
-                ["GoogleMaps:ApiKey"] = Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY")
-            };
+            // Only add values if they are explicitly set in environment to avoid overriding appsettings.Test.json
+            var testConfig = new Dictionary<string, string?>();
 
-            config.AddInMemoryCollection(testConfig);
+            // Azure Storage connection strings from environment
+            if (Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING") is { } tableStorage)
+                testConfig["ConnectionStrings:AzureTableStorage"] = tableStorage;
+
+            if (Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING") is { } blobStorage)
+                testConfig["ConnectionStrings:AzureBlobStorage"] = blobStorage;
+
+            // Azure OpenAI credentials from environment
+            if (Environment.GetEnvironmentVariable("AZURE_OPENAI_ENDPOINT") is { } openAiEndpoint)
+                testConfig["AzureOpenAI:Endpoint"] = openAiEndpoint;
+
+            if (Environment.GetEnvironmentVariable("AZURE_OPENAI_API_KEY") is { } openAiKey)
+                testConfig["AzureOpenAI:ApiKey"] = openAiKey;
+
+            // Google Maps API key from environment
+            if (Environment.GetEnvironmentVariable("GOOGLE_MAPS_API_KEY") is { } googleMapsKey)
+                testConfig["GoogleMaps:ApiKey"] = googleMapsKey;
+
+            // Only add in-memory collection if we have environment variables
+            if (testConfig.Count > 0)
+                config.AddInMemoryCollection(testConfig);
         });
     }
 

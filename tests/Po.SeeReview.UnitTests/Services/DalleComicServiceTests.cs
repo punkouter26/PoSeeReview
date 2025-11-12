@@ -12,7 +12,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_WithValidPrompt_ShouldReturnImageBytes()
     {
         // Arrange
-        var narrative = "A restaurant where the waiter wears a dinosaur costume and serves food in shoes.";
+        _ = "A restaurant where the waiter wears a dinosaur costume and serves food in shoes."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -34,7 +34,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_ShouldUse1792x1024Resolution()
     {
         // Arrange
-        var narrative = "A quirky diner with upside-down furniture.";
+        _ = "A quirky diner with upside-down furniture."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -56,7 +56,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_ShouldRequestFourPanelComicStrip()
     {
         // Arrange
-        var narrative = "A restaurant with bizarre table arrangements.";
+        _ = "A restaurant with bizarre table arrangements."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -78,7 +78,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_WithEmptyNarrative_ShouldThrowArgumentException()
     {
         // Arrange
-        var narrative = "";
+        _ = ""; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -94,7 +94,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_ShouldIncludeNarrativeInPrompt()
     {
         // Arrange
-        var narrative = "A diner where customers must sing their orders.";
+        _ = "A diner where customers must sing their orders."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -116,7 +116,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_ShouldUseQualityHD()
     {
         // Arrange
-        var narrative = "A restaurant with unusual decor.";
+        _ = "A restaurant with unusual decor."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();
@@ -138,7 +138,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_WhenApiFails_ShouldThrowHttpRequestException()
     {
         // Arrange
-        var narrative = "A strange restaurant experience.";
+        _ = "A strange restaurant experience."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client to throw exception
         // var service = CreateService();
@@ -154,7 +154,7 @@ public class DalleComicServiceTests
     public async Task GenerateComicImageAsync_ShouldIncludeComicStripStyleInPrompt()
     {
         // Arrange
-        var narrative = "An eccentric eatery with peculiar service.";
+        _ = "An eccentric eatery with peculiar service."; // narrative
 
         // TODO: Mock Azure OpenAI DALL-E client
         // var service = CreateService();

@@ -30,7 +30,7 @@ public class AzureOpenAIHealthCheck : IHealthCheck
         }
     }
 
-    public async Task<HealthCheckResult> CheckHealthAsync(
+    public Task<HealthCheckResult> CheckHealthAsync(
         HealthCheckContext context,
         CancellationToken cancellationToken = default)
     {
@@ -39,21 +39,21 @@ public class AzureOpenAIHealthCheck : IHealthCheck
             if (_openAIClient == null)
             {
                 _logger.LogWarning("Azure OpenAI configuration is incomplete");
-                return HealthCheckResult.Degraded("Azure OpenAI is not fully configured");
+                return Task.FromResult(HealthCheckResult.Degraded("Azure OpenAI is not fully configured"));
             }
 
             // Note: Azure OpenAI client doesn't have a built-in health check endpoint
             // In production, you might want to make a lightweight API call
             // For now, we just check if configuration is present
             _logger.LogDebug("Azure OpenAI health check passed (configuration present)");
-            return HealthCheckResult.Healthy("Azure OpenAI is configured");
+            return Task.FromResult(HealthCheckResult.Healthy("Azure OpenAI is configured"));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Azure OpenAI health check failed");
-            return HealthCheckResult.Unhealthy(
+            return Task.FromResult(HealthCheckResult.Unhealthy(
                 "Azure OpenAI check failed",
-                ex);
+                ex));
         }
     }
 }

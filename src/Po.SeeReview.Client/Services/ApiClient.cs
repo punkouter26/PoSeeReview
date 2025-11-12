@@ -98,6 +98,29 @@ public class ApiClient
         var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");
     }
+
+    /// <summary>
+    /// Searches for restaurants by location query (city name or ZIP code).
+    /// </summary>
+    public async Task<NearbyRestaurantsResponse?> SearchRestaurantsByLocationAsync(
+        string locationQuery,
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var response = await _httpClient.GetFromJsonAsync<NearbyRestaurantsResponse>(
+                $"/api/restaurants/search?location={Uri.EscapeDataString(locationQuery)}&limit={limit}",
+                cancellationToken);
+
+            return response;
+        }
+        catch (HttpRequestException)
+        {
+            // Log error - for now just return null
+            return null;
+        }
+    }
 }
 
 /// <summary>

@@ -143,6 +143,85 @@ To revert to the previous deployment:
 
 For deeper diagnostics, use `az webapp log tail --name <app-name> --resource-group <rg>` or Application Insights queries.
 
+## 8. Production Diagnostics Tools
+
+### Snapshot Debugger
+
+Snapshot Debugger captures the state of your application when exceptions occur in production, allowing you to debug production issues without impacting performance.
+
+**Enablement Steps:**
+
+1. Navigate to your Application Insights resource in Azure Portal
+2. Go to **Settings** → **Snapshot Debugger**
+3. Click **Enable Snapshot Debugger**
+4. Configure snapshot collection settings:
+   - **Snapshot limit**: Set to 5-10 snapshots per day (recommended: 5 to control storage costs)
+   - **Snapshot retention**: Default 15 days
+   - **Collection frequency**: Set to collect on first occurrence of each unique exception
+
+5. Configure snapshot points (optional):
+   - Use the Application Insights SDK `SnapshotCollector` package for custom snapshot points
+   - Add `[SnapshotCollector]` attribute to specific methods requiring detailed state capture
+
+**Verification:**
+
+1. Trigger an exception in the application (e.g., invalid API request)
+2. Navigate to **Application Insights** → **Failures** → **Exceptions**
+3. Click on an exception instance with a camera icon
+4. Click **Open debug snapshot** to view local variables, call stack, and heap state
+
+**Security Note**: Snapshots contain full application state including local variables, which may include sensitive data (API keys, user information, connection strings). Ensure:
+- Snapshot access is restricted to authorized personnel only
+- Enable Azure RBAC for Application Insights with least privilege access
+- Consider masking sensitive variables before snapshot collection
+- Review snapshot retention policies to comply with data protection regulations
+- Do NOT enable Snapshot Debugger if handling highly sensitive data (PII, PHI, financial) without additional security controls
+
+### Application Insights Profiler
+
+Profiler provides performance traces showing where your application spends time during request execution, helping identify slow code paths and optimization opportunities.
+
+**Enablement Steps:**
+
+1. Navigate to your Application Insights resource in Azure Portal
+2. Go to **Settings** → **Profiler**
+3. Click **Enable Profiler**
+4. Configure profiling settings:
+   - **Profiling mode**: Smart detection (recommended) or always-on
+   - **CPU threshold**: Set to 80% CPU for 30 seconds (triggers profiling when load is high)
+   - **Profiling duration**: 2 minutes per profiling session
+   - **Profiling frequency**: Maximum 2 sessions per hour (to minimize performance impact)
+
+5. Profiler requires Application Insights SDK 2.0+ with `Microsoft.ApplicationInsights.Profiler.AspNetCore` NuGet package installed
+
+**Verification:**
+
+1. Generate sufficient load to trigger profiling (CPU > 80% for 30 seconds)
+2. Navigate to **Application Insights** → **Performance** → **Profiler**
+3. View captured traces showing method-level timing breakdown
+4. Identify hot paths and slow database queries
+
+**Best Practices:**
+
+- Use Profiler in production for real-world performance data
+- Run profiling sessions during peak load for representative results
+- Review traces regularly to identify performance regressions
+- Combine with custom OpenTelemetry metrics for comprehensive performance monitoring
+
+### Diagnostic Troubleshooting
+
+Common issues when using production diagnostics tools:
+
+| Issue | Resolution |
+|-------|------------|
+| Snapshot Debugger not capturing snapshots | Verify App Service is running .NET 9 runtime; check Application Insights connection string is configured; ensure exceptions are being thrown (not caught silently) |
+| Profiler traces not appearing | Verify CPU threshold is being reached; check Profiler is enabled in both Azure Portal and App Service application settings; ensure sufficient traffic to trigger profiling session |
+| Snapshots missing local variables | Check that PDB files are deployed alongside application DLLs; verify debug symbols are not stripped in Release builds (`<DebugType>portable</DebugType>` in .csproj) |
+| Profiler impacting performance | Reduce profiling frequency (e.g., 1 session per hour); increase CPU threshold to 90%; consider enabling only during investigation periods |
+| Snapshot/Profiler data retention issues | Configure retention policies in Application Insights settings; consider exporting data to Azure Storage for long-term archival |
+
+For additional diagnostics support, consult [Application Insights documentation](https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview).
+
 ---
 
 **Next steps**: Keep infrastructure definitions updated in `infra/` and ensure each release updates this document when deployment procedures change.

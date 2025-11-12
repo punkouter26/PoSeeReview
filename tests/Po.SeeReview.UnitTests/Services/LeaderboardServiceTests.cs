@@ -155,7 +155,7 @@ public sealed class LeaderboardServiceTests
         var service = new LeaderboardService(_mockRepository.Object);
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => service.GetTopComicsAsync(invalidRegion, 10));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.GetTopComicsAsync(invalidRegion!, 10));
     }
 
     [Fact]

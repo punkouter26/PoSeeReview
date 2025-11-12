@@ -38,9 +38,19 @@
         <div class="error-message">
             <h2>❌ Location Access Denied</h2>
             <p>@_errorMessage</p>
-            <p>Please enable location access in your browser settings and try again.</p>
+            <p>No problem! You can still search for restaurants manually.</p>
+            
+            <div class="manual-location-section">
+                <h3>Enter Your Location</h3>
+                <LocationInput 
+                    Placeholder="Enter city name or ZIP code..." 
+                    OnLocationSubmit="HandleManualLocationSearch" />
+            </div>
+            
+            <div class="divider">OR</div>
+            
             <button class="btn-secondary" @onclick="RequestLocationAsync">
-                Try Again
+                Try Automatic Location Again
             </button>
         </div>
     }
@@ -50,8 +60,18 @@
         <div class="error-message">
             <h2>⚠️ Something Went Wrong</h2>
             <p>@_errorMessage</p>
+            
+            <div class="manual-location-section">
+                <h3>Try Manual Search</h3>
+                <LocationInput 
+                    Placeholder="Enter city name or ZIP code..." 
+                    OnLocationSubmit="HandleManualLocationSearch" />
+            </div>
+            
+            <div class="divider">OR</div>
+            
             <button class="btn-secondary" @onclick="RequestLocationAsync">
-                Retry
+                Retry Automatic Location
             </button>
         </div>
     }
@@ -168,5 +188,41 @@
     {
         // Navigate to comic view page (to be implemented in Phase 4)
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
+    }
+
+    private async Task HandleManualLocationSearch(string locationQuery)
+    {
+        _isLoading = true;
+        _hasError = false;
+        _locationDenied = false;
+        _loadingMessage = $"Searching for restaurants near '{locationQuery}'...";
+        StateHasChanged();
+
+        try
+        {
+            // Call API with manual location query
+            var response = await ApiClient.SearchRestaurantsByLocationAsync(locationQuery);
+
+            if (response == null || response.Restaurants.Count == 0)
+            {
+                _errorMessage = $"No restaurants found near '{locationQuery}'. Try a different location.";
+                _hasError = true;
+                return;
+            }
+
+            _restaurants = response.Restaurants;
+            _totalCount = response.TotalCount;
+            _locationGranted = true; // Mark as successful search
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to search '{locationQuery}': {ex.Message}";
+            _hasError = true;
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 }

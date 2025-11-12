@@ -1,0 +1,127 @@
+@using Po.SeeReview.Shared.Dtos
+@inject IJSRuntime JS
+
+<div class="location-input-container">
+    <div class="input-group">
+        <input 
+            type="text" 
+            class="location-input" 
+            placeholder="@Placeholder"
+            @bind="searchText"
+            @bind:event="oninput"
+            @onkeydown="HandleKeyDown" />
+        
+        <button 
+            class="btn-search" 
+            @onclick="SearchLocation"
+            disabled="@(string.IsNullOrWhiteSpace(searchText) || isSearching)">
+            @if (isSearching)
+            {
+                <span>🔍 Searching...</span>
+            }
+            else
+            {
+                <span>🔍 Search</span>
+            }
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error-text">@errorMessage</div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="success-text">@successMessage</div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Placeholder { get; set; } = "Enter city name or ZIP code...";
+
+    [Parameter]
+    public EventCallback<string> OnLocationSubmit { get; set; }
+
+    private string searchText = string.Empty;
+    private bool isSearching = false;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(searchText))
+        {
+            await SearchLocation();
+        }
+    }
+
+    private async Task SearchLocation()
+    {
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            return;
+        }
+
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+        isSearching = true;
+
+        try
+        {
+            // Validate input format
+            var trimmedInput = searchText.Trim();
+            
+            // Check if it's a valid US ZIP code (5 digits) or city name
+            if (!IsValidLocationInput(trimmedInput))
+            {
+                errorMessage = "Please enter a valid city name or 5-digit ZIP code";
+                return;
+            }
+
+            successMessage = $"Searching for restaurants near '{trimmedInput}'...";
+            
+            // Notify parent component
+            await OnLocationSubmit.InvokeAsync(trimmedInput);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to search location: {ex.Message}";
+        }
+        finally
+        {
+            isSearching = false;
+        }
+    }
+
+    private bool IsValidLocationInput(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        // Check if it's a 5-digit ZIP code
+        if (input.Length == 5 && input.All(char.IsDigit))
+        {
+            return true;
+        }
+
+        // Check if it's a valid city name (at least 2 characters, contains letters)
+        if (input.Length >= 2 && input.Any(char.IsLetter))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public void ClearInput()
+    {
+        searchText = string.Empty;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+        StateHasChanged();
+    }
+}

@@ -13,7 +13,7 @@ public class ComicRepositoryTests
     public async Task GetByPlaceIdAsync_WithExistingComic_ShouldReturnComic()
     {
         // Arrange
-        var placeId = "test-place-123";
+        _ = "test-place-123"; // placeId
 
         // TODO: Mock Table Storage client
         // var repository = CreateRepository();
@@ -32,7 +32,7 @@ public class ComicRepositoryTests
     public async Task GetByPlaceIdAsync_WithNonexistentComic_ShouldReturnNull()
     {
         // Arrange
-        var placeId = "nonexistent-place";
+        _ = "nonexistent-place"; // placeId
 
         // TODO: Mock Table Storage client
         // var repository = CreateRepository();
@@ -204,7 +204,7 @@ public class ComicRepositoryTests
     public async Task DeleteAsync_ShouldRemoveComicFromStorage()
     {
         // Arrange
-        var placeId = "test-place-123";
+        _ = "test-place-123"; // placeId
 
         // TODO: Mock Table Storage client
         // var repository = CreateRepository();

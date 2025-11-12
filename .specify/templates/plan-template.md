@@ -31,18 +31,49 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- [ ] .NET 9.0 SDK enforced (build fails on version mismatch)
-- [ ] Vertical Slice Architecture planned; no file exceeds 500 lines
-- [ ] TDD workflow defined (xUnit unit + integration tests, manual Playwright E2E)
-- [ ] API exposes Swagger, /api/health, Problem Details middleware, Serilog logging
-- [ ] Azure Table Storage default (Azurite local); tables follow PoAppName[Name] pattern
-- [ ] Blazor uses built-in components (Radzen only if UX-justified)
-- [ ] Mobile-first responsive design validated (desktop + narrow emulation)
-- [ ] Repository follows /src, /tests, /docs, /scripts layout
-- [ ] Project names follow Po.AppName.* pattern
-- [ ] API binds to HTTP 5000 and HTTPS 5001 only
-- [ ] dotnet format enforced; CI validates SDK version, ports, naming, health endpoint
-- [ ] Operations use one-line CLI commands; docs in /docs only
+### 1. Foundation
+- [ ] Solution naming: .sln name matches Azure resources and HTML title
+- [ ] .NET 9: global.json locked to 9.0.xxx SDK, all projects target net9.0
+- [ ] Package management: Directory.Packages.props at root, no versions in .csproj
+- [ ] Null safety: `<Nullable>enable</Nullable>` in all .csproj files
+
+### 2. Architecture
+- [ ] Code organization: Vertical Slice Architecture in /Features/, max 500 lines per file
+- [ ] Design philosophy: SOLID principles and GoF patterns documented
+- [ ] API design: Minimal APIs with CQRS pattern for all endpoints
+- [ ] Repository structure: /src, /tests, /docs, /infra, /scripts layout followed
+- [ ] Documentation constraint: Only README.md, PRD.md in /docs; diagrams in /docs/diagrams/
+
+### 3. Implementation
+- [ ] API documentation: Swagger enabled, .http files maintained
+- [ ] Health checks: /api/health endpoint validates all dependencies
+- [ ] Error handling: Problem Details middleware, structured logging in catch blocks
+- [ ] UI framework: FluentUI primary, Radzen only if justified
+- [ ] Responsive design: Mobile-first, tested on desktop + mobile emulation
+- [ ] Debug launch: launch.json with serverReadyAction committed
+- [ ] Local secrets: User Secrets manager for sensitive data
+- [ ] Local storage: Azurite for Table/Blob emulation, tables follow PoAppName[Name]
+
+### 4. Quality & Testing
+- [ ] Code hygiene: No build warnings/errors, dotnet format enforced
+- [ ] Dependency hygiene: Regular package updates via Directory.Packages.props
+- [ ] Workflow: TDD (Red → Green → Refactor) strictly followed
+- [ ] Test naming: MethodName_StateUnderTest_ExpectedBehavior convention
+- [ ] Code coverage: 80% minimum threshold, report in docs/coverage/
+- [ ] Unit tests: xUnit for business logic, all dependencies mocked
+- [ ] Component tests: bUnit for Blazor components
+- [ ] Integration tests: Happy path for all endpoints, Azurite emulator, cleanup
+- [ ] E2E tests: Playwright with TypeScript, Chromium mobile + desktop, manual execution
+
+### 5. Operations & Azure
+- [ ] Provisioning: Bicep in /infra, deployed via azd
+- [ ] CI/CD: GitHub Actions with OIDC, validates SDK/ports/naming/health
+- [ ] Required services: App Insights, Log Analytics, App Service, Storage
+- [ ] Cost management: $5 monthly budget with automated alerts/controls
+- [ ] Logging: Serilog to Debug Console (Dev) and App Insights (Prod)
+- [ ] Telemetry: OpenTelemetry with ActivitySource (traces) and Meter (metrics)
+- [ ] Production diagnostics: Snapshot Debugger and Profiler enabled
+- [ ] KQL library: Essential queries in docs/kql/
 
 ## Project Structure
 

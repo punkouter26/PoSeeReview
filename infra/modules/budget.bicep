@@ -1,9 +1,9 @@
 // Azure Budget Alert for PoSeeReview Resource Group
-// Limits daily spending to $2 with email notifications
+// Limits monthly spending to $5 with email notifications at 80% and 100%
 
-param budgetName string = 'PoSeeReview-Daily-Budget'
-param dailyLimit int = 2
-param notificationEmail string
+param budgetName string = 'PoSeeReview-Monthly-Budget'
+param monthlyLimit int = 5
+param contactEmails array
 param startDate string = utcNow('yyyy-MM-dd')
 
 // Calculate end date (1 year from now)
@@ -17,38 +17,24 @@ resource budget 'Microsoft.Consumption/budgets@2023-05-01' = {
       startDate: startDate
       endDate: endDate
     }
-    timeGrain: 'Daily'
-    amount: dailyLimit
+    timeGrain: 'Monthly'
+    amount: monthlyLimit
     category: 'Cost'
     notifications: {
-      // Alert at 80% of daily budget ($1.60)
+      // Alert at 80% of monthly budget ($4.00)
       'Warning80': {
         enabled: true
         operator: 'GreaterThan'
         threshold: 80
-        contactEmails: [
-          notificationEmail
-        ]
+        contactEmails: contactEmails
         thresholdType: 'Actual'
       }
-      // Alert at 100% of daily budget ($2.00)
+      // Alert at 100% of monthly budget ($5.00)
       'Critical100': {
         enabled: true
         operator: 'GreaterThan'
         threshold: 100
-        contactEmails: [
-          notificationEmail
-        ]
-        thresholdType: 'Actual'
-      }
-      // Alert at 120% of daily budget ($2.40)
-      'Exceeded120': {
-        enabled: true
-        operator: 'GreaterThan'
-        threshold: 120
-        contactEmails: [
-          notificationEmail
-        ]
+        contactEmails: contactEmails
         thresholdType: 'Actual'
       }
     }

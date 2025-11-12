@@ -12,7 +12,7 @@ namespace Po.SeeReview.UnitTests.Repositories;
 public class RestaurantRepositoryTests
 {
     [Fact]
-    public async Task GetByPlaceIdAsync_CachedDataValid_ReturnsCachedRestaurant()
+    public void GetByPlaceIdAsync_CachedDataValid_ReturnsCachedRestaurant()
     {
         // Arrange
         var placeId = "test-place-123";
@@ -29,7 +29,7 @@ public class RestaurantRepositoryTests
     }
 
     [Fact]
-    public async Task GetByPlaceIdAsync_CachedDataExpired_ReturnsNull()
+    public void GetByPlaceIdAsync_CachedDataExpired_ReturnsNull()
     {
         // Arrange
         var cachedRestaurant = new Restaurant
@@ -44,7 +44,7 @@ public class RestaurantRepositoryTests
     }
 
     [Fact]
-    public async Task UpsertAsync_NewRestaurant_SetsCachedAtTimestamp()
+    public void UpsertAsync_NewRestaurant_SetsCachedAtTimestamp()
     {
         // Arrange
         var restaurant = new Restaurant
@@ -64,7 +64,7 @@ public class RestaurantRepositoryTests
     }
 
     [Fact]
-    public async Task GetByRegionAsync_ValidRegion_ReturnsOnlyValidCachedRestaurants()
+    public void GetByRegionAsync_ValidRegion_ReturnsOnlyValidCachedRestaurants()
     {
         // Arrange
         var region = "US-WA-Seattle";

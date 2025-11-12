@@ -1,0 +1,57 @@
+// Dependency Health - External Service Calls
+// Monitors success rate, response time, and failures for external dependencies
+// Includes: Azure OpenAI (DALL-E, GPT-4), Google Maps API, Azure Storage
+// Usage: Run in Application Insights → Logs blade
+// Time range: Last 24 hours
+
+dependencies
+| where timestamp > ago(24h)
+| summarize 
+    TotalCalls = count(),
+    SuccessfulCalls = countif(success == true),
+    FailedCalls = countif(success == false),
+    AvgDuration = avg(duration),
+    P95Duration = percentile(duration, 95),
+    P99Duration = percentile(duration, 99)
+    by type, name, target
+| extend SuccessRate = round(100.0 * SuccessfulCalls / TotalCalls, 2)
+| order by TotalCalls desc
+| project 
+    DependencyType = type,
+    DependencyName = name,
+    Target = target,
+    TotalCalls,
+    SuccessRate = strcat(SuccessRate, '%'),
+    Failed = FailedCalls,
+    ['Avg (ms)'] = round(AvgDuration, 2),
+    ['P95 (ms)'] = round(P95Duration, 2),
+    ['P99 (ms)'] = round(P99Duration, 2)
+
+// Alternative: Dependency failures with error details
+// dependencies
+// | where timestamp > ago(24h)
+// | where success == false
+// | summarize 
+//     FailureCount = count(),
+//     SampleResultCode = any(resultCode),
+//     LastFailure = max(timestamp)
+//     by type, name, target
+// | order by FailureCount desc
+
+// Alternative: Dependency call trends over time
+// dependencies
+// | where timestamp > ago(24h)
+// | summarize 
+//     Calls = count(),
+//     Failures = countif(success == false)
+//     by bin(timestamp, 1h), name
+// | extend FailureRate = round(100.0 * Failures / Calls, 2)
+// | render timechart
+
+// Alternative: Slowest dependencies
+// dependencies
+// | where timestamp > ago(24h)
+// | where success == true
+// | summarize P99 = percentile(duration, 99) by name, type
+// | order by P99 desc
+// | take 20

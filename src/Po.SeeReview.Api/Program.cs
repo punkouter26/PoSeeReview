@@ -1,9 +1,16 @@
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
+using Azure.Monitor.OpenTelemetry.Exporter;
+using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
 using Po.SeeReview.Api.Middleware;
@@ -34,6 +41,18 @@ try
     }
 
     var builder = WebApplication.CreateBuilder(args);
+
+    // Configure Azure Key Vault for secrets (works locally and in Azure)
+    if (!isTestMode)
+    {
+        var keyVaultUrl = "https://poseereview-kv.vault.azure.net/";
+        var credential = new DefaultAzureCredential();
+        var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
+        
+        builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+        
+        Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+    }
 
     // Only configure URLs if not already set via environment (e.g., ASPNETCORE_URLS)
     // This allows E2E tests to force HTTP-only mode
@@ -69,6 +88,31 @@ try
         options.EnableQuickPulseMetricStream = false;
         options.EnableAuthenticationTrackingJavaScript = false;
     });
+
+    // Configure OpenTelemetry with custom tracing and metrics
+    var appInsightsConnectionString = builder.Configuration.GetValue<string>("ApplicationInsights:ConnectionString");
+    if (!string.IsNullOrEmpty(appInsightsConnectionString))
+    {
+        builder.Services.AddOpenTelemetry()
+            .ConfigureResource(resource => resource
+                .AddService(serviceName: "PoSeeReview.Api", serviceVersion: "1.0.0"))
+            .WithTracing(tracing => tracing
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddSource("Po.SeeReview.*")
+                .AddAzureMonitorTraceExporter(options =>
+                {
+                    options.ConnectionString = appInsightsConnectionString;
+                }))
+            .WithMetrics(metrics => metrics
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddMeter("Po.SeeReview.*")
+                .AddAzureMonitorMetricExporter(options =>
+                {
+                    options.ConnectionString = appInsightsConnectionString;
+                }));
+    }
 
     builder.Services.AddRateLimiter(options =>
     {
@@ -206,9 +250,11 @@ try
             
             options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
             {
-                diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+                diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value ?? "Unknown");
                 diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
-                diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.FirstOrDefault() ?? "Unknown");
+                var userAgent = httpContext.Request.Headers.UserAgent.FirstOrDefault();
+                string userAgentValue = userAgent ?? "Unknown";
+                diagnosticContext.Set("UserAgent", userAgentValue);
             };
         });
     }

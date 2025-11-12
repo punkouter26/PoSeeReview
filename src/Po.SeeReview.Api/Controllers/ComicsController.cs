@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Po.SeeReview.Api.Telemetry;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Shared.Dtos;
 
@@ -59,10 +61,33 @@ public class ComicsController : ControllerBase
 
         try
         {
+            // Start custom activity for distributed tracing
+            using var activity = PoSeeReviewTelemetry.ActivitySource.StartActivity("GenerateComic");
+            activity?.SetTag("place_id", placeId);
+            activity?.SetTag("force_regenerate", forceRegenerate);
+
+            var startTime = Stopwatch.GetTimestamp();
+
             _logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
                 placeId, forceRegenerate);
 
             var comic = await _comicGenerationService.GenerateComicAsync(placeId, forceRegenerate);
+
+            // Record custom metrics
+            var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+            
+            var tags = new[]
+            {
+                new KeyValuePair<string, object?>("cache_hit", comic.IsCached),
+                new KeyValuePair<string, object?>("force_regenerate", forceRegenerate)
+            };
+
+            PoSeeReviewTelemetry.ComicsGenerated.Add(1, tags);
+            PoSeeReviewTelemetry.ComicGenerationDuration.Record(elapsedMs, tags);
+
+            activity?.SetTag("comic_id", comic.Id);
+            activity?.SetTag("cache_hit", comic.IsCached);
+            activity?.SetTag("duration_ms", elapsedMs);
 
             var dto = new ComicDto
             {
@@ -83,6 +108,12 @@ public class ComicsController : ControllerBase
         }
         catch (KeyNotFoundException ex)
         {
+            PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]
+            {
+                new KeyValuePair<string, object?>("error_type", "restaurant_not_found"),
+                new KeyValuePair<string, object?>("place_id", placeId)
+            });
+
             _logger.LogWarning(ex, "Restaurant not found: {PlaceId}", placeId);
             return NotFound(new ProblemDetails
             {
@@ -95,6 +126,12 @@ public class ComicsController : ControllerBase
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("reviews"))
         {
+            PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]
+            {
+                new KeyValuePair<string, object?>("error_type", "insufficient_reviews"),
+                new KeyValuePair<string, object?>("place_id", placeId)
+            });
+
             _logger.LogWarning(ex, "Insufficient reviews for placeId: {PlaceId}", placeId);
             return BadRequest(new ProblemDetails
             {
@@ -107,6 +144,12 @@ public class ComicsController : ControllerBase
         }
         catch (Exception ex)
         {
+            PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]
+            {
+                new KeyValuePair<string, object?>("error_type", "unknown"),
+                new KeyValuePair<string, object?>("place_id", placeId)
+            });
+
             _logger.LogError(ex, "Failed to generate comic for placeId: {PlaceId}", placeId);
             return StatusCode(StatusCodes.Status500InternalServerError, new ProblemDetails
             {

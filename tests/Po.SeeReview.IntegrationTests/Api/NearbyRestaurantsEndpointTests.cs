@@ -279,9 +279,8 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
     }
 
     [Fact]
-
     [Trait("Category", "Integration")]
-    public async Task GetNearbyRestaurants_CheckServiceRegistration_ShouldHaveRequiredServices()
+    public void GetNearbyRestaurants_CheckServiceRegistration_ShouldHaveRequiredServices()
     {
         // Arrange - Create a scope to check service registration
         using var scope = _factory.Services.CreateScope();
@@ -310,9 +309,8 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
     }
 
     [Fact]
-
     [Trait("Category", "Integration")]
-    public async Task GetNearbyRestaurants_CheckGoogleMapsApiKey_ShouldBeConfigured()
+    public void GetNearbyRestaurants_CheckGoogleMapsApiKey_ShouldBeConfigured()
     {
         // Arrange
         using var scope = _factory.Services.CreateScope();

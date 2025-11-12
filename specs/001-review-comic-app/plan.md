@@ -25,18 +25,49 @@ PoSeeReview transforms real restaurant reviews from Google Maps into surreal fou
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-- [x] .NET 9.0 SDK enforced (build fails on version mismatch)
-- [x] Vertical Slice Architecture planned; no file exceeds 500 lines
-- [x] TDD workflow defined (xUnit unit + integration tests, manual Playwright E2E)
-- [x] API exposes Swagger, /api/health, Problem Details middleware, Serilog logging
-- [x] Azure Table Storage default (Azurite local); tables follow PoSeeReview[Name] pattern
-- [x] Blazor uses built-in components (Radzen only if UX-justified)
-- [x] Mobile-first responsive design validated (desktop + narrow emulation)
-- [x] Repository follows /src, /tests, /docs, /scripts layout
-- [x] Project names follow Po.SeeReview.* pattern
-- [x] API binds to HTTP 5000 and HTTPS 5001 only
-- [x] dotnet format enforced; CI validates SDK version, ports, naming, health endpoint
-- [x] Operations use one-line CLI commands; docs in /docs only
+### 1. Foundation
+- [x] Solution naming: .sln name (PoSeeReview.sln) matches Azure resources and HTML title
+- [x] .NET 9: global.json locked to 9.0.xxx SDK, all projects target net9.0
+- [ ] Package management: Directory.Packages.props at root, no versions in .csproj **TODO: T136**
+- [ ] Null safety: `<Nullable>enable</Nullable>` in all .csproj files **TODO: T137**
+
+### 2. Architecture
+- [x] Code organization: Vertical Slice Architecture in /Features/, max 500 lines per file
+- [x] Design philosophy: SOLID principles and GoF patterns documented
+- [x] API design: Minimal APIs with CQRS pattern for all endpoints
+- [x] Repository structure: /src, /tests, /docs, /infra, /scripts layout followed
+- [x] Documentation constraint: Only README.md, PRD.md in /docs; diagrams in /docs/diagrams/
+
+### 3. Implementation
+- [x] API documentation: Swagger enabled, .http files maintained
+- [x] Health checks: /api/health endpoint validates all dependencies
+- [x] Error handling: Problem Details middleware, structured logging in catch blocks
+- [x] UI framework: FluentUI primary, Radzen only if justified
+- [x] Responsive design: Mobile-first, tested on desktop + mobile emulation
+- [ ] Debug launch: launch.json with serverReadyAction committed **TODO: Verify exists**
+- [x] Local secrets: User Secrets manager for sensitive data
+- [x] Local storage: Azurite for Table/Blob emulation, tables follow PoSeeReview[Name]
+
+### 4. Quality & Testing
+- [x] Code hygiene: No build warnings/errors, dotnet format enforced
+- [ ] Dependency hygiene: Regular package updates via Directory.Packages.props **TODO: T136**
+- [x] Workflow: TDD (Red → Green → Refactor) strictly followed
+- [x] Test naming: MethodName_StateUnderTest_ExpectedBehavior convention
+- [ ] Code coverage: 80% minimum threshold, report in docs/coverage/ **TODO: T138**
+- [x] Unit tests: xUnit for business logic, all dependencies mocked
+- [ ] Component tests: bUnit for Blazor components **TODO: T139-T141**
+- [x] Integration tests: Happy path for all endpoints, Azurite emulator, cleanup
+- [x] E2E tests: Playwright with TypeScript, Chromium mobile + desktop, manual execution
+
+### 5. Operations & Azure
+- [ ] Provisioning: Bicep in /infra, deployed via azd **TODO: T142-T145**
+- [ ] CI/CD: GitHub Actions with OIDC, validates SDK/ports/naming/health **TODO: T129**
+- [ ] Required services: App Insights, Log Analytics, App Service, Storage **TODO: T142-T145**
+- [ ] Cost management: $5 monthly budget with automated alerts/controls **TODO: T146**
+- [x] Logging: Serilog to Debug Console (Dev) and App Insights (Prod)
+- [ ] Telemetry: OpenTelemetry with ActivitySource (traces) and Meter (metrics) **TODO: T147-T148**
+- [ ] Production diagnostics: Snapshot Debugger and Profiler enabled **TODO: T149**
+- [ ] KQL library: Essential queries in docs/kql/ **TODO: T150**
 
 ## Project Structure
 

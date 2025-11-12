@@ -117,7 +117,7 @@ public class BlobStorageServiceTests
     public async Task UploadComicImageAsync_WithInvalidComicId_ShouldThrowArgumentException()
     {
         // Arrange
-        var comicId = "";
+        _ = ""; // comicId
         var imageBytes = new byte[] { 1, 2, 3, 4 };
 
         // TODO: Mock Azure Blob Storage client
@@ -134,7 +134,7 @@ public class BlobStorageServiceTests
     public async Task UploadComicImageAsync_ShouldUseBlobNameWithComicId()
     {
         // Arrange
-        var comicId = "test-comic-123";
+        _ = "test-comic-123"; // comicId
         var imageBytes = new byte[] { 1, 2, 3, 4 };
 
         // TODO: Mock Azure Blob Storage client

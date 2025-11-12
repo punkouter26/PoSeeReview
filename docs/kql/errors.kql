@@ -1,0 +1,35 @@
+// Top Exceptions in Last 24 Hours
+// Groups exceptions by type and shows count, failure rate, and sample messages
+// Usage: Run in Application Insights → Logs blade
+// Time range: Automatically filters to last 24 hours
+
+exceptions
+| where timestamp > ago(24h)
+| summarize 
+    Count = count(),
+    SampleMessage = any(outerMessage),
+    FirstOccurrence = min(timestamp),
+    LastOccurrence = max(timestamp),
+    AffectedOperations = dcount(operation_Name)
+    by type, problemId
+| order by Count desc
+| project 
+    ExceptionType = type,
+    Count,
+    FirstSeen = FirstOccurrence,
+    LastSeen = LastOccurrence,
+    AffectedOperations,
+    SampleMessage = substring(SampleMessage, 0, 100)
+
+// Alternative: Exception trends over time (hourly buckets)
+// exceptions
+// | where timestamp > ago(24h)
+// | summarize Count = count() by bin(timestamp, 1h), type
+// | render timechart
+
+// Alternative: Exceptions by operation (identify which API endpoints fail most)
+// exceptions
+// | where timestamp > ago(24h)
+// | summarize Count = count() by operation_Name, type
+// | order by Count desc
+// | take 20

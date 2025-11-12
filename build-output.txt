@@ -1,0 +1,17 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Po.SeeReview.Core -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Core\bin\Debug\net9.0\Po.SeeReview.Core.dll
+  Po.SeeReview.Infrastructure -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Infrastructure\bin\Debug\net9.0\Po.SeeReview.Infrastructure.dll
+  Po.SeeReview.Shared -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Shared\bin\Debug\net9.0\Po.SeeReview.Shared.dll
+  Po.SeeReview.Client -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Client\bin\Debug\net9.0\Po.SeeReview.Client.dll
+  Po.SeeReview.Client (Blazor output) -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Client\bin\Debug\net9.0\wwwroot
+  Po.SeeReview.Api -> C:\Users\punko\Downloads\PoSeeReview\src\Po.SeeReview.Api\bin\Debug\net9.0\Po.SeeReview.Api.dll
+  Po.SeeReview.UnitTests -> C:\Users\punko\Downloads\PoSeeReview\tests\Po.SeeReview.UnitTests\bin\Debug\net9.0\Po.SeeReview.UnitTests.dll
+  Po.SeeReview.IntegrationTests -> C:\Users\punko\Downloads\PoSeeReview\tests\Po.SeeReview.IntegrationTests\bin\Debug\net9.0\Po.SeeReview.IntegrationTests.dll
+  Po.SeeReview.WebTests -> C:\Users\punko\Downloads\PoSeeReview\tests\Po.SeeReview.WebTests\bin\Debug\net9.0\Po.SeeReview.WebTests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:02.65

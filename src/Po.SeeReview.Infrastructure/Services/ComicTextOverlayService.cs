@@ -58,36 +58,22 @@ public class ComicTextOverlayService : IComicTextOverlayService
             using var image = Image.Load<Rgba32>(imageBytes);
             using var outputStream = new MemoryStream();
 
-            // Calculate panel dimensions (1792x1024 image)
-            var panelPositions = CalculatePanelPositions(image.Width, image.Height, panelCount);
-
             // Load font for text rendering
-            var font = GetComicFont(24);
+            var font = GetComicFont(20); // Slightly smaller font for single box
 
-            // Draw text on each panel - ENSURE we have dialogue for every panel
-            var finalDialogues = dialogues.ToList();
+            // Combine all dialogue into a single narrative text
+            var combinedText = string.Join(" ", dialogues.Where(d => !string.IsNullOrWhiteSpace(d)));
             
-            // Pad with fallback text if we don't have enough dialogues
-            while (finalDialogues.Count < panelCount)
+            if (string.IsNullOrWhiteSpace(combinedText))
             {
-                finalDialogues.Add($"Panel {finalDialogues.Count + 1}");
+                combinedText = narrative; // Fall back to full narrative
             }
 
-            // Draw text on each panel
-            for (int i = 0; i < Math.Min(panelCount, panelPositions.Count); i++)
-            {
-                var dialogueText = i < finalDialogues.Count ? finalDialogues[i] : $"Panel {i + 1}";
-                
-                if (string.IsNullOrWhiteSpace(dialogueText))
-                {
-                    dialogueText = "..."; // Use ellipsis for empty panels
-                }
-
-                var position = panelPositions[i];
-                DrawTextBubble(image, dialogueText, position, font);
-                
-                _logger.LogDebug("Added text bubble to panel {PanelNumber}: {Text}", i + 1, dialogueText);
-            }
+            // Draw single text box at top center of entire comic
+            var topCenterPosition = new PointF(image.Width / 2f, 40); // 40px from top
+            DrawTextBubble(image, combinedText, topCenterPosition, font);
+            
+            _logger.LogDebug("Added single text overlay at top: {Text}", combinedText);
 
             // Save modified image
             image.SaveAsPng(outputStream);
@@ -106,7 +92,7 @@ public class ComicTextOverlayService : IComicTextOverlayService
     /// <summary>
     /// Extracts dialogue from narrative - creates one dialogue line per panel
     /// </summary>
-    private async Task<List<string>> ExtractDialogueAsync(string narrative, int panelCount)
+    private Task<List<string>> ExtractDialogueAsync(string narrative, int panelCount)
     {
         // For now, split the narrative into parts based on panel count
         // In a future version, this could use GPT to generate panel-specific dialogue
@@ -128,7 +114,8 @@ public class ComicTextOverlayService : IComicTextOverlayService
                 {
                     dialogues.Add($"Panel {i + 1}");
                 }
-                return dialogues;
+
+                return Task.FromResult(dialogues);
             }
 
             // Distribute sentences across panels
@@ -152,7 +139,7 @@ public class ComicTextOverlayService : IComicTextOverlayService
             _logger.LogInformation("Extracted {Count} dialogue lines for {PanelCount} panels", 
                 dialogues.Count, panelCount);
 
-            return dialogues;
+            return Task.FromResult(dialogues);
         }
         catch (Exception ex)
         {
@@ -164,7 +151,8 @@ public class ComicTextOverlayService : IComicTextOverlayService
             {
                 fallbackDialogues.Add($"Scene {i + 1}");
             }
-            return fallbackDialogues;
+
+            return Task.FromResult(fallbackDialogues);
         }
     }
 
@@ -183,9 +171,9 @@ public class ComicTextOverlayService : IComicTextOverlayService
                 break;
 
             case 2:
-                // Two panels stacked vertically
-                positions.Add(new PointF(width / 2f, height * 0.33f));
-                positions.Add(new PointF(width / 2f, height * 0.75f));
+                // Two panels side-by-side horizontally
+                positions.Add(new PointF(width * 0.25f, height * 0.75f)); // Left panel
+                positions.Add(new PointF(width * 0.75f, height * 0.75f)); // Right panel
                 break;
 
             case 3:
@@ -213,16 +201,15 @@ public class ComicTextOverlayService : IComicTextOverlayService
     /// </summary>
     private void DrawTextBubble(Image<Rgba32> image, string text, PointF position, Font font)
     {
-        // Calculate appropriate wrapping width based on panel width
-        // For 1792x1024 image with up to 4 panels, allow generous wrapping
-        var maxWrappingWidth = 400; // Increased from 300 to allow full sentences
+        // For top-center placement, allow wide wrapping (most of image width)
+        var maxWrappingWidth = (int)(image.Width * 0.9); // 90% of image width
         
         // Measure text size
         var textOptions = new RichTextOptions(font)
         {
             Origin = position,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top, // Align to top so box grows downward
             WrappingLength = maxWrappingWidth
         };
 
