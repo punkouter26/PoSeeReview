@@ -20,22 +20,17 @@ COPY ["src/", "src/"]
 
 # Build and publish
 WORKDIR "/src/src/Po.SeeReview.Api"
-RUN dotnet publish -c Release -o /app/publish --no-restore
+RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Security: Run as non-root user
-RUN groupadd --gid 1000 appgroup \
-    && useradd --uid 1000 --gid appgroup --shell /bin/bash appuser
+# Security: Run as non-root user (use existing app user in .NET 10 images)
+USER app
 
 # Copy published app
 COPY --from=build /app/publish .
-
-# Set ownership and switch to non-root user
-RUN chown -R appuser:appgroup /app
-USER appuser
 
 # Expose port (Azure Container Apps will use this)
 EXPOSE 8080

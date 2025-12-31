@@ -73,6 +73,18 @@ module containerAppsEnvironment './modules/containerappenv.bicep' = {
   }
 }
 
+// Key Vault - Secrets Management (created first without access policies)
+module keyVault './modules/keyvault.bicep' = {
+  name: 'keyvault'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    principalId: '' // Will be updated after API is created
+  }
+}
+
 // API Container App
 module api './modules/containerapp.bicep' = {
   name: 'api-containerapp'
@@ -89,21 +101,21 @@ module api './modules/containerapp.bicep' = {
     storageTableEndpoint: storage.outputs.tableEndpoint
     storageBlobEndpoint: storage.outputs.blobEndpoint
     appSettings: {
-      'ASPNETCORE_ENVIRONMENT': environmentName == 'prod' ? 'Production' : 'Development'
+      ASPNETCORE_ENVIRONMENT: environmentName == 'prod' ? 'Production' : 'Development'
     }
   }
+  dependsOn: [keyVault]
 }
 
-// Key Vault - Secrets Management (needs API identity for access)
-module keyVault './modules/keyvault.bicep' = {
-  name: 'keyvault'
+// Key Vault Access - Grant API managed identity access to Key Vault
+module keyVaultAccess './modules/keyvaultaccess.bicep' = {
+  name: 'keyvaultaccess'
   scope: rg
   params: {
-    location: location
-    tags: tags
-    resourceToken: resourceToken
+    keyVaultName: keyVault.outputs.name
     principalId: api.outputs.identityPrincipalId
   }
+  dependsOn: [api]
 }
 
 // Store secrets in Key Vault (placeholders - update via CLI or Portal)

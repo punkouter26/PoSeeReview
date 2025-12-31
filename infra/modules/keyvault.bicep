@@ -7,8 +7,8 @@ param tags object
 @description('Unique resource token')
 param resourceToken string
 
-@description('Principal ID for access policy')
-param principalId string
+@description('Principal ID for access policy (optional - can be empty)')
+param principalId string = ''
 
 // Key Vault
 resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' = {
@@ -34,8 +34,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' = {
   }
 }
 
-// Role assignment - Key Vault Secrets User for API Managed Identity
-resource secretsUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// Role assignment - Key Vault Secrets User for API Managed Identity (only if principalId provided)
+resource secretsUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(principalId)) {
   name: guid(keyVault.id, principalId, 'Key Vault Secrets User')
   scope: keyVault
   properties: {

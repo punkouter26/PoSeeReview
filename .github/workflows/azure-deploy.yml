@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  DOTNET_VERSION: '10.0.x'
-  AZD_ENVIRONMENT: 'prod'
+  AZURE_CONTAINER_REGISTRY: acrposeereview
+  CONTAINER_APP_NAME: ca-poseereview-api
+  RESOURCE_GROUP: PoSeeReview
+  IMAGE_NAME: poseereview-api
 
-# Required for OIDC authentication with Azure
 permissions:
   id-token: write
   contents: read
@@ -22,24 +23,6 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-    
-    - name: Restore dependencies
-      run: dotnet restore
-    
-    - name: Build
-      run: dotnet build --no-restore --configuration Release
-    
-    - name: Test
-      run: dotnet test --no-build --configuration Release --verbosity normal --filter "Category!=RequiresGoogleMapsAPI"
-    
-    - name: Install Azure Developer CLI
-      run: |
-        curl -fsSL https://aka.ms/install-azd.sh | bash
-    
     - name: Azure Login (OIDC)
       uses: azure/login@v2
       with:
@@ -47,12 +30,18 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     
-    - name: Deploy with azd
+    - name: Build image with ACR
       run: |
-        azd config set auth.useAzCliAuth true
-        azd provision --no-prompt
-        azd deploy --no-prompt
-      env:
-        AZURE_ENV_NAME: ${{ env.AZD_ENVIRONMENT }}
-        AZURE_LOCATION: eastus
-        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        az acr build \
+          --registry ${{ env.AZURE_CONTAINER_REGISTRY }} \
+          --image ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --image ${{ env.IMAGE_NAME }}:latest \
+          --file src/Po.SeeReview.Api/Dockerfile \
+          .
+    
+    - name: Deploy to Container App
+      run: |
+        az containerapp update \
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
