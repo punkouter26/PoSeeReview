@@ -7,10 +7,13 @@ window.geolocation = {
 
     // Get current position
     getCurrentPosition: function () {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             if (!('geolocation' in navigator)) {
-                reject({
+                resolve({
                     success: false,
+                    latitude: 0,
+                    longitude: 0,
+                    accuracy: null,
                     errorMessage: 'Geolocation is not supported by your browser'
                 });
                 return;
@@ -39,7 +42,7 @@ window.geolocation = {
                             errorMessage = 'Location request timed out.';
                             break;
                     }
-                    reject({
+                    resolve({
                         success: false,
                         latitude: 0,
                         longitude: 0,

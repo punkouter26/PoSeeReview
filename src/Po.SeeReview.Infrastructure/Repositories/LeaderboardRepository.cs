@@ -1,9 +1,10 @@
 using Azure;
 using Azure.Data.Tables;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Configuration;
 using Po.SeeReview.Infrastructure.Entities;
 
 namespace Po.SeeReview.Infrastructure.Repositories;
@@ -21,17 +22,13 @@ public class LeaderboardRepository : ILeaderboardRepository
     private const string PartitionKeyPrefix = "LEADERBOARD";
 
     public LeaderboardRepository(
-        IConfiguration configuration,
+        TableServiceClient tableServiceClient,
+        IOptions<AzureStorageOptions> options,
         ILogger<LeaderboardRepository> logger)
     {
         _logger = logger;
 
-        var connectionString = configuration["AzureStorage:ConnectionString"]
-            ?? throw new InvalidOperationException("Azure Storage connection string not configured");
-
-        var tableName = configuration["AzureStorage:LeaderboardTableName"] ?? "PoSeeReviewLeaderboard";
-
-        var tableServiceClient = new TableServiceClient(connectionString);
+        var tableName = options.Value.LeaderboardTableName ?? "PoSeeReviewLeaderboard";
         _tableClient = tableServiceClient.GetTableClient(tableName);
         _tableClient.CreateIfNotExists();
     }

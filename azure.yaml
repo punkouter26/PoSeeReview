@@ -8,9 +8,7 @@ services:
   api:
     project: ./src/Po.SeeReview.Api
     language: csharp
-    host: appservice
-    
-  client:
-    project: ./src/Po.SeeReview.Client
-    language: csharp
-    host: staticwebapp
+    host: containerapp
+    docker:
+      path: ./src/Po.SeeReview.Api/Dockerfile
+      context: .

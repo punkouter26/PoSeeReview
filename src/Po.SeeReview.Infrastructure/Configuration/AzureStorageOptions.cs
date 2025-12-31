@@ -5,15 +5,30 @@ namespace Po.SeeReview.Infrastructure.Configuration;
 /// </summary>
 public class AzureStorageOptions
 {
-    public const string SectionName = "ConnectionStrings";
+    public const string SectionName = "AzureStorage";
 
     /// <summary>
-    /// Connection string for Azure Table Storage
+    /// Connection string for Azure Storage (shared for Table and Blob)
     /// </summary>
-    public string AzureTableStorage { get; set; } = string.Empty;
+    public string ConnectionString { get; set; } = string.Empty;
 
     /// <summary>
-    /// Connection string for Azure Blob Storage
+    /// Name of the table for comics storage
     /// </summary>
-    public string AzureBlobStorage { get; set; } = string.Empty;
+    public string ComicsTableName { get; set; } = "PoSeeReviewComics";
+
+    /// <summary>
+    /// Name of the blob container for comic images
+    /// </summary>
+    public string ComicsContainerName { get; set; } = "comics";
+
+    /// <summary>
+    /// Name of the table for restaurant data
+    /// </summary>
+    public string RestaurantsTableName { get; set; } = "PoSeeReviewRestaurants";
+
+    /// <summary>
+    /// Name of the table for leaderboard data
+    /// </summary>
+    public string LeaderboardTableName { get; set; } = "PoSeeReviewLeaderboard";
 }

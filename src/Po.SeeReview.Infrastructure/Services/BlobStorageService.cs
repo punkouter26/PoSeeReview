@@ -1,8 +1,9 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Configuration;
 
 namespace Po.SeeReview.Infrastructure.Services;
 
@@ -15,13 +16,12 @@ public class BlobStorageService : IBlobStorageService
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName;
 
-    public BlobStorageService(IConfiguration configuration)
+    public BlobStorageService(
+        BlobServiceClient blobServiceClient,
+        IOptions<AzureStorageOptions> options)
     {
-        var connectionString = configuration["AzureStorage:ConnectionString"]
-            ?? throw new InvalidOperationException("Azure Storage connection string not configured");
-
-        _blobServiceClient = new BlobServiceClient(connectionString);
-        _containerName = configuration["AzureStorage:ComicsContainerName"] ?? "comics";
+        _blobServiceClient = blobServiceClient;
+        _containerName = options.Value.ComicsContainerName ?? "comics";
     }
 
     /// <summary>

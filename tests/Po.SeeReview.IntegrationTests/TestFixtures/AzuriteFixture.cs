@@ -9,27 +9,57 @@ namespace Po.SeeReview.IntegrationTests.TestFixtures;
 /// </summary>
 public class AzuriteFixture : IDisposable
 {
-    private const string EmulatorConnectionString = "UseDevelopmentStorage=true";
+    // Try multiple connection strings - first Aspire-managed with dynamic ports, then standard
+    private static readonly string[] ConnectionStrings =
+    [
+        // Aspire-managed Azurite with dynamic ports (check docker ps for actual ports)
+        GetAspireAzuriteConnectionString(),
+        // Standard development storage
+        "UseDevelopmentStorage=true",
+        // Explicit localhost connection with standard ports
+        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1"
+    ];
 
-    public TableServiceClient TableServiceClient { get; }
+    public TableServiceClient TableServiceClient { get; private set; } = null!;
     public bool IsAzuriteAvailable { get; private set; }
-    public string ConnectionString => EmulatorConnectionString;
+    public string ConnectionString { get; private set; } = string.Empty;
+
+    private static string GetAspireAzuriteConnectionString()
+    {
+        // Try to get connection string from environment (set by Aspire AppHost)
+        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AzureTableStorage") 
+            ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
+        
+        return connectionString ?? "UseDevelopmentStorage=true";
+    }
 
     public AzuriteFixture()
     {
-        // Initialize Azure Table Storage client pointing to Azurite
-    TableServiceClient = new TableServiceClient(EmulatorConnectionString);
-        
-        // Check if Azurite is available
-        try
+        // Try each connection string until one works
+        foreach (var connStr in ConnectionStrings)
         {
-            var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            TableServiceClient.Query(cancellationToken: cts.Token).GetEnumerator().MoveNext();
-            IsAzuriteAvailable = true;
+            try
+            {
+                var client = new TableServiceClient(connStr);
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                client.Query(cancellationToken: cts.Token).GetEnumerator().MoveNext();
+                
+                // Success - use this connection
+                TableServiceClient = client;
+                ConnectionString = connStr;
+                IsAzuriteAvailable = true;
+                break;
+            }
+            catch
+            {
+                // Try next connection string
+            }
         }
-        catch
+
+        if (!IsAzuriteAvailable)
         {
-            IsAzuriteAvailable = false;
+            // Create a dummy client for test skipping purposes
+            TableServiceClient = new TableServiceClient("UseDevelopmentStorage=true");
         }
     }
 

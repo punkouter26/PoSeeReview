@@ -1,4 +1,4 @@
-name: Build and Deploy to Azure
+name: Build and Deploy to Azure Container Apps
 
 on:
   push:
@@ -7,9 +7,13 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: PoSeeReview
-  DOTNET_VERSION: '9.0.x'
-  RESOURCE_GROUP: PoSeeReview
+  DOTNET_VERSION: '10.0.x'
+  AZD_ENVIRONMENT: 'prod'
+
+# Required for OIDC authentication with Azure
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   build-and-deploy:
@@ -29,22 +33,26 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration Release
     
-    # - name: Test
-    #   run: dotnet test --no-build --configuration Release --verbosity normal
+    - name: Test
+      run: dotnet test --no-build --configuration Release --verbosity normal --filter "Category!=RequiresGoogleMapsAPI"
     
-    - name: Publish API
-      run: dotnet publish src/Po.SeeReview.Api/Po.SeeReview.Api.csproj -c Release -o ./api-publish
+    - name: Install Azure Developer CLI
+      run: |
+        curl -fsSL https://aka.ms/install-azd.sh | bash
     
-    - name: Azure Login
+    - name: Azure Login (OIDC)
       uses: azure/login@v2
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
     
-    - name: Deploy to Azure App Service
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        package: ./api-publish
-    
-    - name: Azure Logout
-      run: az logout
+    - name: Deploy with azd
+      run: |
+        azd config set auth.useAzCliAuth true
+        azd provision --no-prompt
+        azd deploy --no-prompt
+      env:
+        AZURE_ENV_NAME: ${{ env.AZD_ENVIRONMENT }}
+        AZURE_LOCATION: eastus
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}

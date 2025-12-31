@@ -15,6 +15,7 @@ using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
 using Po.SeeReview.Api.Middleware;
 using Po.SeeReview.Infrastructure;
+using Scalar.AspNetCore;
 using Serilog;
 using Serilog.Events;
 
@@ -42,6 +43,13 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    // Add Aspire ServiceDefaults (OpenTelemetry, Resilience, Health Checks, Service Discovery)
+    // Only add if NOT in test mode - tests use their own configuration
+    if (!isTestMode)
+    {
+        builder.AddServiceDefaults();
+    }
+
     // Configure Azure Key Vault for secrets (works locally and in Azure)
     if (!isTestMode)
     {
@@ -52,13 +60,6 @@ try
         builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
         
         Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
-    }
-
-    // Only configure URLs if not already set via environment (e.g., ASPNETCORE_URLS)
-    // This allows E2E tests to force HTTP-only mode
-    if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
-    {
-        builder.WebHost.UseUrls("http://0.0.0.0:5000", "https://0.0.0.0:5001");
     }
 
     // Replace default logging with Serilog (unless in test mode)
@@ -159,37 +160,10 @@ try
         .AddCheck<AzureOpenAIHealthCheck>(
             "azure_openai",
             failureStatus: HealthStatus.Degraded,
-            tags: new[] { "ready", "external" });
+            tags: ["ready", "external"]);
 
-    // Configure Swagger/OpenAPI with Swashbuckle
-    builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen(options =>
-    {
-        options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-        {
-            Title = "SeeReview API",
-            Version = "v1",
-            Description = "Restaurant review to comic strip generator API - Turning Real Reviews into Surreal Stories",
-            Contact = new Microsoft.OpenApi.Models.OpenApiContact
-            {
-                Name = "SeeReview Team",
-                Url = new Uri("https://github.com/your-org/seereview")
-            },
-            License = new Microsoft.OpenApi.Models.OpenApiLicense
-            {
-                Name = "MIT",
-                Url = new Uri("https://opensource.org/licenses/MIT")
-            }
-        });
-
-        // Include XML comments if available
-        var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-        if (File.Exists(xmlPath))
-        {
-            options.IncludeXmlComments(xmlPath);
-        }
-    });
+    // Configure OpenAPI (built-in .NET 10 support)
+    builder.Services.AddOpenApi();
 
     // Configure CORS for Blazor WASM
     builder.Services.AddCors(options =>
@@ -264,14 +238,7 @@ try
     {
         app.MapOpenApi();
         app.UseWebAssemblyDebugging();
-        app.UseSwagger();
-        app.UseSwaggerUI(options =>
-        {
-            options.SwaggerEndpoint("/swagger/v1/swagger.json", "SeeReview API v1");
-            options.RoutePrefix = "swagger";
-            options.DocumentTitle = "SeeReview API Documentation";
-            options.DisplayRequestDuration();
-        });
+        app.MapScalarApiReference(); // Modern API documentation UI
     }
 
     // Disabled HTTPS redirection for Test environment (E2E tests use HTTP only)
@@ -362,6 +329,9 @@ try
         Log.Information("SeeReview API started successfully");
     }
 
+    // Map Aspire default endpoints (/health, /alive, /ready)
+    app.MapDefaultEndpoints();
+
     app.Run();
 }
 catch (Exception ex)
@@ -370,6 +340,8 @@ catch (Exception ex)
     {
         Log.Fatal(ex, "Application terminated unexpectedly");
     }
+    // Always rethrow so WebApplicationFactory can see the exception
+    throw;
 }
 finally
 {

@@ -86,12 +86,12 @@ public class InteractionTests : TestContext
         var cut = RenderComponent<RestaurantCard>(parameters => parameters
             .Add(p => p.Restaurant, restaurant));
 
-        // Assert - Disabled overlay should be present
+        // Assert - Disabled overlay should be present with FluentBadge
         var overlay = cut.Find(".disabled-overlay");
         Assert.NotNull(overlay);
         
-        var message = cut.Find(".disabled-message");
-        Assert.Equal("Requires 5+ reviews", message.TextContent);
+        var badge = cut.Find(".disabled-badge");
+        Assert.Contains("Requires 5+ reviews", badge.TextContent);
     }
 
     [Fact]

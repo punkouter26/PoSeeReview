@@ -2,10 +2,11 @@ using System.Collections.Generic;
 using System.Threading;
 using Azure;
 using Azure.Data.Tables;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Configuration;
 using Po.SeeReview.Infrastructure.Entities;
 
 namespace Po.SeeReview.Infrastructure.Repositories;
@@ -19,14 +20,12 @@ public class ComicRepository : IComicRepository
     private readonly ILogger<ComicRepository> _logger;
     private const string PartitionKeyPrefix = "COMIC";
 
-    public ComicRepository(IConfiguration configuration, ILogger<ComicRepository> logger)
+    public ComicRepository(
+        TableServiceClient tableServiceClient,
+        IOptions<AzureStorageOptions> options,
+        ILogger<ComicRepository> logger)
     {
-        var connectionString = configuration["AzureStorage:ConnectionString"]
-            ?? throw new InvalidOperationException("Azure Storage connection string not configured");
-
-        var tableName = configuration["AzureStorage:ComicsTableName"] ?? "PoSeeReviewComics";
-
-        var tableServiceClient = new TableServiceClient(connectionString);
+        var tableName = options.Value.ComicsTableName ?? "PoSeeReviewComics";
         _tableClient = tableServiceClient.GetTableClient(tableName);
         _tableClient.CreateIfNotExists();
 

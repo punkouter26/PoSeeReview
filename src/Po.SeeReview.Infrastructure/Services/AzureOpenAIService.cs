@@ -16,7 +16,8 @@ using Polly.Retry;
 namespace Po.SeeReview.Infrastructure.Services;
 
 /// <summary>
-/// Azure OpenAI service for analyzing review strangeness using GPT-4o-mini.
+/// Azure AI Foundry service for analyzing review strangeness using GPT-4o.
+/// Uses the Azure.AI.OpenAI SDK to connect to Azure AI Foundry (Cognitive Services).
 /// Returns strangeness score (0-100) and narrative paragraph for comic generation.
 /// </summary>
 public class AzureOpenAIService : IAzureOpenAIService

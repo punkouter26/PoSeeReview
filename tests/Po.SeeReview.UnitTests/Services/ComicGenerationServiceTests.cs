@@ -290,7 +290,7 @@ public class ComicGenerationServiceTests
     }
 
     [Fact]
-    public async Task GenerateComicAsync_ShouldSet24HourExpiration()
+    public async Task GenerateComicAsync_ShouldSet7DayCacheExpiration()
     {
         // Arrange
         var placeId = "test-place-123";
@@ -326,8 +326,11 @@ public class ComicGenerationServiceTests
 
         // Assert
         Assert.NotNull(capturedComic);
-        Assert.True(capturedComic.ExpiresAt > DateTimeOffset.UtcNow.AddHours(23));
-        Assert.True(capturedComic.ExpiresAt <= DateTimeOffset.UtcNow.AddHours(24));
+        // Cache duration is 7 days to reduce AI costs - allow tolerance for test execution time (6-8 days)
+        Assert.True(capturedComic.ExpiresAt > DateTimeOffset.UtcNow.AddDays(6), 
+            $"ExpiresAt {capturedComic.ExpiresAt} should be more than 6 days from now");
+        Assert.True(capturedComic.ExpiresAt <= DateTimeOffset.UtcNow.AddDays(8),
+            $"ExpiresAt {capturedComic.ExpiresAt} should be less than 8 days from now");
     }
 
     [Fact]

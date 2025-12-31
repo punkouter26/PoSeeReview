@@ -15,7 +15,8 @@ using Polly.Retry;
 namespace Po.SeeReview.Infrastructure.Services;
 
 /// <summary>
-/// DALL-E 3 service for generating 1-4 panel comic strip images from narratives.
+/// Azure AI Foundry DALL-E 3 service for generating 1-4 panel comic strip images from narratives.
+/// Uses the Azure.AI.OpenAI SDK to connect to Azure AI Foundry (Cognitive Services).
 /// Generates 1024x1024 square images with vivid, cartoon style.
 /// Panel layout adapts based on count: 1 panel (full), 2 panels (side-by-side), 3-4 panels (grid).
 /// Cost optimized at $0.040 per image (50% cheaper than 1792x1024).
@@ -37,11 +38,19 @@ public class DalleComicService : IDalleComicService
         ILogger<DalleComicService> logger,
         TelemetryClient telemetryClient)
     {
-        var endpoint = configuration["AzureOpenAI:Endpoint"]
-            ?? throw new InvalidOperationException("Azure OpenAI endpoint not configured");
+        // Use dedicated DALL-E endpoint if configured, otherwise fall back to primary endpoint
+        var dalleEndpoint = configuration["AzureOpenAI:DalleEndpoint"];
+        var dalleApiKey = configuration["AzureOpenAI:DalleApiKey"];
 
-        var apiKey = configuration["AzureOpenAI:ApiKey"]
-            ?? throw new InvalidOperationException("Azure OpenAI API key not configured");
+        var endpoint = !string.IsNullOrEmpty(dalleEndpoint)
+            ? dalleEndpoint
+            : configuration["AzureOpenAI:Endpoint"]
+                ?? throw new InvalidOperationException("Azure OpenAI endpoint not configured");
+
+        var apiKey = !string.IsNullOrEmpty(dalleApiKey)
+            ? dalleApiKey
+            : configuration["AzureOpenAI:ApiKey"]
+                ?? throw new InvalidOperationException("Azure OpenAI API key not configured");
 
         _deploymentName = configuration["AzureOpenAI:DalleDeploymentName"]
             ?? throw new InvalidOperationException("DALL-E deployment name not configured");
@@ -50,6 +59,8 @@ public class DalleComicService : IDalleComicService
         _httpClient = httpClient;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+
+        _logger.LogInformation("DalleComicService configured with endpoint: {Endpoint}", endpoint);
 
         _imageRetryPolicy = Policy<byte[]>
             .Handle<RequestFailedException>(AzureRetryUtils.IsTransientFailure)

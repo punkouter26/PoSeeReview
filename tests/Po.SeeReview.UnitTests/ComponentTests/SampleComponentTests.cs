@@ -16,13 +16,11 @@ public class SampleComponentTests : TestContext
         // Arrange & Act
         var cut = RenderComponent<LoadingIndicator>();
 
-        // Assert
-        cut.MarkupMatches(@"
-            <div class=""loading-indicator"">
-                <div class=""spinner""></div>
-                <p class=""loading-message"">Loading...</p>
-            </div>
-        ");
+        // Assert - Verify structure exists (FluentProgressRing renders as fluent-progress-ring)
+        Assert.NotNull(cut.Find(".loading-indicator"));
+        Assert.NotNull(cut.Find("fluent-progress-ring"));
+        var message = cut.Find(".loading-message");
+        Assert.Equal("Loading...", message.TextContent);
     }
 
     [Fact]
@@ -46,9 +44,9 @@ public class SampleComponentTests : TestContext
         // Arrange & Act
         var cut = RenderComponent<LoadingIndicator>();
 
-        // Assert - Verify structural CSS classes exist
+        // Assert - Verify structural CSS classes exist (uses FluentProgressRing)
         Assert.NotNull(cut.Find(".loading-indicator"));
-        Assert.NotNull(cut.Find(".spinner"));
+        Assert.NotNull(cut.Find("fluent-progress-ring")); // FluentProgressRing replaces .spinner
         Assert.NotNull(cut.Find(".loading-message"));
     }
 

@@ -20,7 +20,6 @@ param budgetContactEmails array = []
 
 // Service names
 param apiServiceName string = 'api'
-param clientServiceName string = 'client'
 
 // Resource names
 var resourceToken = toLower('${environmentName}-${resourceGroupSuffix}')
@@ -60,7 +59,42 @@ module storage './modules/storage.bicep' = {
   }
 }
 
-// Key Vault - Secrets Management
+// Container Apps Environment
+module containerAppsEnvironment './modules/containerappenv.bicep' = {
+  name: 'containerAppsEnvironment'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
+    logAnalyticsWorkspaceCustomerId: monitoring.outputs.logAnalyticsCustomerId
+    logAnalyticsWorkspaceSharedKey: monitoring.outputs.logAnalyticsSharedKey
+  }
+}
+
+// API Container App
+module api './modules/containerapp.bicep' = {
+  name: 'api-containerapp'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    serviceName: apiServiceName
+    resourceToken: resourceToken
+    containerAppsEnvironmentId: containerAppsEnvironment.outputs.id
+    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
+    keyVaultEndpoint: keyVault.outputs.endpoint
+    storageAccountName: storage.outputs.name
+    storageTableEndpoint: storage.outputs.tableEndpoint
+    storageBlobEndpoint: storage.outputs.blobEndpoint
+    appSettings: {
+      'ASPNETCORE_ENVIRONMENT': environmentName == 'prod' ? 'Production' : 'Development'
+    }
+  }
+}
+
+// Key Vault - Secrets Management (needs API identity for access)
 module keyVault './modules/keyvault.bicep' = {
   name: 'keyvault'
   scope: rg
@@ -69,57 +103,6 @@ module keyVault './modules/keyvault.bicep' = {
     tags: tags
     resourceToken: resourceToken
     principalId: api.outputs.identityPrincipalId
-  }
-}
-
-// App Service Plan
-module appServicePlan './modules/appserviceplan.bicep' = {
-  name: 'appserviceplan'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    resourceToken: resourceToken
-    environmentName: environmentName
-  }
-}
-
-// API App Service
-module api './modules/appservice.bicep' = {
-  name: 'api-appservice'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    serviceName: apiServiceName
-    resourceToken: resourceToken
-    appServicePlanId: appServicePlan.outputs.id
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-    keyVaultEndpoint: keyVault.outputs.endpoint
-    storageAccountName: storage.outputs.name
-    storageTableEndpoint: storage.outputs.tableEndpoint
-    storageBlobEndpoint: storage.outputs.blobEndpoint
-    appSettings: {
-      'ASPNETCORE_ENVIRONMENT': environmentName == 'prod' ? 'Production' : 'Development'
-      'AzureStorage:ConnectionString': '@Microsoft.KeyVault(SecretUri=${keyVault.outputs.endpoint}secrets/storage-connection-string/)'
-      'AzureOpenAI:Endpoint': '@Microsoft.KeyVault(SecretUri=${keyVault.outputs.endpoint}secrets/azure-openai-endpoint/)'
-      'AzureOpenAI:ApiKey': '@Microsoft.KeyVault(SecretUri=${keyVault.outputs.endpoint}secrets/azure-openai-key/)'
-      'GoogleMaps:ApiKey': '@Microsoft.KeyVault(SecretUri=${keyVault.outputs.endpoint}secrets/google-maps-key/)'
-    }
-  }
-}
-
-// Client (Static Web App or App Service for Blazor WASM)
-module client './modules/staticwebapp.bicep' = {
-  name: 'client-staticwebapp'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    serviceName: clientServiceName
-    resourceToken: resourceToken
-    apiBaseUrl: 'https://${api.outputs.defaultHostName}'
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
   }
 }
 
@@ -148,10 +131,11 @@ output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_RESOURCE_GROUP string = rg.name
 
 output API_SERVICE_NAME string = api.outputs.name
-output API_URL string = 'https://${api.outputs.defaultHostName}'
+output API_URL string = 'https://${api.outputs.fqdn}'
 
-output CLIENT_SERVICE_NAME string = client.outputs.name
-output CLIENT_URL string = client.outputs.defaultHostName
+output AZURE_CONTAINER_REGISTRY_NAME string = api.outputs.acrName
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = api.outputs.acrLoginServer
+output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = containerAppsEnvironment.outputs.name
 
 output APPLICATION_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
 output APPLICATION_INSIGHTS_INSTRUMENTATION_KEY string = monitoring.outputs.applicationInsightsInstrumentationKey

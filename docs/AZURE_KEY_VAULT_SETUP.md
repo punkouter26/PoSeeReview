@@ -18,13 +18,37 @@ All secrets use `--` instead of `:` in their names (Key Vault limitation):
 | Secret Name | Configuration Key | Description |
 |------------|------------------|-------------|
 | `GoogleMaps--ApiKey` | `GoogleMaps:ApiKey` | Google Maps API key |
-| `AzureOpenAI--Endpoint` | `AzureOpenAI:Endpoint` | Azure OpenAI endpoint URL |
-| `AzureOpenAI--DeploymentName` | `AzureOpenAI:DeploymentName` | GPT model deployment name |
-| `AzureOpenAI--DalleDeploymentName` | `AzureOpenAI:DalleDeploymentName` | DALL-E deployment name |
-| `AzureOpenAI--ApiKey` | `AzureOpenAI:ApiKey` | Azure OpenAI API key |
+| `AzureOpenAI--Endpoint` | `AzureOpenAI:Endpoint` | Primary Azure AI Foundry endpoint for GPT models |
+| `AzureOpenAI--DeploymentName` | `AzureOpenAI:DeploymentName` | GPT model deployment name (e.g., `gpt-4o`) |
+| `AzureOpenAI--ApiKey` | `AzureOpenAI:ApiKey` | Primary Azure AI Foundry API key |
+| `AzureOpenAI--DalleEndpoint` | `AzureOpenAI:DalleEndpoint` | Fallback endpoint for DALL-E (optional) |
+| `AzureOpenAI--DalleApiKey` | `AzureOpenAI:DalleApiKey` | Fallback API key for DALL-E (optional) |
+| `AzureOpenAI--DalleDeploymentName` | `AzureOpenAI:DalleDeploymentName` | DALL-E deployment name (e.g., `dall-e-3`) |
 | `ConnectionStrings--AzureTableStorage` | `ConnectionStrings:AzureTableStorage` | Azure Table Storage connection string |
 | `ConnectionStrings--AzureBlobStorage` | `ConnectionStrings:AzureBlobStorage` | Azure Blob Storage connection string |
 | `AzureStorage--ConnectionString` | `AzureStorage:ConnectionString` | Local development storage |
+
+## Azure AI Service Architecture
+
+The application uses a **dual-resource strategy** for AI capabilities:
+
+| Service | Resource | Location | Models | Purpose |
+|---------|----------|----------|--------|---------|
+| **Text Generation** | `poshared-openai` (Foundry) | East US 2 | `gpt-4o` | Primary - review analysis |
+| **Image Generation** | `poseereview-openai` (OpenAI) | East US | `dall-e-3` | Fallback - comic generation |
+
+### Why Two Resources?
+
+- **Azure AI Foundry** (`poshared-openai`) provides the latest AI Services platform but may have limited image model availability
+- **Classic Azure OpenAI** (`poseereview-openai`) has DALL-E 3 deployed and available
+- The app automatically uses the DALL-E fallback endpoint when `DalleEndpoint` is configured
+
+### Endpoint Configuration
+
+```
+Primary (Foundry):  https://poshared-openai.cognitiveservices.azure.com/
+DALL-E Fallback:    https://eastus.api.cognitive.microsoft.com/
+```
 
 ## Setup on New Computer
 

@@ -44,11 +44,20 @@ public class DirectoryPackagesConflictTests
         foreach (var projectFile in projectFiles)
         {
             var content = File.ReadAllText(projectFile);
+            var lines = content.Split('\n');
             
-            // Check if PackageReference has Version attribute
-            if (content.Contains("<PackageReference") && content.Contains("Version="))
+            // Check if PackageReference has Version attribute (exclude Sdk Version attributes)
+            foreach (var line in lines)
             {
-                projectsWithVersions.Add(Path.GetFileName(projectFile));
+                // Skip Sdk Version attributes - these are required for Aspire.AppHost.Sdk etc.
+                if (line.Trim().StartsWith("<Sdk ") && line.Contains("Version="))
+                    continue;
+                    
+                if (line.Contains("<PackageReference") && line.Contains("Version="))
+                {
+                    projectsWithVersions.Add(Path.GetFileName(projectFile));
+                    break;
+                }
             }
         }
 

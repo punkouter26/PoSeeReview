@@ -31,6 +31,12 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
         _output = output;
     }
 
+    private bool HasValidApiKey => 
+        _configuration != null && 
+        !string.IsNullOrEmpty(_configuration["GoogleMaps:ApiKey"]) &&
+        _configuration["GoogleMaps:ApiKey"]!.Length >= 30 &&
+        !_configuration["GoogleMaps:ApiKey"]!.Contains("your-");
+
     public async Task InitializeAsync()
     {
         // Load configuration from appsettings.Development.json
@@ -40,8 +46,7 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
 
         _configuration = new ConfigurationBuilder()
             .SetBasePath(basePath)
-            .AddJsonFile("appsettings.Development.json", optional: false)
-            .AddUserSecrets("Po.SeeReview.Api")
+            .AddJsonFile("appsettings.Development.json", optional: true)
             .Build();
 
         // Setup services
@@ -75,11 +80,8 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
     [Trait("Category", "RequiresGoogleMapsAPI")]
     public async Task GetRestaurantByPlaceId_LaCajSeafood_ShouldReturnRestaurantWithReviews()
     {
-        // Arrange
-        var apiKey = _configuration["GoogleMaps:ApiKey"];
-
         // Skip test if configuration is missing
-        if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 20)
+        if (!HasValidApiKey)
         {
             _output.WriteLine("⚠️ Skipping test: Google Maps API key not found or invalid");
             _output.WriteLine("💡 Configure the API key in user secrets:");
@@ -146,11 +148,8 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
     [Trait("Category", "RequiresGoogleMapsAPI")]
     public async Task GetPlaceDetailsAsync_LaCajSeafood_ShouldReturnAtLeast5Reviews()
     {
-        // Arrange
-        var apiKey = _configuration["GoogleMaps:ApiKey"];
-
         // Skip test if configuration is missing
-        if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 20)
+        if (!HasValidApiKey)
         {
             _output.WriteLine("⚠️ Skipping test: Google Maps API key not found or invalid");
             return;
@@ -194,10 +193,8 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
     [Trait("Category", "RequiresGoogleMapsAPI")]
     public async Task GetRestaurantByPlaceId_ShouldCacheReviews()
     {
-        // Arrange
-        var apiKey = _configuration["GoogleMaps:ApiKey"];
-
-        if (string.IsNullOrEmpty(apiKey) || apiKey.Length < 20)
+        // Skip test if configuration is missing
+        if (!HasValidApiKey)
         {
             _output.WriteLine("⚠️ Skipping test: Google Maps API key not found or invalid");
             return;

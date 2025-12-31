@@ -45,6 +45,17 @@ public sealed class UserAgentValidationMiddleware
             return;
         }
 
+        // Skip validation for health check endpoints (used by Aspire and load balancers)
+        var path = context.Request.Path.Value ?? "";
+        if (path.StartsWith("/health", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/alive", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/ready", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/api/health", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
         var userAgent = context.Request.Headers.UserAgent.ToString();
 
         if (string.IsNullOrWhiteSpace(userAgent) || IsBlocked(userAgent))
