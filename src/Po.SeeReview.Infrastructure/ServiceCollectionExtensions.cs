@@ -35,13 +35,34 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(AzureOpenAIOptions.SectionName));
 
         // Register Azure Table Storage client
+        // Try connection string first, then fall back to environment variable for Azure App Service
         var tableConnectionString = configuration.GetConnectionString("AzureTableStorage")
-            ?? throw new InvalidOperationException("AzureTableStorage connection string is required");
+            ?? configuration["AzureTableStorage"]
+            ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
+        
+        if (string.IsNullOrEmpty(tableConnectionString))
+        {
+            throw new InvalidOperationException(
+                "AzureTableStorage connection string is required. " +
+                "Set it via ConnectionStrings:AzureTableStorage in appsettings.json, " +
+                "or AzureTableStorage in Azure App Service Configuration, " +
+                "or AZURE_TABLE_STORAGE_CONNECTION_STRING environment variable.");
+        }
         services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
 
         // Register Azure Blob Storage client
         var blobConnectionString = configuration.GetConnectionString("AzureBlobStorage")
-            ?? throw new InvalidOperationException("AzureBlobStorage connection string is required");
+            ?? configuration["AzureBlobStorage"]
+            ?? Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING");
+        
+        if (string.IsNullOrEmpty(blobConnectionString))
+        {
+            throw new InvalidOperationException(
+                "AzureBlobStorage connection string is required. " +
+                "Set it via ConnectionStrings:AzureBlobStorage in appsettings.json, " +
+                "or AzureBlobStorage in Azure App Service Configuration, " +
+                "or AZURE_BLOB_STORAGE_CONNECTION_STRING environment variable.");
+        }
         services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
 
         // Register Azure OpenAI client

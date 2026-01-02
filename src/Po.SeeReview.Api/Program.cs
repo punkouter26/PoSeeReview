@@ -53,13 +53,22 @@ try
     // Configure Azure Key Vault for secrets (works locally and in Azure)
     if (!isTestMode)
     {
-        var keyVaultUrl = "https://poseereview-kv.vault.azure.net/";
-        var credential = new DefaultAzureCredential();
-        var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
-        
-        builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
-        
-        Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+        try
+        {
+            var keyVaultUrl = "https://poseereview-kv.vault.azure.net/";
+            var credential = new DefaultAzureCredential();
+            var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
+            
+            builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+            
+            Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+        }
+        catch (Exception ex)
+        {
+            // Don't fail startup if Key Vault is unavailable - just log warning
+            // This allows app to run with environment variables/app settings instead
+            Log.Warning(ex, "Failed to configure Azure Key Vault. Falling back to environment variables and app settings.");
+        }
     }
 
     // Replace default logging with Serilog (unless in test mode)
