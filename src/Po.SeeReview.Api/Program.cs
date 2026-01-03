@@ -50,18 +50,29 @@ try
         builder.AddServiceDefaults();
     }
 
-    // Configure Azure Key Vault for secrets (works locally and in Azure)
-    if (!isTestMode)
+    // Configure Azure Key Vault for secrets (production only)
+    // In development, use user-secrets instead: dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
+    if (!isTestMode && !builder.Environment.IsDevelopment())
     {
         try
         {
-            var keyVaultUrl = "https://poseereview-kv.vault.azure.net/";
-            var credential = new DefaultAzureCredential();
-            var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
+            // Key Vault URL from environment variable or configuration
+            var keyVaultUrl = builder.Configuration["KeyVault:Endpoint"] 
+                ?? Environment.GetEnvironmentVariable("KeyVault__Endpoint");
             
-            builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
-            
-            Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+            if (!string.IsNullOrEmpty(keyVaultUrl))
+            {
+                var credential = new DefaultAzureCredential();
+                var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
+                
+                builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+                
+                Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+            }
+            else
+            {
+                Log.Warning("KeyVault:Endpoint not configured. Secrets must be provided via environment variables.");
+            }
         }
         catch (Exception ex)
         {
