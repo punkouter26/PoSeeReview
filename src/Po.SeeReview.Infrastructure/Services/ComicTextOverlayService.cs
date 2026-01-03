@@ -242,18 +242,27 @@ public class ComicTextOverlayService : IComicTextOverlayService
     {
         try
         {
-            // Try to use Comic Sans MS or Arial, or fall back to first available font
-            var fontFamily = SystemFonts.Families.FirstOrDefault(f => 
+            var families = SystemFonts.Families.ToList();
+            if (families.Count == 0)
+            {
+                _logger.LogWarning("No system fonts available, text overlay will be skipped");
+                throw new InvalidOperationException("No fonts available");
+            }
+            
+            // Try to use Comic Sans MS, Arial, DejaVu, Liberation, or fall back to first available font
+            var fontFamily = families.FirstOrDefault(f => 
                 f.Name.Contains("Comic", StringComparison.OrdinalIgnoreCase) ||
-                f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase));
+                f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
+                f.Name.Contains("DejaVu", StringComparison.OrdinalIgnoreCase) ||
+                f.Name.Contains("Liberation", StringComparison.OrdinalIgnoreCase));
 
-            var selectedFamily = fontFamily.Name != null ? fontFamily : SystemFonts.Families.First();
+            var selectedFamily = fontFamily.Name != null ? fontFamily : families.First();
             return selectedFamily.CreateFont(size, FontStyle.Bold);
         }
-        catch
+        catch (Exception ex)
         {
-            // Fallback to any available font
-            return SystemFonts.CreateFont(SystemFonts.Families.First().Name, size, FontStyle.Bold);
+            _logger.LogWarning(ex, "Failed to get font, will skip text overlay");
+            throw;
         }
     }
 }

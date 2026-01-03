@@ -26,6 +26,13 @@ RUN dotnet publish -c Release -o /app/publish
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
+# Install fonts for comic text overlay (run as root before switching to app user)
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    fonts-liberation \
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 # Security: Run as non-root user (use existing app user in .NET 10 images)
 USER app
 
