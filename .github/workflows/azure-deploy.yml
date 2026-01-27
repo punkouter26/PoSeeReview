@@ -45,3 +45,26 @@ jobs:
           --name ${{ env.CONTAINER_APP_NAME }} \
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+    - name: Calculate semantic version (GitVersion)
+      uses: GitTools/actions/gitversion@v0.9.14
+      id: gitversion
+
+    - name: Show computed SemVer
+      run: |
+        echo "Computed SemVer: ${{ steps.gitversion.outputs.semanticsubversion }}"
+
+    - name: Get Container App FQDN
+      id: get_fqdn
+      run: |
+        fqdn=$(az containerapp show --name ${{ env.CONTAINER_APP_NAME }} --resource-group ${{ env.RESOURCE_GROUP }} --query properties.configuration.ingress.fqdn -o tsv)
+        echo "fqdn=$fqdn" >> $GITHUB_OUTPUT
+
+    - name: Health check the app
+      run: |
+        if [ -z "${{ steps.get_fqdn.outputs.fqdn }}" ]; then
+          echo "No FQDN returned from Container App; failing health check.";
+          exit 1;
+        fi
+        echo "Checking health at: https://${{ steps.get_fqdn.outputs.fqdn }}/api/health"
+        curl --fail --retry 5 --retry-delay 3 "https://${{ steps.get_fqdn.outputs.fqdn }}/api/health" | jq .
