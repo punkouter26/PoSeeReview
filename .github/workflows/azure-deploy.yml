@@ -46,8 +46,13 @@ jobs:
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
+    - name: Install GitVersion
+      uses: gittools/actions/gitversion/setup@v0.9.14
+      with:
+        versionSpec: '5.x'
+    
     - name: Calculate semantic version (GitVersion)
-      uses: GitTools/actions/gitversion@v0.9.14
+      uses: gittools/actions/gitversion/execute@v0.9.14
       id: gitversion
 
     - name: Show computed SemVer
