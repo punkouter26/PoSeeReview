@@ -46,13 +46,15 @@ jobs:
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --image ${{ env.AZURE_CONTAINER_REGISTRY }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-    - name: Calculate semantic version (GitVersion)
-      uses: GitTools/actions/gitversion@v0.9.14
-      id: gitversion
-
-    - name: Show computed SemVer
+    - name: Compute version from git
+      id: version
       run: |
-        echo "Computed SemVer: ${{ steps.gitversion.outputs.semanticsubversion }}"
+        COMMIT_COUNT=$(git rev-list --count HEAD)
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "version=1.0.${COMMIT_COUNT}-${SHORT_SHA}" | tee -a $GITHUB_OUTPUT
+
+    - name: Show version
+      run: echo "Version: ${{ steps.version.outputs.version }}"
 
     - name: Get Container App FQDN
       id: get_fqdn
