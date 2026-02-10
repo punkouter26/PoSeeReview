@@ -45,7 +45,14 @@ public class ExpiredComicCleanupService : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         // Initial delay gives the application time to finish bootstrapping
-        await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        try
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            return;
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

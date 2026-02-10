@@ -170,9 +170,9 @@ Before deploying to Azure Container Apps:
 
 ## Local Development
 
-For local development using Aspire, configuration is automatically handled by the AppHost. No manual configuration needed.
+For local development, use `dotnet user-secrets` to manage sensitive configuration:
 
-For running the API standalone locally:
+For running the API locally:
 1. Use `dotnet user-secrets` to store sensitive values
 2. Or set environment variables
 3. Or update `appsettings.Development.json` (not recommended for secrets)

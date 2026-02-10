@@ -1,6 +1,7 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Sas;
 using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Infrastructure.Configuration;
@@ -9,12 +10,14 @@ namespace Po.SeeReview.Infrastructure.Services;
 
 /// <summary>
 /// Azure Blob Storage service for uploading and managing comic images.
-/// Images are stored in the 'comics' container with public read access.
+/// Images are stored in the 'comics' container. Access is provided via SAS URLs
+/// since the storage account has public blob access disabled.
 /// </summary>
 public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName;
+    private static readonly TimeSpan SasTokenDuration = TimeSpan.FromHours(25);
 
     public BlobStorageService(
         BlobServiceClient blobServiceClient,
@@ -40,9 +43,9 @@ public class BlobStorageService : IBlobStorageService
         if (imageBytes == null || imageBytes.Length == 0)
             throw new ArgumentNullException(nameof(imageBytes));
 
-        // Ensure container exists with public blob access
+        // Ensure container exists (no public access — SAS URLs are used instead)
         var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+        await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
         // Blob name format: {comicId}.png
         var blobName = $"{comicId}.png";
@@ -64,8 +67,8 @@ public class BlobStorageService : IBlobStorageService
             }
         );
 
-        // Return public URL
-        return blobClient.Uri.ToString();
+        // Return SAS URL for read access (valid for 25 hours, matching comic 24h expiry + buffer)
+        return GenerateSasUrl(blobClient);
     }
 
     /// <summary>
@@ -113,5 +116,28 @@ public class BlobStorageService : IBlobStorageService
             // Log but don't throw - deletion is best-effort for takedown
             // Actual logging would be done through ILogger if injected
         }
+    }
+
+    /// <summary>
+    /// Generates a SAS URL with read-only access for the specified blob.
+    /// Falls back to the plain blob URI if SAS generation is not supported (e.g., Azurite without shared key).
+    /// </summary>
+    private string GenerateSasUrl(BlobClient blobClient)
+    {
+        if (blobClient.CanGenerateSasUri)
+        {
+            var sasBuilder = new BlobSasBuilder
+            {
+                BlobContainerName = blobClient.BlobContainerName,
+                BlobName = blobClient.Name,
+                Resource = "b",
+                ExpiresOn = DateTimeOffset.UtcNow.Add(SasTokenDuration)
+            };
+            sasBuilder.SetPermissions(BlobSasPermissions.Read);
+            return blobClient.GenerateSasUri(sasBuilder).ToString();
+        }
+
+        // Fallback for Azurite or Managed Identity (no account key available)
+        return blobClient.Uri.ToString();
     }
 }

@@ -216,8 +216,10 @@ public class GoogleMapsService
             _logger.LogError("Google Maps API error fetching details for {PlaceId}: {StatusCode} - {ErrorContent}",
                 placeId, response.StatusCode, errorContent);
 
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
+                                    or System.Net.HttpStatusCode.BadRequest)
             {
+                // Invalid or expired place ID — treat as not found
                 return null;
             }
 

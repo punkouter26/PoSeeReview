@@ -49,7 +49,7 @@ public class DirectoryPackagesConflictTests
             // Check if PackageReference has Version attribute (exclude Sdk Version attributes)
             foreach (var line in lines)
             {
-                // Skip Sdk Version attributes - these are required for Aspire.AppHost.Sdk etc.
+                // Skip Sdk Version attributes
                 if (line.Trim().StartsWith("<Sdk ") && line.Contains("Version="))
                     continue;
                     

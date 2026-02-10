@@ -9,11 +9,11 @@ namespace Po.SeeReview.IntegrationTests.TestFixtures;
 /// </summary>
 public class AzuriteFixture : IDisposable
 {
-    // Try multiple connection strings - first Aspire-managed with dynamic ports, then standard
+    // Try multiple connection strings - environment variable first, then standard Azurite
     private static readonly string[] ConnectionStrings =
     [
-        // Aspire-managed Azurite with dynamic ports (check docker ps for actual ports)
-        GetAspireAzuriteConnectionString(),
+        // Environment variable (e.g., CI/CD or Azure configuration)
+        GetEnvironmentConnectionString(),
         // Standard development storage
         "UseDevelopmentStorage=true",
         // Explicit localhost connection with standard ports
@@ -24,9 +24,9 @@ public class AzuriteFixture : IDisposable
     public bool IsAzuriteAvailable { get; private set; }
     public string ConnectionString { get; private set; } = string.Empty;
 
-    private static string GetAspireAzuriteConnectionString()
+    private static string GetEnvironmentConnectionString()
     {
-        // Try to get connection string from environment (set by Aspire AppHost)
+        // Try to get connection string from environment variables
         var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AzureTableStorage") 
             ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
         

@@ -140,4 +140,29 @@
     font-weight: 500;
 }
 
+.location-search-fallback {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 1rem;
+}
+
+.search-row {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+}
+
+.search-row fluent-text-field {
+    --neutral-fill-input-rest: #f8f9fa;
+    min-width: 250px;
+}
+
+.hint-text {
+    font-size: 0.85rem;
+    color: #888;
+    margin-top: 0.5rem;
+}
+
 /* Remove old media queries - now using modern CSS Grid auto-fit */

@@ -1,6 +1,31 @@
-@Po.SeeReview.Api_HostAddress = http://localhost:5295
+@Po.SeeReview.Api_HostAddress = http://localhost:5000
 
-GET {{Po.SeeReview.Api_HostAddress}}/weatherforecast/
+### Health Check - Full status with all service checks
+GET {{Po.SeeReview.Api_HostAddress}}/api/health
+Accept: application/json
+
+### Health Check - Liveness (just confirms app is running)
+GET {{Po.SeeReview.Api_HostAddress}}/api/health/live
+Accept: application/json
+
+### Health Check - Readiness (checks backing services)
+GET {{Po.SeeReview.Api_HostAddress}}/api/health/ready
+Accept: application/json
+
+### Diagnostics - Configuration values (secrets masked)
+GET {{Po.SeeReview.Api_HostAddress}}/api/diag
+Accept: application/json
+
+### Comics - Get all comics
+GET {{Po.SeeReview.Api_HostAddress}}/api/comics
+Accept: application/json
+
+### Restaurants - Get all restaurants
+GET {{Po.SeeReview.Api_HostAddress}}/api/restaurants
+Accept: application/json
+
+### Leaderboard - Get leaderboard
+GET {{Po.SeeReview.Api_HostAddress}}/api/leaderboard
 Accept: application/json
 
 ###

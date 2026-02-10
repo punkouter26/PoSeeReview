@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
-using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.Exporter;
 using Azure.Security.KeyVault.Secrets;
@@ -11,6 +10,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+using Po.SeeReview.Api;
 using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
 using Po.SeeReview.Api.Middleware;
@@ -43,16 +43,9 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Add Aspire ServiceDefaults (OpenTelemetry, Resilience, Health Checks, Service Discovery)
-    // Only add if NOT in test mode - tests use their own configuration
+    // Configure Azure Key Vault for secrets (all environments)
+    // Locally, DefaultAzureCredential uses your 'az login' session
     if (!isTestMode)
-    {
-        builder.AddServiceDefaults();
-    }
-
-    // Configure Azure Key Vault for secrets (production only)
-    // In development, use user-secrets instead: dotnet user-secrets set "AzureOpenAI:ApiKey" "your-key"
-    if (!isTestMode && !builder.Environment.IsDevelopment())
     {
         try
         {
@@ -65,7 +58,7 @@ try
                 var credential = new DefaultAzureCredential();
                 var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
                 
-                builder.Configuration.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+                builder.Configuration.AddAzureKeyVault(secretClient, new PrefixKeyVaultSecretManager());
                 
                 Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
             }
@@ -348,9 +341,6 @@ try
     {
         Log.Information("SeeReview API started successfully");
     }
-
-    // Map Aspire default endpoints (/health, /alive, /ready)
-    app.MapDefaultEndpoints();
 
     app.Run();
 }

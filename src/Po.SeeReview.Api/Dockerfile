@@ -10,7 +10,6 @@ COPY ["src/Po.SeeReview.Core/Po.SeeReview.Core.csproj", "src/Po.SeeReview.Core/"
 COPY ["src/Po.SeeReview.Infrastructure/Po.SeeReview.Infrastructure.csproj", "src/Po.SeeReview.Infrastructure/"]
 COPY ["src/Po.SeeReview.Client/Po.SeeReview.Client.csproj", "src/Po.SeeReview.Client/"]
 COPY ["src/Po.SeeReview.Shared/Po.SeeReview.Shared.csproj", "src/Po.SeeReview.Shared/"]
-COPY ["src/PoSeeReview.ServiceDefaults/PoSeeReview.ServiceDefaults.csproj", "src/PoSeeReview.ServiceDefaults/"]
 
 # Restore dependencies
 RUN dotnet restore "src/Po.SeeReview.Api/Po.SeeReview.Api.csproj"
@@ -48,6 +47,6 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 
 # Health check for Azure Container Apps
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl --fail http://localhost:8080/health || exit 1
+    CMD curl --fail http://localhost:8080/api/health || exit 1
 
 ENTRYPOINT ["dotnet", "Po.SeeReview.Api.dll"]

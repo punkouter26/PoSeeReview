@@ -4,9 +4,6 @@
     <CentralPackageTransitivePinning>true</CentralPackageTransitivePinning>
   </PropertyGroup>
   <ItemGroup>
-    <!-- Aspire SDK & Hosting -->
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.5.0" />
-    <PackageVersion Include="Aspire.Hosting.Azure.Storage" Version="9.5.0" />
     <!-- Azure SDKs -->
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Azure.Data.Tables" Version="12.11.0" />
@@ -28,9 +25,8 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Polly" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.ApplicationInsights" Version="2.23.0" />
-    <!-- Service Discovery & Resilience -->
+    <!-- Resilience -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="9.5.0" />
     <!-- Logging -->
     <PackageVersion Include="Serilog.AspNetCore" Version="9.0.0" />
     <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.1.0" />

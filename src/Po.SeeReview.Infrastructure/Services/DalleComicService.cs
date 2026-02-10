@@ -1,6 +1,5 @@
 using System.ClientModel;
 using System.Diagnostics;
-using System.Net.Http;
 using Azure;
 using Azure.AI.OpenAI;
 using Microsoft.ApplicationInsights;
@@ -15,30 +14,30 @@ using Polly.Retry;
 namespace Po.SeeReview.Infrastructure.Services;
 
 /// <summary>
-/// Azure AI Foundry DALL-E 3 service for generating 1-4 panel comic strip images from narratives.
-/// Uses the Azure.AI.OpenAI SDK to connect to Azure AI Foundry (Cognitive Services).
-/// Generates 1024x1024 square images with vivid, cartoon style.
+/// Azure OpenAI DALL-E 3 service for generating 1-4 panel comic strip images from narratives.
+/// Uses the Azure.AI.OpenAI SDK with the Images API.
+/// Generates 1024x1024 square images at Standard quality for minimum cost ($0.04/image).
 /// Panel layout adapts based on count: 1 panel (full), 2 panels (side-by-side), 3-4 panels (grid).
-/// Cost optimized at $0.040 per image (50% cheaper than 1792x1024).
-/// IMPORTANT: DALL-E cannot generate correct English text, so prompts explicitly prohibit any text/speech bubbles.
 /// Text overlay is added by ComicTextOverlayService after image generation.
 /// </summary>
 public class DalleComicService : IDalleComicService
 {
     private readonly AzureOpenAIClient _openAIClient;
-    private readonly string _deploymentName;
     private readonly HttpClient _httpClient;
+    private readonly string _deploymentName;
     private readonly ILogger<DalleComicService> _logger;
     private readonly TelemetryClient _telemetryClient;
     private readonly AsyncRetryPolicy<byte[]> _imageRetryPolicy;
 
     public DalleComicService(
-        IConfiguration configuration,
         HttpClient httpClient,
+        IConfiguration configuration,
         ILogger<DalleComicService> logger,
         TelemetryClient telemetryClient)
     {
-        // Use dedicated DALL-E endpoint if configured, otherwise fall back to primary endpoint
+        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+
+        // Use dedicated image generation endpoint if configured, otherwise fall back to primary endpoint
         var dalleEndpoint = configuration["AzureOpenAI:DalleEndpoint"];
         var dalleApiKey = configuration["AzureOpenAI:DalleApiKey"];
 
@@ -53,14 +52,14 @@ public class DalleComicService : IDalleComicService
                 ?? throw new InvalidOperationException("Azure OpenAI API key not configured");
 
         _deploymentName = configuration["AzureOpenAI:DalleDeploymentName"]
-            ?? throw new InvalidOperationException("DALL-E deployment name not configured");
+            ?? throw new InvalidOperationException("Image generation deployment name not configured");
 
         _openAIClient = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
-        _httpClient = httpClient;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
 
-        _logger.LogInformation("DalleComicService configured with endpoint: {Endpoint}", endpoint);
+        _logger.LogInformation("DalleComicService configured with deployment: {Deployment}, endpoint: {Endpoint}",
+            _deploymentName, endpoint);
 
         _imageRetryPolicy = Policy<byte[]>
             .Handle<RequestFailedException>(AzureRetryUtils.IsTransientFailure)
@@ -70,7 +69,7 @@ public class DalleComicService : IDalleComicService
             {
                 var reason = outcome.Exception?.Message ?? "unknown";
                 _logger.LogWarning(
-                    "Retrying DALL-E image operation due to {Reason}. Attempt {Attempt}. Waiting {Delay} seconds",
+                    "Retrying image generation due to {Reason}. Attempt {Attempt}. Waiting {Delay} seconds",
                     reason,
                     attempt,
                     timespan.TotalSeconds);
@@ -78,13 +77,13 @@ public class DalleComicService : IDalleComicService
     }
 
     /// <summary>
-    /// Generates a comic strip image from a narrative using DALL-E 3.
+    /// Generates a comic strip image using DALL-E 3 at Standard quality (cheapest: $0.04/image).
     /// </summary>
     /// <param name="narrative">Story narrative for the comic</param>
     /// <param name="panelCount">Number of panels (1-4)</param>
     /// <returns>PNG image bytes (1024x1024 square format)</returns>
     /// <exception cref="ArgumentException">If narrative is empty or panelCount invalid</exception>
-    /// <exception cref="InvalidOperationException">If image generation or download fails</exception>
+    /// <exception cref="InvalidOperationException">If image generation fails</exception>
     public async Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount)
     {
         if (string.IsNullOrWhiteSpace(narrative))
@@ -93,49 +92,121 @@ public class DalleComicService : IDalleComicService
         if (panelCount < 1 || panelCount > 4)
             throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelCount));
 
-        var prompt = BuildComicPrompt(narrative, panelCount);
+        // DALL-E 3: Standard quality + 1024x1024 = $0.04/image (cheapest option)
         var imageOptions = new ImageGenerationOptions
         {
-            Size = GeneratedImageSize.W1024xH1024, // Reduced from 1792x1024 to save 50% cost ($0.040 vs $0.080)
-            Quality = GeneratedImageQuality.Standard,
+            Size = GeneratedImageSize.W1024xH1024,
             Style = GeneratedImageStyle.Vivid
         };
 
         var stopwatch = Stopwatch.StartNew();
 
-        var imageBytes = await _imageRetryPolicy.ExecuteAsync(async () =>
+        // Try with sanitized narrative first, fall back to generic prompt on content policy violation
+        var sanitizedNarrative = SanitizeNarrative(narrative);
+        var prompt = BuildComicPrompt(sanitizedNarrative, panelCount);
+
+        byte[] imageBytes;
+        try
         {
-            var imageClient = _openAIClient.GetImageClient(_deploymentName);
-            var response = await imageClient.GenerateImageAsync(prompt, imageOptions);
-            var imageUrl = response.Value.ImageUri;
-
-            if (imageUrl == null)
-            {
-                throw new InvalidOperationException("DALL-E did not return an image URL");
-            }
-
-            var downloadedBytes = await _httpClient.GetByteArrayAsync(imageUrl);
-
-            if (downloadedBytes.Length == 0)
-            {
-                throw new InvalidOperationException("Downloaded image is empty");
-            }
-
-            return downloadedBytes;
-        });
+            imageBytes = await _imageRetryPolicy.ExecuteAsync(
+                () => GenerateImageFromPromptAsync(prompt, imageOptions));
+        }
+        catch (ClientResultException ex) when (ex.Message.Contains("content_policy_violation", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("contentFilter", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("Content policy violation with sanitized narrative, falling back to generic prompt");
+            var fallbackPrompt = BuildFallbackComicPrompt(panelCount);
+            imageBytes = await _imageRetryPolicy.ExecuteAsync(
+                () => GenerateImageFromPromptAsync(fallbackPrompt, imageOptions));
+        }
 
         stopwatch.Stop();
 
         _telemetryClient.GetMetric("AzureOpenAI.Image.Requests").TrackValue(1);
-        _telemetryClient.GetMetric("AzureOpenAI.Image.EstimatedCostUsd").TrackValue(0.04); // Standard quality pricing per image
         _telemetryClient.GetMetric("AzureOpenAI.Image.DurationMs").TrackValue(stopwatch.Elapsed.TotalMilliseconds);
+        _telemetryClient.GetMetric("AzureOpenAI.Image.CostUsd").TrackValue(0.04);
 
         _logger.LogInformation(
-            "Generated DALL-E comic image ({PanelCount} panels) in {Duration}ms",
+            "Generated comic image ({PanelCount} panels, {Deployment}, ~$0.04) in {Duration}ms",
             panelCount,
+            _deploymentName,
             stopwatch.Elapsed.TotalMilliseconds);
 
         return imageBytes;
+    }
+
+    /// <summary>
+    /// Generates an image from a prompt and downloads the result.
+    /// DALL-E 3 returns a temporary URL; we download the image bytes via HttpClient.
+    /// </summary>
+    private async Task<byte[]> GenerateImageFromPromptAsync(string prompt, ImageGenerationOptions imageOptions)
+    {
+        var imageClient = _openAIClient.GetImageClient(_deploymentName);
+        var response = await imageClient.GenerateImageAsync(prompt, imageOptions);
+        var imageUri = response.Value.ImageUri;
+
+        if (imageUri == null)
+        {
+            throw new InvalidOperationException("Image generation returned no URI");
+        }
+
+        return await _httpClient.GetByteArrayAsync(imageUri);
+    }
+
+    /// <summary>
+    /// Strips potentially flagged content from the narrative to avoid content policy violations.
+    /// Removes profanity, violence references, and other sensitive terms.
+    /// </summary>
+    private static string SanitizeNarrative(string narrative)
+    {
+        // Remove common content-policy-triggering words/phrases
+        var sanitized = narrative;
+        string[] flaggedPatterns =
+        [
+            "blood", "bloody", "kill", "murder", "dead", "death", "die", "dying",
+            "gun", "shoot", "weapon", "knife", "stab", "fight", "attack",
+            "drug", "cocaine", "heroin", "meth",
+            "naked", "nude", "sex", "sexual",
+            "hate", "racist", "racial",
+            "vomit", "puke", "disgusting",
+            "roach", "cockroach", "rat", "mice", "vermin",
+            "poison", "toxic", "contaminated"
+        ];
+
+        foreach (var pattern in flaggedPatterns)
+        {
+            sanitized = System.Text.RegularExpressions.Regex.Replace(
+                sanitized, $@"\b{pattern}\w*\b", "unusual", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        }
+
+        return sanitized;
+    }
+
+    /// <summary>
+    /// Builds a safe generic comic prompt when the narrative-based prompt is rejected.
+    /// </summary>
+    private static string BuildFallbackComicPrompt(int panelCount)
+    {
+        var panelLayout = panelCount switch
+        {
+            1 => "Single-panorama comic strip (one wide scene filling the frame)",
+            2 => "Two-panel comic strip with equal landscape panels stacked vertically",
+            3 => "Three-panel strip with cinematic flow (left-to-right storytelling)",
+            _ => "Four-panel comic strip arranged left-to-right, top-to-bottom"
+        };
+
+        return $"""
+            Create a vibrant {panelCount}-panel comic strip in a clean, modern cartoon illustration style.
+
+            Scene: A cheerful, brightly lit restaurant. A happy customer sits at a table. A friendly waiter
+            brings an unusually large or creative dish. The customer reacts with wide-eyed surprise and delight.
+
+            Layout: {panelLayout}
+            - Bold outlines, vivid colors, exaggerated happy facial expressions
+            - Modern cartoon illustration style, family-friendly
+            - Do not include any text, speech bubbles, labels, or writing anywhere in the image
+            - Leave clear empty space in each panel for text to be added later
+            """;
     }
 
     private static string BuildComicPrompt(string narrative, int panelCount)
@@ -159,46 +230,28 @@ public class DalleComicService : IDalleComicService
         return $"""
 Create a vibrant {panelCount}-panel comic strip in a clean, modern illustration style.
 
-CRITICAL REQUIREMENTS:
-1. Create EXACTLY {panelCount} panel(s), no more, no less
-2. NEVER EVER draw speech bubbles, word balloons, text boxes, or any text elements
-3. DO NOT attempt to write any letters, words, signs, labels, or typography anywhere in the image
-4. This is a SILENT COMIC - tell the story through visuals only, no text permitted
+REQUIREMENTS:
+1. Create EXACTLY {panelCount} panel(s)
+2. Do NOT draw any text, speech bubbles, word balloons, captions, labels, signs, or writing anywhere
+3. This is a SILENT COMIC - tell the story purely through visuals
 
-Story context (draw inspiration from this narrative):
+Story context:
 "{narrative}"
 
 Layout: {panelLayout}
-- Maintain consistent characters across panels with matching outfits and visual traits
+- Consistent characters across panels with matching outfits and visual traits
 - Clean panel gutters/borders separating EXACTLY {panelCount} panel(s)
 
-Panel breakdown (create ONLY {panelCount} panels):
+Panel breakdown:
 {panelBreakdown}
 
-Visual requirements:
-- 1792x1024 resolution with {panelCount} distinct panels
-- Bold outlines, vivid colors, slightly exaggerated facial expressions
-- Modern comic illustration style (NOT manga, NOT realistic)
-- Minimal but expressive backgrounds
-- Tell the entire story through CHARACTER ACTIONS, FACIAL EXPRESSIONS, and BODY LANGUAGE ONLY
-- NO speech bubbles, NO thought bubbles, NO text balloons, NO captions, NO labels, NO signs with text
-- Leave clear empty space in each panel (preferably top or bottom third) for text to be added later
-- Characters should have open mouths if talking, but NO speech bubbles around them
-- Avoid any symbols, letters, or writing of any kind
-- Focus on comedic visual storytelling without words
-
-ABSOLUTELY FORBIDDEN:
-❌ Speech bubbles
-❌ Word balloons  
-❌ Thought bubbles
-❌ Text boxes
-❌ Captions
-❌ Letters or words anywhere
-❌ Signs with text
-❌ Sound effects written out
-❌ Any typography or written language
-
-REMEMBER: This is a SILENT visual comic. Text and dialogue will be added later as an overlay. Generate EXACTLY {panelCount} panel(s) with NO text elements whatsoever.
+Visual style:
+- 1024x1024 square with {panelCount} distinct panels
+- Bold outlines, vivid colors, exaggerated facial expressions
+- Modern cartoon illustration (NOT manga, NOT realistic)
+- No text, no speech bubbles, no labels, no signs with writing
+- Leave clear empty space in each panel for text overlay
+- Tell the story through actions, expressions, and body language only
 """;
     }
 }
