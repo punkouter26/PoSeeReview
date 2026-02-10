@@ -56,7 +56,8 @@ jobs:
         echo "version=1.0.${COMMIT_COUNT}-${SHORT_SHA}" | tee -a $GITHUB_OUTPUT
 
     - name: Show version
-      run: echo "Version: ${{ steps.version.outputs.version }}"
+      run: |
+        echo "Version: ${{ steps.version.outputs.version }}"
 
     - name: Get Container App FQDN
       id: get_fqdn
