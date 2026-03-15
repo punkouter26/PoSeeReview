@@ -14,14 +14,14 @@ namespace Po.SeeReview.IntegrationTests.Api;
 /// Integration tests for GET /api/leaderboard endpoint
 /// Tests regional leaderboard retrieval with real Azure Table Storage (Azurite)
 /// </summary>
-public class LeaderboardEndpointTests : IClassFixture<WebApplicationFactory<Program>>
+public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;
     private readonly ITestOutputHelper _output;
-    private readonly WebApplicationFactory<Program> _factory;
+    private readonly CustomWebApplicationFactory<Program> _factory;
 
     public LeaderboardEndpointTests(
-        WebApplicationFactory<Program> factory,
+        CustomWebApplicationFactory<Program> factory,
         ITestOutputHelper output)
     {
         _factory = factory;

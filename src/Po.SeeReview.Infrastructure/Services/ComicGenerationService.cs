@@ -76,6 +76,15 @@ public class ComicGenerationService : IComicGenerationService
             if (cachedComic != null && cachedComic.ExpiresAt > DateTime.UtcNow)
             {
                 _logger.LogInformation("Returning cached comic for placeId: {PlaceId}", placeId);
+
+                // Refresh SAS token if it is expired or within 2 hours of expiry
+                if (IsSasExpiringSoon(cachedComic.ImageUrl))
+                {
+                    _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
+                    cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);
+                    await _comicRepository.UpsertAsync(cachedComic);
+                }
+
                 cachedComic.IsCached = true; // Mark as cached for caller
                 _telemetryClient.GetMetric("Comics.CacheHit").TrackValue(1);
                 overallStopwatch.Stop();
@@ -296,6 +305,31 @@ public class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
+    /// Returns true when a SAS URL's `se` (signed expiry) is already past or within 2 hours.
+    /// Triggers a proactive refresh so callers never receive an expired URL.
+    /// </summary>
+    private static bool IsSasExpiringSoon(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        try
+        {
+            var query = new Uri(url).Query;
+            var seIdx = query.IndexOf("se=", StringComparison.OrdinalIgnoreCase);
+            if (seIdx < 0) return false;
+
+            var seStart = seIdx + 3;
+            var seEnd = query.IndexOf('&', seStart);
+            var seValue = Uri.UnescapeDataString(seEnd >= 0 ? query[seStart..seEnd] : query[seStart..]);
+            return DateTimeOffset.TryParse(seValue, out var expiry)
+                   && expiry < DateTimeOffset.UtcNow.AddHours(2);
+        }
+        catch
+        {
+            return false; // If URL has no SAS token (e.g. Azurite fallback), skip refresh
+        }
+    }
+
+    /// <summary>
     /// Gets cached comic for a restaurant if it exists and hasn't expired
     /// </summary>
     public async Task<Comic?> GetCachedComicAsync(string placeId)
@@ -308,6 +342,14 @@ public class ComicGenerationService : IComicGenerationService
         if (cachedComic != null && cachedComic.ExpiresAt > DateTime.UtcNow)
         {
             _logger.LogInformation("Found valid cached comic for placeId: {PlaceId}", placeId);
+
+            if (IsSasExpiringSoon(cachedComic.ImageUrl))
+            {
+                _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
+                cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);
+                await _comicRepository.UpsertAsync(cachedComic);
+            }
+
             cachedComic.IsCached = true;
             return cachedComic;
         }

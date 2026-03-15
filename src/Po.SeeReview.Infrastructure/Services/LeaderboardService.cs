@@ -11,6 +11,7 @@ namespace Po.SeeReview.Infrastructure.Services;
 public class LeaderboardService : ILeaderboardService
 {
     private readonly ILeaderboardRepository _repository;
+    private readonly IBlobStorageService _blobStorageService;
     private readonly ILogger<LeaderboardService> _logger;
 
     // Minimum score threshold to appear on leaderboard
@@ -18,9 +19,11 @@ public class LeaderboardService : ILeaderboardService
 
     public LeaderboardService(
         ILeaderboardRepository repository,
+        IBlobStorageService blobStorageService,
         ILogger<LeaderboardService> logger)
     {
         _repository = repository;
+        _blobStorageService = blobStorageService;
         _logger = logger;
     }
 
@@ -46,6 +49,26 @@ public class LeaderboardService : ILeaderboardService
         try
         {
             var entries = await _repository.GetTopEntriesAsync(region, limit);
+
+            // Refresh any SAS tokens that are expired or within 2 hours of expiry
+            foreach (var entry in entries.Where(e => IsSasExpiringSoon(e.ComicBlobUrl)))
+            {
+                _logger.LogInformation("Refreshing expired SAS for leaderboard entry {PlaceId}", entry.PlaceId);
+                entry.ComicBlobUrl = await _blobStorageService.RefreshSasUrlAsync(entry.ComicBlobUrl);
+                await _repository.UpsertAsync(entry);
+            }
+
+            // Verify blob existence for entries whose SAS is still valid but blob may have been purged.
+            // The cleanup service can delete blobs independently of leaderboard entries.
+            foreach (var entry in entries.Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl)))
+            {
+                if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
+                {
+                    _logger.LogWarning("LeaderboardEntry {PlaceId} references a deleted blob — clearing ComicBlobUrl", entry.PlaceId);
+                    entry.ComicBlobUrl = string.Empty;
+                    await _repository.UpsertAsync(entry);
+                }
+            }
 
             // Ranks are already assigned by repository during query
             _logger.LogInformation("Retrieved {Count} entries for region {Region}", entries.Count, region);
@@ -125,6 +148,30 @@ public class LeaderboardService : ILeaderboardService
         {
             _logger.LogError(ex, "Error upserting leaderboard entry for {PlaceId}", entry.PlaceId);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Returns true when a SAS URL's <c>se</c> (signed expiry) parameter is already past or within 2 hours.
+    /// </summary>
+    private static bool IsSasExpiringSoon(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        try
+        {
+            var query = new Uri(url).Query;
+            var seIdx = query.IndexOf("se=", StringComparison.OrdinalIgnoreCase);
+            if (seIdx < 0) return false;
+
+            var seStart = seIdx + 3;
+            var seEnd = query.IndexOf('&', seStart);
+            var seValue = Uri.UnescapeDataString(seEnd >= 0 ? query[seStart..seEnd] : query[seStart..]);
+            return DateTimeOffset.TryParse(seValue, out var expiry)
+                   && expiry < DateTimeOffset.UtcNow.AddHours(2);
+        }
+        catch
+        {
+            return false;
         }
     }
 }

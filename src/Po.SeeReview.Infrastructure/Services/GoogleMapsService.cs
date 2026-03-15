@@ -99,8 +99,12 @@ public class GoogleMapsService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Google Maps API error: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
-            response.EnsureSuccessStatusCode();
+            _logger.LogError("Google Places API error: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
+            // Include the actual Google API error body so callers can surface it for debugging
+            throw new HttpRequestException(
+                $"Google Places API error {(int)response.StatusCode}: {errorContent}",
+                inner: null,
+                statusCode: response.StatusCode);
         }
 
         var result = await response.Content.ReadFromJsonAsync<GooglePlacesResponse>();
@@ -213,7 +217,7 @@ public class GoogleMapsService
         if (!response.IsSuccessStatusCode)
         {
             var errorContent = await response.Content.ReadAsStringAsync();
-            _logger.LogError("Google Maps API error fetching details for {PlaceId}: {StatusCode} - {ErrorContent}",
+            _logger.LogError("Google Places API error fetching details for {PlaceId}: {StatusCode} - {ErrorContent}",
                 placeId, response.StatusCode, errorContent);
 
             if (response.StatusCode is System.Net.HttpStatusCode.NotFound
@@ -223,7 +227,11 @@ public class GoogleMapsService
                 return null;
             }
 
-            response.EnsureSuccessStatusCode();
+            // Include the actual Google API error body so callers can surface it for debugging
+            throw new HttpRequestException(
+                $"Google Places API error {(int)response.StatusCode}: {errorContent}",
+                inner: null,
+                statusCode: response.StatusCode);
         }
 
         var result = await response.Content.ReadFromJsonAsync<PlaceDetailsResponse>();

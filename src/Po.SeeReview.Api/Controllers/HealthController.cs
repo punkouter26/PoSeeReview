@@ -1,40 +1,8 @@
-using Microsoft.AspNetCore.Mvc;
-
+// Health check routes are fully handled by app.MapHealthChecks in Program.cs:
+//   GET /api/health        — full JSON report with all check details and durations
+//   GET /api/health/live   — liveness probe (always 200 while process is running)
+//   GET /api/health/ready  — readiness probe (checks tagged "ready")
+//
+// This MVC controller was removed to eliminate the duplicate /api/health route conflict.
 namespace Po.SeeReview.Api.Controllers;
 
-/// <summary>
-/// Health check endpoint for monitoring and diagnostics
-/// </summary>
-[ApiController]
-[Route("api/[controller]")]
-public class HealthController : ControllerBase
-{
-    private readonly ILogger<HealthController> _logger;
-
-    public HealthController(ILogger<HealthController> logger)
-    {
-        _logger = logger;
-    }
-
-    /// <summary>
-    /// Returns the health status of the API
-    /// </summary>
-    /// <returns>Health status response</returns>
-    /// <response code="200">API is healthy and running</response>
-    [HttpGet]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetHealth()
-    {
-        _logger.LogDebug("Health check requested");
-
-        var healthStatus = new
-        {
-            status = "Healthy",
-            timestamp = DateTime.UtcNow,
-            version = "1.0.0",
-            service = "PoSeeReview API"
-        };
-
-        return Ok(healthStatus);
-    }
-}

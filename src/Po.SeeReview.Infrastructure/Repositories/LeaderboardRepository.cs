@@ -110,6 +110,32 @@ public class LeaderboardRepository : ILeaderboardRepository
         }
     }
 
+    /// <inheritdoc />
+    public async Task<LeaderboardEntry?> GetByPlaceIdAsync(string placeId)
+    {
+        if (string.IsNullOrWhiteSpace(placeId))
+            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
+
+        try
+        {
+            // Cross-region scan — same pattern as DeleteByPlaceIdAsync
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(
+                filter: $"PlaceId eq '{placeId}'"
+            );
+
+            await foreach (var entity in query)
+            {
+                return entity.ToDomain(0);
+            }
+
+            return null;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Upserts a leaderboard entry
     /// If entry exists with different score, old entry is deleted and new one created

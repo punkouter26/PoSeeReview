@@ -3,20 +3,74 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Testcontainers.Azurite;
 
 namespace Po.SeeReview.IntegrationTests;
 
 /// <summary>
-/// Custom WebApplicationFactory that configures logging without Serilog
-/// to avoid frozen logger issues with multiple test hosts
+/// Custom WebApplicationFactory that spins up a dedicated Testcontainers Azurite instance
+/// so the WebApp can reach real Azure Storage emulation during tests.
+/// Implements IAsyncLifetime: xUnit calls InitializeAsync BEFORE any test class is created,
+/// so the container is running and env vars are set before WebApp.CreateBuilder() reads them.
 /// </summary>
-public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram> where TProgram : class
+public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram>, IAsyncLifetime
+    where TProgram : class
 {
+    // One container per factory instance (one per IClassFixture<> type)
+    private AzuriteContainer? _azuriteContainer;
+
     public CustomWebApplicationFactory()
     {
-        // Set environment variable BEFORE Program.cs runs
-        Environment.SetEnvironmentVariable("DISABLE_SERILOG", "true");
-        Environment.SetEnvironmentVariable("DISABLE_USER_AGENT_VALIDATION", "true");
+        // Env vars that must be present BEFORE WebApplication.CreateBuilder(args) runs because
+        // AddInfrastructure reads builder.Configuration during service registration — before
+        // ConfigureAppConfiguration callbacks fire.
+        // Storage connection strings are set in InitializeAsync once the container is ready.
+        SetIfEmpty("DISABLE_SERILOG", "true");
+        SetIfEmpty("DISABLE_USER_AGENT_VALIDATION", "true");
+
+        // External API stubs — allow AddInfrastructure to pass its required-key checks.
+        // Tests that validate real AI/Maps calls are expected to skip via HasValidApiKey guards.
+        SetIfEmpty("AzureOpenAI__Endpoint", "https://test-openai.openai.azure.com");
+        SetIfEmpty("AzureOpenAI__ApiKey", "test-api-key-00000000000000000000000000000000");
+        SetIfEmpty("AzureOpenAI__DeploymentName", "gpt-4");
+        SetIfEmpty("AzureOpenAI__DalleDeploymentName", "dall-e-3");
+        SetIfEmpty("GoogleMaps__ApiKey", "test-google-maps-api-key");
+    }
+
+    // -------------------------------------------------------------------------
+    // IAsyncLifetime — xUnit lifecycle hooks
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Starts the Azurite container and sets connection-string env vars before
+    /// any test class is constructed and before CreateClient() is called.
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        _azuriteContainer = new AzuriteBuilder()
+            .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+            .Build();
+        await _azuriteContainer.StartAsync();
+
+        var cs = _azuriteContainer.GetConnectionString();
+        // Override storage env vars with the actual Testcontainers Azurite connection string.
+        // These are read by AddInfrastructure when CreateClient() triggers WebApp startup.
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureTableStorage", cs);
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureBlobStorage", cs);
+    }
+
+    /// <summary>Disposes the WebApp host, then tears down the Azurite container.</summary>
+    public new async Task DisposeAsync()
+    {
+        await base.DisposeAsync();
+        if (_azuriteContainer != null)
+            await _azuriteContainer.DisposeAsync();
+    }
+
+    private static void SetIfEmpty(string key, string value)
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(key)))
+            Environment.SetEnvironmentVariable(key, value);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

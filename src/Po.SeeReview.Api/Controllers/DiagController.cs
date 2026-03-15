@@ -5,7 +5,7 @@ namespace Po.SeeReview.Api.Controllers;
 
 /// <summary>
 /// Diagnostics endpoint — exposes configuration keys/values with middle characters masked for security.
-/// Accessible at /api/diag. Use for verifying environment configuration in any deployment.
+/// Accessible at /api/diag in Development only.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -13,11 +13,18 @@ public class DiagController(IConfiguration configuration, IWebHostEnvironment en
 {
     /// <summary>
     /// Returns all configuration values with secrets partially masked.
+    /// Restricted to Development environment only.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetDiagnostics()
     {
+        // Security: only expose config info in Development
+        if (!environment.IsDevelopment())
+        {
+            return NotFound(); // Avoid fingerprinting — don't reveal the endpoint exists
+        }
         var configEntries = new Dictionary<string, string?>();
 
         // Flatten all configuration sections

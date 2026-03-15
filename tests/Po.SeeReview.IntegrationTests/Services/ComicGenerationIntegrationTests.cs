@@ -52,16 +52,28 @@ public class ComicGenerationIntegrationTests
 
         var configuration = new ConfigurationBuilder()
             .SetBasePath(basePath)
-            .AddJsonFile("appsettings.Development.json", optional: false)
+            // Stub values prevent service construction from throwing.
+            // The StartsWith("test-") guard below skips execution when stubs are active.
+            // appsettings.Development.json is intentionally excluded: real OpenAI
+            // credentials must be supplied via env vars (CI pattern, PoTest rule #7).
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AzureOpenAI:ApiKey"] = "test-stub-api-key",
+                ["AzureOpenAI:Endpoint"] = "https://test-openai.openai.azure.com",
+                ["AzureOpenAI:DeploymentName"] = "gpt-4",
+            })
+            .AddEnvironmentVariables()
             .Build();
 
         // Setup Azure OpenAI service with real configuration
         var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName).Get<AzureOpenAIOptions>();
 
-        // Skip test if configuration is missing
-        if (string.IsNullOrEmpty(openAiOptions?.ApiKey) || openAiOptions.ApiKey.Length < 20)
+        // Skip test if configuration is missing or contains placeholder values
+        if (string.IsNullOrEmpty(openAiOptions?.ApiKey)
+            || openAiOptions.ApiKey.Length < 20
+            || openAiOptions.ApiKey.StartsWith("test-", StringComparison.OrdinalIgnoreCase))
         {
-            _output.WriteLine("⚠️ Skipping test: Azure OpenAI configuration not found or invalid");
+            _output.WriteLine("⚠️ Skipping test: Azure OpenAI configuration not found or is a placeholder");
             return;
         }
 

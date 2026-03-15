@@ -124,6 +124,10 @@ debug-*.txt
 package-inventory.txt
 build-output.txt
 
+# Playwright screenshots (local test artifacts)
+docs/screenshots/
+tests/e2e/debug-*
+
 # Blazor specific
 wwwroot/lib/
 wwwroot/_framework/

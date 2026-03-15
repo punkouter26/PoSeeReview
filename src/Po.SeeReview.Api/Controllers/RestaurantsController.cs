@@ -15,13 +15,16 @@ public class RestaurantsController : ControllerBase
 {
     private readonly IRestaurantService _restaurantService;
     private readonly ILogger<RestaurantsController> _logger;
+    private readonly IWebHostEnvironment _env;
 
     public RestaurantsController(
         IRestaurantService restaurantService,
-        ILogger<RestaurantsController> logger)
+        ILogger<RestaurantsController> logger,
+        IWebHostEnvironment env)
     {
         _restaurantService = restaurantService;
         _logger = logger;
+        _env = env;
     }
 
     /// <summary>
@@ -100,12 +103,16 @@ public class RestaurantsController : ControllerBase
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Google Maps API error");
+            _logger.LogError(ex, "Google Maps API error for nearby search: {Message}", ex.Message);
+            // In Development expose the actual Google API error (key issues, quota, etc.)
+            var detail = _env.IsDevelopment()
+                ? ex.Message
+                : "Unable to fetch restaurant data from Google Maps API";
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Title = "Google Maps API Unavailable",
-                Detail = "Unable to fetch restaurant data from Google Maps API"
+                Detail = detail
             });
         }
     }
@@ -245,12 +252,16 @@ public class RestaurantsController : ControllerBase
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogError(ex, "Google Maps API error");
+            _logger.LogError(ex, "Google Maps API error for placeId {PlaceId}: {Message}", placeId, ex.Message);
+            // In Development expose the actual Google API error (key issues, quota, etc.)
+            var detail = _env.IsDevelopment()
+                ? ex.Message
+                : "Unable to fetch restaurant data from Google Maps API";
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Title = "Google Maps API Unavailable",
-                Detail = "Unable to fetch restaurant data from Google Maps API"
+                Detail = detail
             });
         }
     }

@@ -89,6 +89,7 @@ public class ExpiredComicCleanupService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var comicRepository = scope.ServiceProvider.GetRequiredService<IComicRepository>();
         var blobStorageService = scope.ServiceProvider.GetRequiredService<IBlobStorageService>();
+        var leaderboardRepository = scope.ServiceProvider.GetRequiredService<ILeaderboardRepository>();
 
         var totalDeleted = 0;
         var iterationStopwatch = Stopwatch.StartNew();
@@ -112,7 +113,25 @@ public class ExpiredComicCleanupService : BackgroundService
 
                     if (!string.IsNullOrWhiteSpace(comic.Id))
                     {
-                        await blobStorageService.DeleteComicImageAsync(comic.Id);
+                        // Do not delete the blob if a leaderboard entry still references it.
+                        // Leaderboard entries are permanent; the comic record may expire but
+                        // the associated image should persist as long as the entry exists.
+                        var leaderboardEntry = await leaderboardRepository.GetByPlaceIdAsync(comic.PlaceId);
+                        var blobIsReferencedByLeaderboard =
+                            leaderboardEntry != null &&
+                            !string.IsNullOrWhiteSpace(leaderboardEntry.ComicBlobUrl) &&
+                            leaderboardEntry.ComicBlobUrl.Contains(comic.Id, StringComparison.OrdinalIgnoreCase);
+
+                        if (blobIsReferencedByLeaderboard)
+                        {
+                            _logger.LogInformation(
+                                "Skipping blob deletion for comic {ComicId} ({PlaceId}) \u2014 leaderboard entry still references it",
+                                comic.Id, comic.PlaceId);
+                        }
+                        else
+                        {
+                            await blobStorageService.DeleteComicImageAsync(comic.Id);
+                        }
                     }
 
                     totalDeleted++;

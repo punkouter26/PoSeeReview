@@ -1,121 +1,77 @@
 using Azure.Data.Tables;
+using DotNet.Testcontainers.Builders;
+using Testcontainers.Azurite;
 using Xunit;
-using Xunit.Sdk;
 
 namespace Po.SeeReview.IntegrationTests.TestFixtures;
 
 /// <summary>
-/// Test fixture for Azurite Azure Storage Emulator integration tests
+/// Test fixture that starts a dedicated Azurite container via Testcontainers for each test run.
+/// The container is spun up automatically — no pre-running Docker/Azurite process required.
+/// Implements IAsyncLifetime so xUnit calls InitializeAsync/DisposeAsync.
 /// </summary>
-public class AzuriteFixture : IDisposable
+public class AzuriteFixture : IAsyncLifetime
 {
-    // Try multiple connection strings - environment variable first, then standard Azurite
-    private static readonly string[] ConnectionStrings =
-    [
-        // Environment variable (e.g., CI/CD or Azure configuration)
-        GetEnvironmentConnectionString(),
-        // Standard development storage
-        "UseDevelopmentStorage=true",
-        // Explicit localhost connection with standard ports
-        "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;TableEndpoint=http://127.0.0.1:10002/devstoreaccount1"
-    ];
+    private readonly AzuriteContainer _container = new AzuriteBuilder()
+        .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(10002))
+        .Build();
 
     public TableServiceClient TableServiceClient { get; private set; } = null!;
-    public bool IsAzuriteAvailable { get; private set; }
     public string ConnectionString { get; private set; } = string.Empty;
 
-    private static string GetEnvironmentConnectionString()
+    // Always available once InitializeAsync completes — no skip logic needed
+    public bool IsAzuriteAvailable => true;
+
+    public async Task InitializeAsync()
     {
-        // Try to get connection string from environment variables
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__AzureTableStorage") 
-            ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
-        
-        return connectionString ?? "UseDevelopmentStorage=true";
+        await _container.StartAsync();
+        ConnectionString = _container.GetConnectionString();
+        TableServiceClient = new TableServiceClient(ConnectionString);
     }
 
-    public AzuriteFixture()
+    public async Task DisposeAsync()
     {
-        // Try each connection string until one works
-        foreach (var connStr in ConnectionStrings)
-        {
-            try
-            {
-                var client = new TableServiceClient(connStr);
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                client.Query(cancellationToken: cts.Token).GetEnumerator().MoveNext();
-                
-                // Success - use this connection
-                TableServiceClient = client;
-                ConnectionString = connStr;
-                IsAzuriteAvailable = true;
-                break;
-            }
-            catch
-            {
-                // Try next connection string
-            }
-        }
-
-        if (!IsAzuriteAvailable)
-        {
-            // Create a dummy client for test skipping purposes
-            TableServiceClient = new TableServiceClient("UseDevelopmentStorage=true");
-        }
+        await _container.DisposeAsync();
     }
 
     /// <summary>
-    /// Ensures Azurite is available
+    /// Kept for backwards compatibility with existing test usages — always a no-op now
+    /// because the container is guaranteed to be running after InitializeAsync.
     /// </summary>
-    public void EnsureAzuriteAvailable()
-    {
-        if (!IsAzuriteAvailable)
-        {
-            throw new XunitException("Azurite is not running. Start with: azurite --silent");
-        }
-    }
+    public void EnsureAzuriteAvailable() { /* Testcontainers guarantees availability */ }
 
     /// <summary>
-    /// Creates a test table and returns the client
+    /// Creates a test table and returns the client.
     /// </summary>
     public async Task<TableClient> CreateTestTableAsync(string tableName)
     {
-        EnsureAzuriteAvailable();
         var tableClient = TableServiceClient.GetTableClient(tableName);
-        
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await tableClient.CreateIfNotExistsAsync(cts.Token);
         return tableClient;
     }
 
     /// <summary>
-    /// Deletes a test table for cleanup
+    /// Deletes a test table for cleanup.
     /// </summary>
     public async Task DeleteTestTableAsync(string tableName)
     {
-        if (!IsAzuriteAvailable) return;
-        
         var tableClient = TableServiceClient.GetTableClient(tableName);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await tableClient.DeleteAsync(cts.Token);
     }
 
     /// <summary>
-    /// Clears all entities from a table
+    /// Clears all entities from a table, creating it first if it does not yet exist.
     /// </summary>
     public async Task ClearTableAsync(string tableName)
     {
-        EnsureAzuriteAvailable();
         var tableClient = TableServiceClient.GetTableClient(tableName);
-
+        await tableClient.CreateIfNotExistsAsync();
         await foreach (var entity in tableClient.QueryAsync<TableEntity>())
         {
             await tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
         }
-    }
-
-    public void Dispose()
-    {
-        // Cleanup if needed
-        GC.SuppressFinalize(this);
     }
 }

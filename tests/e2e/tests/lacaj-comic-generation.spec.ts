@@ -377,7 +377,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     // ============================================
     console.log('📍 Step 1: Enabling location...');
     
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();
@@ -538,7 +538,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     console.log('🎨 Step 6: Checking for comic generation UI...');
     
     // Look for comic-related elements (button or generated comic)
-    const generateButton = page.locator('button', { hasText: /generate|create.*comic/i });
+    const generateButton = page.getByRole('button', { name: /generate|create.*comic/i });
     const comicImageFinal = page.locator('img[alt*="comic"], .comic-panel, [class*="comic"]');
     
     // Check if generate button exists
@@ -664,7 +664,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     });
     
     // Enable location
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     await enableButton.click();
     
@@ -710,7 +710,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     
     // First visit
     console.log('🔄 First visit to La\'Caj...');
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     await enableButton.click();
     
@@ -735,7 +735,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     await page.goto(BASE_URL);
     await page.waitForLoadState('networkidle');
     
-    const enableButton2 = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton2 = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton2).toBeVisible({ timeout: 10000 });
     await enableButton2.click();
     

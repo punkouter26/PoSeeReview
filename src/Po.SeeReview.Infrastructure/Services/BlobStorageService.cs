@@ -17,7 +17,8 @@ public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobServiceClient _blobServiceClient;
     private readonly string _containerName;
-    private static readonly TimeSpan SasTokenDuration = TimeSpan.FromHours(25);
+    // 8 days > 7-day comic cache: SAS token always outlives the cached comic record
+    private static readonly TimeSpan SasTokenDuration = TimeSpan.FromDays(8);
 
     public BlobStorageService(
         BlobServiceClient blobServiceClient,
@@ -116,6 +117,47 @@ public class BlobStorageService : IBlobStorageService
             // Log but don't throw - deletion is best-effort for takedown
             // Actual logging would be done through ILogger if injected
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> BlobExistsAsync(string blobUrl)
+    {
+        if (string.IsNullOrWhiteSpace(blobUrl)) return false;
+        try
+        {
+            var uri = new Uri(blobUrl);
+            var pathParts = uri.AbsolutePath.TrimStart('/').Split('/');
+            var blobName = pathParts.Length >= 2
+                ? string.Join("/", pathParts.Skip(1))
+                : pathParts[0];
+
+            var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+            var blobClient = containerClient.GetBlobClient(blobName);
+            return (await blobClient.ExistsAsync()).Value;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<string> RefreshSasUrlAsync(string existingBlobUrl)
+    {
+        if (string.IsNullOrWhiteSpace(existingBlobUrl))
+            throw new ArgumentNullException(nameof(existingBlobUrl));
+
+        // Strip query string to get the bare blob URL, then extract blob name from path
+        var uri = new Uri(existingBlobUrl);
+        var pathParts = uri.AbsolutePath.TrimStart('/').Split('/');
+        // pathParts[0] = container name, rest = blob name (may include virtual dirs)
+        var blobName = pathParts.Length >= 2
+            ? string.Join("/", pathParts.Skip(1))
+            : pathParts[0];
+
+        var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
+        var blobClient = containerClient.GetBlobClient(blobName);
+        return Task.FromResult(GenerateSasUrl(blobClient));
     }
 
     /// <summary>

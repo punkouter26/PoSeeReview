@@ -31,7 +31,7 @@ test.describe('Restaurant List Tests', () => {
   
   test('HomePage: On load, displays nearby restaurants after enabling location', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -48,7 +48,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('HomePage: Shows restaurant details', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -67,7 +67,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantCard: When clicked, navigates to details page', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -101,7 +101,7 @@ test.describe('Restaurant List Tests', () => {
     });
 
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click button to trigger geolocation and API call
@@ -132,7 +132,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantList: Displays distance from user location', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();
@@ -151,7 +151,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantList: Displays review count', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.locator('button', { hasText: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Enable Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();

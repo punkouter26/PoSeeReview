@@ -25,6 +25,14 @@ public interface ILeaderboardRepository
     Task<LeaderboardEntry?> GetByPlaceIdAsync(string placeId, string region);
 
     /// <summary>
+    /// Gets a leaderboard entry by place ID searching across all regions.
+    /// Used by the cleanup service to check if a blob is still referenced before deletion.
+    /// </summary>
+    /// <param name="placeId">Google Maps Place ID</param>
+    /// <returns>First matching leaderboard entry, or null if not found in any region</returns>
+    Task<LeaderboardEntry?> GetByPlaceIdAsync(string placeId);
+
+    /// <summary>
     /// Inserts or updates a leaderboard entry
     /// Uses upsert semantics - replaces existing entry for same PlaceId/Region
     /// </summary>

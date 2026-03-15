@@ -25,4 +25,18 @@ public interface IBlobStorageService
     /// </summary>
     /// <param name="blobUrl">Full URL of the blob to delete</param>
     Task DeleteBlobAsync(string blobUrl);
+
+    /// <summary>
+    /// Generates a fresh SAS URL for an existing blob whose token may have expired.
+    /// </summary>
+    /// <param name="existingBlobUrl">Current (potentially expired) SAS URL</param>
+    /// <returns>New SAS URL valid for the full SAS token duration</returns>
+    Task<string> RefreshSasUrlAsync(string existingBlobUrl);
+
+    /// <summary>
+    /// Checks whether a blob physically exists in storage.
+    /// Used to detect leaderboard entries whose blobs were purged by the cleanup service.
+    /// </summary>
+    /// <param name="blobUrl">Full URL (with or without SAS) of the blob to check</param>
+    Task<bool> BlobExistsAsync(string blobUrl);
 }

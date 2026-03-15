@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using System.Threading.Tasks;
@@ -44,23 +45,40 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     // Configure Azure Key Vault for secrets (all environments)
-    // Locally, DefaultAzureCredential uses your 'az login' session
+    // Locally, DefaultAzureCredential delegates to 'az login' session.
     if (!isTestMode)
     {
         try
         {
             // Key Vault URL from environment variable or configuration
-            var keyVaultUrl = builder.Configuration["KeyVault:Endpoint"] 
+            var keyVaultUrl = builder.Configuration["KeyVault:Endpoint"]
                 ?? Environment.GetEnvironmentVariable("KeyVault__Endpoint");
-            
+
             if (!string.IsNullOrEmpty(keyVaultUrl))
             {
-                var credential = new DefaultAzureCredential();
+                Log.Information("Connecting to Azure Key Vault: {KeyVaultUrl}", keyVaultUrl);
+
+                // When running locally, skip the managed-identity IMDS probe to avoid a
+                // ~12-second timeout before falling through to AzureCliCredential.
+                var isRunningInAzure = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("IDENTITY_ENDPOINT"))
+                    || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+
+                var credentialOptions = new DefaultAzureCredentialOptions
+                {
+                    ExcludeManagedIdentityCredential = !isRunningInAzure,
+                };
+
+                var credential = new DefaultAzureCredential(credentialOptions);
                 var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
-                
+
+                // Two-pass loading so app-specific secrets always override shared ones:
+                // Pass 1 – shared secrets (AzureOpenAI--, ConnectionStrings--, etc.)
+                builder.Configuration.AddAzureKeyVault(secretClient, new SharedKeyVaultSecretManager());
+                Log.Information("Key Vault: shared secrets registered");
+
+                // Pass 2 – PoSeeReview-specific secrets (override any shared values)
                 builder.Configuration.AddAzureKeyVault(secretClient, new PrefixKeyVaultSecretManager());
-                
-                Log.Information("Azure Key Vault configured: {KeyVaultUrl}", keyVaultUrl);
+                Log.Information("Key Vault: PoSeeReview app-specific secrets registered");
             }
             else
             {
@@ -69,8 +87,8 @@ try
         }
         catch (Exception ex)
         {
-            // Don't fail startup if Key Vault is unavailable - just log warning
-            // This allows app to run with environment variables/app settings instead
+            // Don't fail startup if Key Vault is unavailable — log warning and continue.
+            // The app can still run with environment variables / appsettings overrides.
             Log.Warning(ex, "Failed to configure Azure Key Vault. Falling back to environment variables and app settings.");
         }
     }
@@ -86,8 +104,7 @@ try
 
     // Add services to the container.
     builder.Services.AddControllers();
-    builder.Services.AddOpenApi();
-    
+
     // Always add Application Insights (required by other services for TelemetryClient)
     // Suppress console telemetry output in development
     builder.Services.AddApplicationInsightsTelemetry(options =>
@@ -178,14 +195,42 @@ try
     // Configure OpenAPI (built-in .NET 10 support)
     builder.Services.AddOpenApi();
 
-    // Configure CORS for Blazor WASM
+    // Configure CORS — restrict to known origins
+    var allowedOrigins = builder.Configuration
+        .GetSection("Cors:AllowedOrigins")
+        .Get<string[]>() ?? [];
+
     builder.Services.AddCors(options =>
     {
         options.AddDefaultPolicy(policy =>
         {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
+            if (builder.Environment.IsDevelopment())
+            {
+                // Local dev: allow both Blazor WASM ports and the API itself
+                policy.WithOrigins(
+                    "http://localhost:5000",
+                    "https://localhost:5001",
+                    "http://localhost:5245",
+                    "https://localhost:7175")
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials();
+            }
+            else if (allowedOrigins.Length > 0)
+            {
+                policy.WithOrigins(allowedOrigins)
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials();
+            }
+            else
+            {
+                // Production fallback: same-origin only (API serves Blazor WASM)
+                policy.WithOrigins("https://posee-review.azurecontainerapps.io")
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials();
+            }
         });
     });
 
@@ -199,6 +244,23 @@ try
     // Removed RequestLoggingMiddleware - using Serilog's UseSerilogRequestLogging instead
     app.UseMiddleware<UserAgentValidationMiddleware>();
     app.UseMiddleware<ProblemDetailsMiddleware>();
+
+    // Enrich all log entries with correlation ID, user context, and environment
+    app.Use(async (ctx, next) =>
+    {
+        var correlationId = ctx.Request.Headers["X-Correlation-ID"].FirstOrDefault()
+            ?? Activity.Current?.TraceId.ToString()
+            ?? ctx.TraceIdentifier;
+
+        using (Serilog.Context.LogContext.PushProperty("CorrelationId", correlationId))
+        using (Serilog.Context.LogContext.PushProperty("UserId", ctx.User?.Identity?.Name ?? "anonymous"))
+        using (Serilog.Context.LogContext.PushProperty("SessionId", ctx.Request.Headers["X-Session-ID"].FirstOrDefault() ?? correlationId))
+        using (Serilog.Context.LogContext.PushProperty("Environment", app.Environment.EnvironmentName))
+        {
+            ctx.Response.Headers["X-Correlation-ID"] = correlationId;
+            await next();
+        }
+    });
 
     // Request logging with Serilog (disabled in test mode)
     if (!isTestMode)
@@ -254,10 +316,12 @@ try
         app.MapScalarApiReference(); // Modern API documentation UI
     }
 
-    // Disabled HTTPS redirection for Test environment (E2E tests use HTTP only)
-    // Comment out completely to avoid any redirect issues
-    // app.UseHttpsRedirection();
-    
+    // HTTPS redirection — disabled for Test/E2E environments that operate on HTTP only
+    if (!app.Environment.IsEnvironment("Test"))
+    {
+        app.UseHttpsRedirection();
+    }
+
     app.UseBlazorFrameworkFiles();
     app.UseStaticFiles();
 

@@ -102,8 +102,19 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
-        services.AddHttpClient<IDalleComicService, DalleComicService>()
-            .SetHandlerLifetime(TimeSpan.FromMinutes(5));
+
+        // Named HttpClient used by GeminiComicService — generous timeout for image generation
+        services.AddHttpClient("GeminiApi")
+            .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
+
+        // GeminiComicService replaces the deprecated DALL-E 3 service (HTTP 410 ModelDeprecated)
+        services.AddScoped<IDalleComicService>(sp =>
+            new GeminiComicService(
+                sp.GetRequiredService<IHttpClientFactory>(),
+                sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
+                sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
