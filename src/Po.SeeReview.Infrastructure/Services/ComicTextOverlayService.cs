@@ -27,12 +27,9 @@ public class ComicTextOverlayService : IComicTextOverlayService
     }
 
     /// <summary>
-    /// Extracts dialogue from narrative and overlays it onto comic image
+    /// Adds per-panel English caption overlays using GPT-generated text.
+    /// Each panel gets its own caption box at the top, covering any garbled AI-rendered text.
     /// </summary>
-    /// <param name="imageBytes">Original comic image from DALL-E</param>
-    /// <param name="narrative">Story narrative</param>
-    /// <param name="panelCount">Number of panels in the comic</param>
-    /// <returns>Modified image bytes with text overlay</returns>
     public async Task<byte[]> AddTextOverlayAsync(byte[] imageBytes, string narrative, int panelCount)
     {
         if (imageBytes == null || imageBytes.Length == 0)
@@ -41,198 +38,113 @@ public class ComicTextOverlayService : IComicTextOverlayService
         if (string.IsNullOrWhiteSpace(narrative))
             throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
 
-        _logger.LogInformation("Adding text overlay to {PanelCount}-panel comic", panelCount);
+        _logger.LogInformation("Adding per-panel text overlay to {PanelCount}-panel comic", panelCount);
 
         try
         {
-            // Extract dialogue suggestions from narrative using GPT
-            var dialogues = await ExtractDialogueAsync(narrative, panelCount);
+            // Use GPT to generate unique, naturally flowing English for each panel
+            var dialogues = await _azureOpenAIService.GeneratePanelDialogueAsync(narrative, panelCount);
 
-            if (dialogues == null || dialogues.Count == 0)
-            {
-                _logger.LogInformation("No dialogue extracted, returning original image");
-                return imageBytes;
-            }
-
-            // Load image and add text overlays
             using var image = Image.Load<Rgba32>(imageBytes);
-            using var outputStream = new MemoryStream();
+            var font = GetComicFont(16);
+            var panelBounds = GetPanelBounds(image.Width, image.Height, panelCount);
 
-            // Load font for text rendering
-            var font = GetComicFont(20); // Slightly smaller font for single box
-
-            // Combine all dialogue into a single narrative text
-            var combinedText = string.Join(" ", dialogues.Where(d => !string.IsNullOrWhiteSpace(d)));
-            
-            if (string.IsNullOrWhiteSpace(combinedText))
+            for (int i = 0; i < Math.Min(dialogues.Count, panelBounds.Count); i++)
             {
-                combinedText = narrative; // Fall back to full narrative
+                if (!string.IsNullOrWhiteSpace(dialogues[i]))
+                    DrawPanelCaption(image, dialogues[i], panelBounds[i], font);
             }
 
-            // Draw single text box at top center of entire comic
-            var topCenterPosition = new PointF(image.Width / 2f, 40); // 40px from top
-            DrawTextBubble(image, combinedText, topCenterPosition, font);
-            
-            _logger.LogDebug("Added single text overlay at top: {Text}", combinedText);
-
-            // Save modified image
+            using var outputStream = new MemoryStream();
             image.SaveAsPng(outputStream);
-            var modifiedBytes = outputStream.ToArray();
 
-            _logger.LogInformation("Added {Count} text overlays to comic image", dialogues.Count);
-            return modifiedBytes;
+            _logger.LogInformation("Drew {Count} panel caption(s) onto comic", panelBounds.Count);
+            return outputStream.ToArray();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to add text overlay, returning original image");
-            return imageBytes; // Return original on failure
+            return imageBytes;
         }
     }
 
     /// <summary>
-    /// Extracts dialogue from narrative - creates one dialogue line per panel
+    /// Returns approximate bounding rectangle for each panel.
+    /// Matches the layouts requested by GeminiComicService prompts.
     /// </summary>
-    private Task<List<string>> ExtractDialogueAsync(string narrative, int panelCount)
+    private static List<RectangleF> GetPanelBounds(int width, int height, int panelCount)
     {
-        // For now, split the narrative into parts based on panel count
-        // In a future version, this could use GPT to generate panel-specific dialogue
-        
-        try
-        {
-            // Simple approach: Split narrative into sentences and distribute across panels
-            var sentences = narrative.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
-                .Select(s => s.Trim())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .ToList();
-
-            var dialogues = new List<string>();
-
-            if (sentences.Count == 0)
-            {
-                // Fallback: create generic captions
-                for (int i = 0; i < panelCount; i++)
-                {
-                    dialogues.Add($"Panel {i + 1}");
-                }
-
-                return Task.FromResult(dialogues);
-            }
-
-            // Distribute sentences across panels
-            if (sentences.Count >= panelCount)
-            {
-                // We have enough sentences - take one per panel
-                dialogues = sentences.Take(panelCount).ToList();
-            }
-            else
-            {
-                // Fewer sentences than panels - repeat or split
-                dialogues = sentences.ToList();
-                while (dialogues.Count < panelCount)
-                {
-                    dialogues.Add(sentences[dialogues.Count % sentences.Count]);
-                }
-            }
-
-            // No truncation - let text wrap naturally in the bubble
-
-            _logger.LogInformation("Extracted {Count} dialogue lines for {PanelCount} panels", 
-                dialogues.Count, panelCount);
-
-            return Task.FromResult(dialogues);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to extract dialogue from narrative");
-            
-            // Fallback: create simple captions based on panel number
-            var fallbackDialogues = new List<string>();
-            for (int i = 0; i < panelCount; i++)
-            {
-                fallbackDialogues.Add($"Scene {i + 1}");
-            }
-
-            return Task.FromResult(fallbackDialogues);
-        }
-    }
-
-    /// <summary>
-    /// Calculates center positions for each panel based on layout
-    /// </summary>
-    private List<PointF> CalculatePanelPositions(int width, int height, int panelCount)
-    {
-        var positions = new List<PointF>();
+        const int Gutter = 6;
+        var bounds = new List<RectangleF>();
 
         switch (panelCount)
         {
             case 1:
-                // Single panel - center
-                positions.Add(new PointF(width / 2f, height * 0.75f));
+                bounds.Add(new RectangleF(0, 0, width, height));
                 break;
-
             case 2:
-                // Two panels side-by-side horizontally
-                positions.Add(new PointF(width * 0.25f, height * 0.75f)); // Left panel
-                positions.Add(new PointF(width * 0.75f, height * 0.75f)); // Right panel
+                // Two panels stacked vertically
+                var h2 = (height - Gutter) / 2f;
+                bounds.Add(new RectangleF(0, 0, width, h2));
+                bounds.Add(new RectangleF(0, h2 + Gutter, width, h2));
                 break;
-
             case 3:
-                // Three panels horizontal
-                positions.Add(new PointF(width * 0.17f, height * 0.75f));
-                positions.Add(new PointF(width * 0.50f, height * 0.75f));
-                positions.Add(new PointF(width * 0.83f, height * 0.75f));
+                // Three panels side-by-side horizontally
+                var w3 = (width - 2 * Gutter) / 3f;
+                bounds.Add(new RectangleF(0, 0, w3, height));
+                bounds.Add(new RectangleF(w3 + Gutter, 0, w3, height));
+                bounds.Add(new RectangleF(2 * (w3 + Gutter), 0, w3, height));
                 break;
-
-            case 4:
             default:
                 // Four panels in 2x2 grid
-                positions.Add(new PointF(width * 0.25f, height * 0.33f)); // Top-left
-                positions.Add(new PointF(width * 0.75f, height * 0.33f)); // Top-right
-                positions.Add(new PointF(width * 0.25f, height * 0.75f)); // Bottom-left
-                positions.Add(new PointF(width * 0.75f, height * 0.75f)); // Bottom-right
+                var w4 = (width - Gutter) / 2f;
+                var h4 = (height - Gutter) / 2f;
+                bounds.Add(new RectangleF(0, 0, w4, h4));
+                bounds.Add(new RectangleF(w4 + Gutter, 0, w4, h4));
+                bounds.Add(new RectangleF(0, h4 + Gutter, w4, h4));
+                bounds.Add(new RectangleF(w4 + Gutter, h4 + Gutter, w4, h4));
                 break;
         }
 
-        return positions;
+        return bounds;
     }
 
     /// <summary>
-    /// Draws a text bubble with background at specified position
+    /// Draws a classic comic-style yellow caption box at the top of the panel.
+    /// Covers any garbled AI-rendered text while providing a clean, readable overlay.
     /// </summary>
-    private void DrawTextBubble(Image<Rgba32> image, string text, PointF position, Font font)
+    private void DrawPanelCaption(Image<Rgba32> image, string text, RectangleF panelBounds, Font font)
     {
-        // For top-center placement, allow wide wrapping (most of image width)
-        var maxWrappingWidth = (int)(image.Width * 0.9); // 90% of image width
-        
-        // Measure text size
+        const int Padding = 6;
+        var maxWrappingWidth = panelBounds.Width - Padding * 2 - 8;
+        var origin = new PointF(
+            panelBounds.X + panelBounds.Width / 2f,
+            panelBounds.Y + Padding);
+
         var textOptions = new RichTextOptions(font)
         {
-            Origin = position,
+            Origin = origin,
             HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top, // Align to top so box grows downward
+            VerticalAlignment = VerticalAlignment.Top,
             WrappingLength = maxWrappingWidth
         };
 
         var textBounds = TextMeasurer.MeasureBounds(text, textOptions);
-
-        // Draw white rounded rectangle background with more padding
-        var padding = 15; // Increased padding for better readability
-        var bubbleRect = new RectangleF(
-            textBounds.X - padding,
-            textBounds.Y - padding,
-            textBounds.Width + (padding * 2),
-            textBounds.Height + (padding * 2)
-        );
+        var bgRect = new RectangleF(
+            textBounds.X - Padding,
+            textBounds.Y - Padding,
+            textBounds.Width + Padding * 2,
+            textBounds.Height + Padding * 2);
 
         image.Mutate(ctx =>
         {
-            // Draw bubble background
-            ctx.Fill(Color.White, bubbleRect);
-            ctx.Draw(Color.Black, 3, bubbleRect); // Slightly thicker border for visibility
-
-            // Draw text
+            // Classic comic yellow caption box
+            ctx.Fill(new Color(new Rgba32(255, 255, 180, 245)), bgRect);
+            ctx.Draw(Color.Black, 1.5f, bgRect);
             ctx.DrawText(textOptions, text, Color.Black);
         });
+
+        _logger.LogDebug("Drew panel caption at ({X},{Y}): {Text}", panelBounds.X, panelBounds.Y, text);
     }
 
     /// <summary>

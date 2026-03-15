@@ -156,6 +156,77 @@ Return JSON in this exact format:
 }}";
     }
 
+    /// <summary>
+    /// Generates concise per-panel captions from a comic narrative using GPT.
+    /// Uses low token budget to keep cost minimal.
+    /// </summary>
+    public async Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount)
+    {
+        if (string.IsNullOrWhiteSpace(narrative))
+            return FallbackDialogue(narrative ?? string.Empty, panelCount);
+
+        var chatClient = _openAIClient.GetChatClient(_deploymentName);
+
+        var prompt = $$"""
+            Split this comic narrative into exactly {{panelCount}} short English caption(s), one per panel.
+            Each caption: max 12 words, plain English, flows naturally and tells the story panel-by-panel.
+            Narrative: "{{narrative}}"
+            Return JSON: {"captions": ["caption1", "caption2"]}
+            """;
+
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage("You write succinct comic panel captions in plain English. Return only valid JSON."),
+            new UserChatMessage(prompt)
+        };
+
+        var options = new ChatCompletionOptions
+        {
+            Temperature = 0.6f,
+            MaxOutputTokenCount = 150,
+            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+        };
+
+        try
+        {
+            var response = await _chatRetryPolicy.ExecuteAsync(
+                () => chatClient.CompleteChatAsync(messages, options));
+
+            _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
+
+            var json = response.Value.Content[0].Text;
+            var result = JsonSerializer.Deserialize<PanelCaptionsResult>(json);
+
+            if (result?.Captions is { Count: > 0 } captions)
+            {
+                _logger.LogInformation("Generated {Count} panel captions via GPT", captions.Count);
+                return captions;
+            }
+
+            _logger.LogWarning("GPT returned empty captions, using sentence fallback");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to generate panel captions via GPT, using sentence fallback");
+        }
+
+        return FallbackDialogue(narrative, panelCount);
+    }
+
+    private static List<string> FallbackDialogue(string narrative, int panelCount)
+    {
+        var sentences = narrative
+            .Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToList();
+
+        var result = new List<string>();
+        for (int i = 0; i < panelCount; i++)
+            result.Add(sentences.Count > 0 ? sentences[i % sentences.Count] : $"Scene {i + 1}");
+        return result;
+    }
+
     private sealed class StrangenessAnalysisResult
     {
         [JsonPropertyName("strangenessScore")]
@@ -166,5 +237,11 @@ Return JSON in this exact format:
 
         [JsonPropertyName("narrative")]
         public string Narrative { get; set; } = string.Empty;
+    }
+
+    private sealed class PanelCaptionsResult
+    {
+        [JsonPropertyName("captions")]
+        public List<string>? Captions { get; set; }
     }
 }
