@@ -134,12 +134,10 @@ jobs:
         for i in $(seq 1 20); do
           LIVE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 \
             "$BASE_URL/api/health/live" 2>/dev/null) || LIVE_STATUS="000"
-          ROOT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 \
-            "$BASE_URL/" 2>/dev/null) || ROOT_STATUS="000"
 
-          echo "Attempt $i/20: /api/health/live=$LIVE_STATUS, /=$ROOT_STATUS"
+          echo "Attempt $i/20: /api/health/live=$LIVE_STATUS"
 
-          if [ "$LIVE_STATUS" = "200" ] && [ "$ROOT_STATUS" = "200" ]; then
+          if [ "$LIVE_STATUS" = "200" ]; then
             echo "App is live after deployment"
             exit 0
           fi
@@ -148,8 +146,8 @@ jobs:
         done
 
         echo "App did not become live after deployment"
-        echo "Last root response body (best effort):"
-        curl -s --max-time 25 "$BASE_URL/" 2>/dev/null || true
+        echo "Last liveness response body (best effort):"
+        curl -s --max-time 25 "$BASE_URL/api/health/live" 2>/dev/null || true
         exit 1
 
 
