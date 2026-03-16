@@ -107,7 +107,7 @@ jobs:
           echo "Deployment attempt $attempt of 3..."
 
           set +e
-          DEPLOY_OUTPUT=$(az webapp deploy \
+          DEPLOY_OUTPUT=$(timeout 900 az webapp deploy \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --src-path publish.zip \
@@ -120,6 +120,12 @@ jobs:
 
           if [ $DEPLOY_EXIT -eq 0 ]; then
             echo "Deployment submitted successfully on attempt $attempt"
+            DEPLOY_SUBMITTED=true
+            break
+          fi
+
+          if [ $DEPLOY_EXIT -eq 124 ]; then
+            echo "WARNING: Deploy command timed out after 15 minutes on attempt $attempt; continuing to health verification"
             DEPLOY_SUBMITTED=true
             break
           fi
