@@ -95,50 +95,70 @@ jobs:
         done
         echo "Kudu SCM never became responsive after 12 minutes — attempting deploy anyway"
 
-    # Use az webapp deploy --async true so the CLI returns immediately after upload.
-    # --async true avoids the secondary 10-min wait for container health, which also 504s.
-    # Treat HTTP 504 from deploy submission as transient: submission can still succeed server-side.
+    # Deploy using Kudu REST API directly via curl instead of az webapp deploy.
+    # az webapp deploy (Python-based) hangs indefinitely on cold-start Kudu connections because
+    # the underlying httpx/requests client ignores SIGTERM and has no effective connect timeout.
+    # curl --max-time gives us a hard wall-clock limit that is reliably enforced.
+    # We POST to /api/zipdeploy?isAsync=true so Kudu queues the deploy without waiting for
+    # the full container restart (which would time out on any reasonable --max-time).
+    # Auth: fetch site-level publishing credentials via ARM then use HTTP Basic auth on Kudu.
     - name: Deploy to App Service
       run: |
         zip -qr publish.zip ./publish
 
+        # Fetch site-level publishing credentials via ARM API.
+        # These are separate from deployment profiles and work with HTTP Basic auth on Kudu.
+        CREDS_JSON=$(az webapp deployment list-publishing-credentials \
+          --name ${{ env.APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --query "{user:publishingUserName, pass:publishingPassword}" \
+          -o json)
+        KUDU_USER=$(echo "$CREDS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['user'])")
+        KUDU_PASS=$(echo "$CREDS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['pass'])")
+
+        KUDU_URL="https://${{ env.APP_NAME }}.scm.azurewebsites.net/api/zipdeploy?isAsync=true"
+
         DEPLOY_SUBMITTED=false
         for attempt in 1 2 3; do
-          echo "Deployment attempt $attempt of 3..."
+          echo "Deployment attempt $attempt of 3 via Kudu REST API..."
 
           set +e
-          DEPLOY_OUTPUT=$(timeout 900 az webapp deploy \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --src-path publish.zip \
-            --type zip \
-            --async true 2>&1)
-          DEPLOY_EXIT=$?
+          curl -sS \
+            --max-time 300 \
+            -o /tmp/deploy_response.txt \
+            -w "%{http_code}" \
+            -X POST "$KUDU_URL" \
+            -u "$KUDU_USER:$KUDU_PASS" \
+            -H "Content-Type: application/zip" \
+            --data-binary @publish.zip \
+            > /tmp/deploy_status.txt 2>/tmp/deploy_error.txt
+          CURL_EXIT=$?
           set -e
 
-          echo "$DEPLOY_OUTPUT"
+          HTTP_STATUS=$(cat /tmp/deploy_status.txt 2>/dev/null || echo "000")
+          echo "HTTP status: $HTTP_STATUS (curl exit: $CURL_EXIT)"
+          cat /tmp/deploy_response.txt 2>/dev/null || true
+          if [ -s /tmp/deploy_error.txt ]; then
+            echo "curl stderr: $(cat /tmp/deploy_error.txt)"
+          fi
 
-          if [ $DEPLOY_EXIT -eq 0 ]; then
-            echo "Deployment submitted successfully on attempt $attempt"
+          if [ "$HTTP_STATUS" = "202" ] || [ "$HTTP_STATUS" = "200" ]; then
+            echo "Deployment submitted successfully (HTTP $HTTP_STATUS) on attempt $attempt"
             DEPLOY_SUBMITTED=true
             break
           fi
 
-          if [ $DEPLOY_EXIT -eq 124 ]; then
-            echo "WARNING: Deploy command timed out after 15 minutes on attempt $attempt; continuing to health verification"
-            DEPLOY_SUBMITTED=true
-            break
-          fi
-
-          if echo "$DEPLOY_OUTPUT" | grep -q "Status Code: 504"; then
-            echo "WARNING: Deploy API returned 504 on attempt $attempt; treating as transient and continuing to health verification"
-            DEPLOY_SUBMITTED=true
-            break
+          if [ "$CURL_EXIT" = "28" ]; then
+            echo "WARNING: curl timed out (5 min) uploading on attempt $attempt"
+          elif [ -z "$HTTP_STATUS" ] || [ "$HTTP_STATUS" = "000" ]; then
+            echo "WARNING: connection failed on attempt $attempt"
+          else
+            echo "WARNING: Deploy returned HTTP $HTTP_STATUS on attempt $attempt"
           fi
 
           if [ $attempt -lt 3 ]; then
             WAIT=$((attempt * 60))
-            echo "Deployment failed, waiting ${WAIT}s before retry (attempt $((attempt+1)))..."
+            echo "Waiting ${WAIT}s before retry (attempt $((attempt+1)))..."
             sleep $WAIT
           fi
         done
