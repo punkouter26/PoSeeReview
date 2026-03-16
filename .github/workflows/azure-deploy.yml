@@ -96,18 +96,18 @@ jobs:
         echo "Kudu SCM never became responsive after 12 minutes — attempting deploy anyway"
 
     # Deploy using Kudu REST API directly via curl instead of az webapp deploy.
-    # az webapp deploy (Python-based) hangs indefinitely on cold-start Kudu connections because
-    # the underlying httpx/requests client ignores SIGTERM and has no effective connect timeout.
-    # curl --max-time gives us a hard wall-clock limit that is reliably enforced.
-    # We POST to /api/zipdeploy?isAsync=true so Kudu queues the deploy without waiting for
-    # the full container restart (which would time out on any reasonable --max-time).
-    # Auth: fetch site-level publishing credentials via ARM then use HTTP Basic auth on Kudu.
+    # az webapp deploy (Python-based) hangs indefinitely because despite --async true
+    # the CLI internally polls for deployment completion with no effective timeout.
+    # We call the Kudu /api/zipdeploy endpoint with curl --max-time 300 so we have
+    # a hard wall-clock limit that is always enforced regardless of server behaviour.
+    # isAsync=true tells Kudu to accept the upload and return 202 immediately without
+    # waiting for the full container restart (which would timeout anyway).
+    # Auth: site-level publishing credentials via HTTP Basic auth (SCM basic auth enabled).
     - name: Deploy to App Service
       run: |
         zip -qr publish.zip ./publish
 
         # Fetch site-level publishing credentials via ARM API.
-        # These are separate from deployment profiles and work with HTTP Basic auth on Kudu.
         CREDS_JSON=$(az webapp deployment list-publishing-credentials \
           --name ${{ env.APP_NAME }} \
           --resource-group ${{ env.RESOURCE_GROUP }} \
@@ -142,6 +142,7 @@ jobs:
             echo "curl stderr: $(cat /tmp/deploy_error.txt)"
           fi
 
+          # 200 = sync success, 202 = accepted/async (isAsync=true), both mean submitted
           if [ "$HTTP_STATUS" = "202" ] || [ "$HTTP_STATUS" = "200" ]; then
             echo "Deployment submitted successfully (HTTP $HTTP_STATUS) on attempt $attempt"
             DEPLOY_SUBMITTED=true
@@ -149,7 +150,7 @@ jobs:
           fi
 
           if [ "$CURL_EXIT" = "28" ]; then
-            echo "WARNING: curl timed out (5 min) uploading on attempt $attempt"
+            echo "WARNING: curl timed out (5 min) on attempt $attempt"
           elif [ -z "$HTTP_STATUS" ] || [ "$HTTP_STATUS" = "000" ]; then
             echo "WARNING: connection failed on attempt $attempt"
           else
