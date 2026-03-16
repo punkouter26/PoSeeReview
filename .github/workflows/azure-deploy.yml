@@ -10,6 +10,7 @@ env:
   APP_NAME: app-poseereview
   RESOURCE_GROUP: PoSeeReview
   DOTNET_VERSION: '10.0.x'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 permissions:
   id-token: write
@@ -20,12 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+    - uses: actions/checkout@v6.0.2
 
     - name: Setup .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5.2.0
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
@@ -49,7 +48,7 @@ jobs:
           --no-restore
 
     - name: Azure Login (OIDC)
-      uses: azure/login@v2
+      uses: azure/login@v2.3.0
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
