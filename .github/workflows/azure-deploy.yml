@@ -72,11 +72,20 @@ jobs:
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --settings WEBSITES_CONTAINER_START_TIME_LIMIT=900
 
+    # Use az webapp deploy --async true instead of azure/webapps-deploy@v3.
+    # The v3 action waits for OneDeploy to complete AND for the new container to become
+    # healthy — a 10+ min wait that hits Kudu's 10-min SCM timeout, causing 504 failures.
+    # --async true uploads the zip and returns immediately; Azure handles the container
+    # lifecycle in the background. The app is already confirmed healthy after startup.
     - name: Deploy to App Service
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ env.APP_NAME }}
-        package: ./publish
+      run: |
+        zip -r publish.zip ./publish
+        az webapp deploy \
+          --name ${{ env.APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --src-path publish.zip \
+          --type zip \
+          --async true
 
 
 
