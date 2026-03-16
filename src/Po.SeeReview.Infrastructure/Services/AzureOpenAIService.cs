@@ -103,9 +103,9 @@ public class AzureOpenAIService : IAzureOpenAIService
         var result = JsonSerializer.Deserialize<StrangenessAnalysisResult>(jsonResponse)
             ?? throw new InvalidOperationException("Failed to parse OpenAI response");
 
-        // Clamp score to 0-100 range and panel count to 1-4
+        // Clamp score to 0-100 range and panel count to 1-2
         var score = Math.Clamp(result.StrangenessScore, 0, 100);
-        var panelCount = Math.Clamp(result.PanelCount, 1, 4);
+        var panelCount = Math.Clamp(result.PanelCount, 1, 2);
 
         if (response.Value.Usage is { } usage)
         {
@@ -139,11 +139,9 @@ public class AzureOpenAIService : IAzureOpenAIService
 - 81-100: Extremely bizarre, dreamlike, or nonsensical content
 
 Also write a concise narrative paragraph (1-3 sentences) summarizing the strangest aspects for comic generation.
-Determine the optimal number of panels (1-4) for the comic based on narrative complexity:
+Determine the optimal number of panels (1 or 2) for the comic based on narrative complexity:
 - 1 panel: Single moment, simple observation, or quick joke
 - 2 panels: Before/after, cause/effect, or simple contrast
-- 3 panels: Setup, escalation, punchline
-- 4 panels: Full story arc with setup, development, climax, resolution
 
 Reviews:
 {reviewsText}
@@ -151,7 +149,7 @@ Reviews:
 Return JSON in this exact format:
 {{
   ""strangenessScore"": 75,
-  ""panelCount"": 3,
+  ""panelCount"": 2,
   ""narrative"": ""A concise summary of the strangest elements suitable for a comic strip.""
 }}";
     }
@@ -168,15 +166,16 @@ Return JSON in this exact format:
         var chatClient = _openAIClient.GetChatClient(_deploymentName);
 
         var prompt = $$"""
-            Split this comic narrative into exactly {{panelCount}} short English caption(s), one per panel.
-            Each caption: max 12 words, plain English, flows naturally and tells the story panel-by-panel.
+            Split this comic narrative into exactly {{panelCount}} short situation description(s), one per panel.
+            Each description: max 15 words, written as a narrator caption describing what is happening in that scene (e.g. "A customer waits 7 minutes with no staff around.").
+            Use present tense. Describe the scene objectively — do NOT write dialogue or speech.
             Narrative: "{{narrative}}"
             Return JSON: {"captions": ["caption1", "caption2"]}
             """;
 
         var messages = new List<ChatMessage>
         {
-            new SystemChatMessage("You write succinct comic panel captions in plain English. Return only valid JSON."),
+            new SystemChatMessage("You write short narrator situation descriptions for comic panels (not dialogue). Each description objectively states what is happening in the scene. Return only valid JSON."),
             new UserChatMessage(prompt)
         };
 
@@ -233,7 +232,7 @@ Return JSON in this exact format:
         public int StrangenessScore { get; set; }
 
         [JsonPropertyName("panelCount")]
-        public int PanelCount { get; set; } = 4; // Default to 4 panels if not specified
+        public int PanelCount { get; set; } = 2; // Default to 2 panels
 
         [JsonPropertyName("narrative")]
         public string Narrative { get; set; } = string.Empty;

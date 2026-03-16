@@ -1,15 +1,14 @@
 using Azure;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
-using Po.SeeReview.Core.Interfaces;
 
 namespace Po.SeeReview.Infrastructure.Repositories;
 
 /// <summary>
-/// Base implementation of Table Storage repository
+/// Base class for Azure Table Storage repositories.
 /// </summary>
 /// <typeparam name="T">Entity type that implements ITableEntity</typeparam>
-public class TableStorageRepository<T> : ITableStorageRepository<T> where T : class, ITableEntity, new()
+public class TableStorageRepository<T> where T : class, ITableEntity, new()
 {
     protected readonly TableClient _tableClient;
     protected readonly ILogger<TableStorageRepository<T>> _logger;

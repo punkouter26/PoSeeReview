@@ -13,34 +13,59 @@
     <header class="app-header">
         <h1>PoSeeReview</h1>
         <p class="tagline">Discover the strangest restaurant stories near you</p>
+        <a href="/leaderboard" class="leaderboard-hero-link">🏆 Hall of Fame — See the Weirdest Stories</a>
     </header>
 
-    @if (!_locationGranted && !_locationDenied && !_isLoading)
+    @if (_flowState == LocationFlowState.Idle)
     {
         <div class="location-prompt">
             <FluentCard class="prompt-card">
                 <h2>Find Nearby Restaurants</h2>
-                <p>We need your location to discover restaurants with strange reviews</p>
-                <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync">
-                    Enable Location
+                <p>Use your location for best results, or search by city&nbsp;/&nbsp;ZIP code below</p>
+                <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync" class="location-btn">
+                    Use My Location
                 </FluentButton>
+                <div class="divider-or"><span>or</span></div>
+                <div class="search-row">
+                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="e.g. Seattle, 10001, Chicago" @onkeydown="HandleSearchKeyDown" />
+                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))">
+                        Search
+                    </FluentButton>
+                </div>
             </FluentCard>
         </div>
     }
 
-    @if (_isLoading)
+    @if (_flowState == LocationFlowState.Loading)
     {
-        <LoadingIndicator Message="@_loadingMessage" />
+        <div class="restaurants-grid">
+            <p class="results-info">@_loadingMessage</p>
+            @for (var i = 0; i < 3; i++)
+            {
+                <div class="skeleton-card">
+                    <div class="sk-row">
+                        <div class="sk-block sk-title"></div>
+                        <div class="sk-block sk-badge"></div>
+                    </div>
+                    <div class="sk-block sk-address"></div>
+                    <div class="sk-row sk-footer-row">
+                        <div class="sk-block sk-pill"></div>
+                        <div class="sk-block sk-pill"></div>
+                    </div>
+                    <div class="sk-block sk-btn"></div>
+                </div>
+            }
+        </div>
     }
 
-    @if (_locationDenied)
+    @if (_flowState == LocationFlowState.Denied)
     {
         <div class="location-search-fallback">
             <FluentCard class="prompt-card">
                 <h2>Search by Location</h2>
                 <p>Enter a city name or ZIP code to discover restaurants with strange reviews</p>
                 <div class="search-row">
-                    <FluentTextField @bind-Value="_searchQuery" Placeholder="e.g. Seattle, 10001, Chicago" @onkeydown="HandleSearchKeyDown" />
+                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="e.g. Seattle, 10001, Chicago" @onkeydown="HandleSearchKeyDown" />
                     <FluentButton Appearance="Appearance.Accent" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))">
                         Search
                     </FluentButton>
@@ -50,7 +75,7 @@
         </div>
     }
 
-    @if (_hasError && !_locationDenied)
+    @if (_flowState == LocationFlowState.Error)
     {
         <div class="error-message">
             <h2>Something Went Wrong</h2>
@@ -61,7 +86,13 @@
     @if (_restaurants.Count > 0)
     {
         <div class="restaurants-grid">
-            <p class="results-info">Found @_totalCount restaurants near you</p>
+            <div class="results-chip-bar">
+                <span class="search-chip">
+                    &#128205; @_lastSearch
+                    <button class="chip-clear" @onclick="ClearSearch" title="New search">&#215;</button>
+                </span>
+                <span class="results-count">@_totalCount restaurants</span>
+            </div>
             @foreach (var restaurant in _restaurants)
             {
                 <RestaurantCard 
@@ -73,15 +104,14 @@
 </div>
 
 @code {
-    private bool _locationGranted = false;
-    private bool _locationDenied = false;
-    private bool _isLoading = false;
-    private bool _hasError = false;
+    private enum LocationFlowState { Idle, Loading, Denied, Error, Ready }
+    private LocationFlowState _flowState = LocationFlowState.Idle;
     private string _loadingMessage = "Getting your location...";
     private string _errorMessage = string.Empty;
     private List<RestaurantDto> _restaurants = new();
     private int _totalCount = 0;
     private string _searchQuery = string.Empty;
+    private string _lastSearch = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,9 +128,7 @@
 
     private async Task RequestLocationAsync()
     {
-        _isLoading = true;
-        _hasError = false;
-        _locationDenied = false;
+        _flowState = LocationFlowState.Loading;
         _loadingMessage = "Getting your location...";
         StateHasChanged();
 
@@ -110,24 +138,23 @@
 
             if (!result.Success)
             {
-                _locationDenied = result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase);
-                _errorMessage = result.ErrorMessage;
-                _hasError = true;
-                
-                // If denied, clear the saved preference
-                if (_locationDenied)
+                if (result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase))
                 {
+                    _flowState = LocationFlowState.Denied;
                     await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "false");
                 }
-                
+                else
+                {
+                    _errorMessage = result.ErrorMessage;
+                    _flowState = LocationFlowState.Error;
+                }
+
                 return;
             }
 
-            _locationGranted = true;
-            
             // Save user preference that location is enabled
             await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "true");
-            
+
             _loadingMessage = "Finding nearby restaurants...";
             StateHasChanged();
 
@@ -136,11 +163,12 @@
         catch (Exception)
         {
             _errorMessage = "Unable to access your location. Please try again.";
-            _hasError = true;
+            _flowState = LocationFlowState.Error;
         }
         finally
         {
-            _isLoading = false;
+            if (_flowState == LocationFlowState.Loading)
+                _flowState = LocationFlowState.Ready;
             StateHasChanged();
         }
     }
@@ -154,17 +182,19 @@
             if (response == null || response.Restaurants.Count == 0)
             {
                 _errorMessage = "No restaurants found nearby. Try a different location.";
-                _hasError = true;
+                _flowState = LocationFlowState.Error;
                 return;
             }
 
             _restaurants = response.Restaurants;
             _totalCount = response.TotalCount;
+            _lastSearch = "Nearby";
+            _flowState = LocationFlowState.Ready;
         }
         catch (Exception)
         {
             _errorMessage = "Failed to load restaurants. Please try again later.";
-            _hasError = true;
+            _flowState = LocationFlowState.Error;
         }
     }
 
@@ -173,8 +203,7 @@
         if (string.IsNullOrWhiteSpace(_searchQuery))
             return;
 
-        _isLoading = true;
-        _hasError = false;
+        _flowState = LocationFlowState.Loading;
         _loadingMessage = $"Searching restaurants near {_searchQuery}...";
         StateHasChanged();
 
@@ -185,23 +214,24 @@
             if (response == null || response.Restaurants.Count == 0)
             {
                 _errorMessage = "No restaurants found for that location. Try a different city or ZIP code.";
-                _hasError = true;
+                _flowState = LocationFlowState.Error;
                 return;
             }
 
             _restaurants = response.Restaurants;
             _totalCount = response.TotalCount;
-            _locationGranted = true;
-            _locationDenied = false;
+            _lastSearch = _searchQuery;
+            _flowState = LocationFlowState.Ready;
         }
         catch (Exception)
         {
             _errorMessage = "Failed to search restaurants. Please try again later.";
-            _hasError = true;
+            _flowState = LocationFlowState.Error;
         }
         finally
         {
-            _isLoading = false;
+            if (_flowState == LocationFlowState.Loading)
+                _flowState = LocationFlowState.Ready;
             StateHasChanged();
         }
     }
@@ -217,5 +247,14 @@
     private void HandleRestaurantClick(RestaurantDto restaurant)
     {
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
+    }
+
+    private void ClearSearch()
+    {
+        _restaurants = new();
+        _totalCount = 0;
+        _lastSearch = string.Empty;
+        _searchQuery = string.Empty;
+        _flowState = LocationFlowState.Idle;
     }
 }

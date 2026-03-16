@@ -1,0 +1,78 @@
+sequenceDiagram
+  actor User
+  participant Browser as "Blazor WASM"
+  participant UA as "UserAgent Middleware"
+  participant RL as "Rate Limiter"
+  participant API as ".NET 10 API"
+  participant Cache as "Azure Table Storage"
+  participant Blob as "Azure Blob Storage"
+  participant GM as "Google Maps API"
+  participant OAI as "Azure OpenAI"
+  participant GEM as "Google Gemini"
+
+  User->>Browser: Open app — grant GPS or type city search
+  Browser->>UA: GET /api/restaurants/nearby?lat&lon
+  UA->>UA: Validate User-Agent (block curl, wget, python-requests, Postman)
+  alt Invalid User-Agent
+    UA-->>Browser: 403 Forbidden
+  else Valid browser agent
+    UA->>RL: Check global rate limit (60 req/min/IP)
+    alt Rate limit exceeded
+      RL-->>Browser: 429 Too Many Requests, Retry-After: 60
+    else Within limit
+      RL->>API: Forward request
+      API->>Cache: Check PoSeeReviewRestaurants (7-day TTL)
+      alt Cache hit
+        Cache-->>API: Cached RestaurantEntity
+      else Cache miss
+        API->>GM: Search nearby places 5km radius
+        GM-->>API: Restaurant list with reviews
+        API->>Cache: Store RestaurantEntity
+      end
+      API-->>Browser: NearbyRestaurantsResponse
+      Browser-->>User: Restaurant grid (skeleton loading then loaded)
+    end
+  end
+
+  User->>Browser: Click restaurant card to generate comic
+  Browser->>RL: POST /api/comics/{placeId}
+  RL->>RL: Check comics rate limit (3 req/min/IP)
+  alt Comics rate limit exceeded
+    RL-->>Browser: 429 Too Many Requests
+  else Within limit
+    RL->>API: Forward request
+    API->>Cache: Check PoSeeReviewComics by PlaceId
+    alt Cached comic within 7-day TTL
+      Cache-->>API: ComicEntity (IsCached=true)
+    else New generation required
+      API->>GM: Fetch up to 5 reviews (1-star prioritised)
+      GM-->>API: Review texts with ratings
+      Note over API: Throw InsufficientReviewsException if fewer than 5 reviews
+      API->>OAI: Analyse reviews — strangeness score and narrative
+      OAI-->>API: StrangenessScore 0-100 and narrative paragraph
+      API->>GEM: Generate four-panel PNG from narrative
+      GEM-->>API: PNG image bytes
+      API->>Blob: Upload comic PNG to comics container
+      Blob-->>API: Blob URL
+      API->>Cache: Save ComicEntity (ExpiresAt = CreatedAt plus 7d)
+      alt StrangenessScore >= 20
+        API->>Cache: Upsert LeaderboardEntry in PoSeeReviewLeaderboard
+      end
+    end
+    API-->>Browser: ComicDto
+    Browser-->>User: Comic strip image, strangeness score ring, share button
+  end
+
+  User->>Browser: Browse Hall of Fame
+  Browser->>API: GET /api/leaderboard?region=US&limit=10
+  API->>Cache: Query PoSeeReviewLeaderboard top N by strangeness score
+  Cache-->>API: LeaderboardEntries ranked by score
+  API-->>Browser: LeaderboardResponse
+  Browser-->>User: Ranked entries with medal icons, auto-refresh every 30s
+
+  User->>Browser: Submit takedown request
+  Browser->>API: POST /api/takedowns
+  API->>Cache: Delete ComicEntity from PoSeeReviewComics
+  API->>Blob: Delete comic PNG from blob storage
+  API->>Cache: Delete LeaderboardEntry from PoSeeReviewLeaderboard
+  API-->>Browser: 202 Accepted

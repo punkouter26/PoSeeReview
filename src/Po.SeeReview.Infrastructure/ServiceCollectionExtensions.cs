@@ -33,6 +33,8 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(AzureStorageOptions.SectionName));
         services.Configure<AzureOpenAIOptions>(
             configuration.GetSection(AzureOpenAIOptions.SectionName));
+        services.Configure<ComicOptions>(
+            configuration.GetSection(ComicOptions.SectionName));
 
         // Register Azure Table Storage client
         // Try connection string first, then fall back to environment variable for Azure App Service
@@ -108,8 +110,7 @@ public static class ServiceCollectionExtensions
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
             .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
 
-        // GeminiComicService replaces the deprecated DALL-E 3 service (HTTP 410 ModelDeprecated)
-        services.AddScoped<IDalleComicService>(sp =>
+        services.AddScoped<IImageGenerationService>(sp =>
             new GeminiComicService(
                 sp.GetRequiredService<IHttpClientFactory>(),
                 sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),

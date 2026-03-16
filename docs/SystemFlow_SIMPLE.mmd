@@ -1,0 +1,37 @@
+flowchart TD
+  A["Open App\nGPS or City Search"]
+  B["Restaurant Discovery\nGoogle Maps 5km radius\nCache: 7-day TTL"]
+  C["Click Restaurant\nPOST /api/comics/{placeId}"]
+  D{"Cached Comic\nwithin 7-day TTL?"}
+  E["Return Cached Comic\nisCached = true"]
+  F["AI Pipeline\nOpenAI: score + narrative\nGemini: PNG generation"]
+  G["Store in Azure Storage\nBlob: PNG image\nTable: comic metadata"]
+  H["View Comic Strip\nStrangeness Score Ring + Share"]
+  I{"Score >= 20?"}
+  J["Update Hall of Fame\nLeaderboard Entry"]
+  K["Takedown Request\nPOST /api/takedowns\nRemoves comic, blob, entry"]
+
+  A --> B
+  B --> C
+  C --> D
+  D -->|Yes| E
+  D -->|No| F
+  F --> G
+  G --> H
+  E --> H
+  H --> I
+  I -->|Yes| J
+  I -->|No| H
+  H --> K
+
+  style A fill:#1558b0,stroke:#0d3c6e,color:#fff
+  style B fill:#085f08,stroke:#064004,color:#fff
+  style C fill:#5c2d91,stroke:#3e1a6e,color:#fff
+  style D fill:#8e1a1a,stroke:#600f0f,color:#fff
+  style E fill:#a03000,stroke:#722200,color:#fff
+  style F fill:#00363a,stroke:#001e20,color:#fff
+  style G fill:#0d3c6e,stroke:#091f3a,color:#fff
+  style H fill:#0d0f4b,stroke:#050630,color:#fff
+  style I fill:#8e1a1a,stroke:#600f0f,color:#fff
+  style J fill:#3e1a6e,stroke:#1e0a3a,color:#fff
+  style K fill:#424242,stroke:#212121,color:#fff

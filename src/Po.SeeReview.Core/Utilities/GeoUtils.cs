@@ -38,11 +38,4 @@ public static class GeoUtils
         return degrees * Math.PI / 180;
     }
 
-    /// <summary>
-    /// Converts radians to degrees.
-    /// </summary>
-    public static double RadiansToDegrees(double radians)
-    {
-        return radians * 180 / Math.PI;
-    }
 }

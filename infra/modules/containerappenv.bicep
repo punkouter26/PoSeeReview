@@ -10,9 +10,6 @@ param tags object
 @description('Resource token for unique naming')
 param resourceToken string
 
-@description('Log Analytics Workspace ID for Container Apps Environment')
-param logAnalyticsWorkspaceId string
-
 @description('Log Analytics Workspace Customer ID')
 param logAnalyticsWorkspaceCustomerId string
 

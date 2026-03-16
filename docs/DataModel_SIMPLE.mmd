@@ -1,0 +1,31 @@
+erDiagram
+  RESTAURANT {
+    string PlaceId PK
+    string Name
+    string Region
+    float AverageRating
+  }
+
+  REVIEW {
+    string AuthorName
+    int Rating
+    int StrangenessScore
+  }
+
+  COMIC {
+    string Id PK
+    string PlaceId FK
+    int StrangenessScore
+    datetime ExpiresAt
+    bool IsCached
+  }
+
+  LEADERBOARD_ENTRY {
+    string PlaceId PK
+    string Region PK
+    int StrangenessScore
+  }
+
+  RESTAURANT ||--o{ REVIEW : "has"
+  RESTAURANT ||--o| COMIC : "generates"
+  COMIC ||--o| LEADERBOARD_ENTRY : "eligible when score gte 20"

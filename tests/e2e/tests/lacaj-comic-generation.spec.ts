@@ -11,7 +11,7 @@ import { test, expect } from '@playwright/test';
  * - Azure OpenAI API key must be configured for comic generation
  */
 
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = 'https://localhost:5001';
 
 // La'Caj Seafood coordinates (Camp Springs, MD)
 const LACAJ_LOCATION = {
@@ -20,9 +20,23 @@ const LACAJ_LOCATION = {
   placeId: 'ChIJB0Oz_rC9t4kRrRgfCQ27RKQ'
 };
 
-test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
+test.describe.serial('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
   
+  const jsErrors: string[] = [];
+  // Tracks whether any comics POST within this test was rate-limited (HTTP 429).
+  let rateLimitedInTest = false;
+
   test.beforeEach(async ({ context, page }) => {
+    jsErrors.length = 0;
+    rateLimitedInTest = false;
+    page.on('pageerror', (err) => jsErrors.push(err.message));
+    // Monitor 429 responses from the comics API so navigation tests can skip gracefully.
+    page.on('response', (response) => {
+      if (response.url().includes('/api/comics') && response.status() === 429) {
+        rateLimitedInTest = true;
+        console.log('⚠️ Rate limit hit (429) on comics API — navigation tests will be skipped');
+      }
+    });
     // Grant geolocation permission and set location near La'Caj Seafood
     await context.grantPermissions(['geolocation']);
     await context.setGeolocation({
@@ -37,6 +51,13 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     
     // Give Blazor time to initialize
     await page.waitForTimeout(2000);
+  });
+
+  test.afterEach(async () => {
+    const fatal = jsErrors.filter(e => e.includes('Failed to start platform') || e.includes('failed 404'));
+    if (fatal.length > 0) {
+      throw new Error(`Blazor WASM boot failed — JS errors detected:\n${fatal.slice(0, 3).join('\n')}`);
+    }
   });
 
   test('Story Generation: Verify API generates narrative from reviews', async ({ page }) => {
@@ -377,7 +398,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     // ============================================
     console.log('📍 Step 1: Enabling location...');
     
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();
@@ -430,6 +451,10 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     console.log('🖱️ Step 4: Clicking La\'Caj Seafood card...');
     
     await lacajCard.click();
+    
+    // Brief pause so the 429 response listener in beforeEach has time to fire.
+    await page.waitForTimeout(1500);
+    test.skip(rateLimitedInTest, 'Comics API rate-limited (429) — re-run after rate limit window expires');
     
     // Wait for navigation
     await page.waitForURL(/\/comic\/.+/, { timeout: 10000 });
@@ -664,7 +689,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     });
     
     // Enable location
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     await enableButton.click();
     
@@ -678,6 +703,10 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     });
     await expect(lacajCard).toBeVisible({ timeout: 10000 });
     await lacajCard.click();
+    
+    // Brief pause so the 429 response listener in beforeEach has time to fire.
+    await page.waitForTimeout(1500);
+    test.skip(rateLimitedInTest, 'Comics API rate-limited (429) — re-run after rate limit window expires');
     
     // Wait for navigation and API calls
     await page.waitForURL(/\/comic\/.+/, { timeout: 10000 });
@@ -710,7 +739,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     
     // First visit
     console.log('🔄 First visit to La\'Caj...');
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     await enableButton.click();
     
@@ -722,6 +751,10 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     });
     await expect(lacajCard).toBeVisible({ timeout: 10000 });
     await lacajCard.click();
+    
+    // Brief pause so the 429 response listener in beforeEach has time to fire.
+    await page.waitForTimeout(1500);
+    test.skip(rateLimitedInTest, 'Comics API rate-limited (429) — re-run after rate limit window expires');
     
     await page.waitForURL(/\/comic\/.+/, { timeout: 10000 });
     await page.waitForLoadState('networkidle');
@@ -735,7 +768,7 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     await page.goto(BASE_URL);
     await page.waitForLoadState('networkidle');
     
-    const enableButton2 = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton2 = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton2).toBeVisible({ timeout: 10000 });
     await enableButton2.click();
     
@@ -747,6 +780,10 @@ test.describe('La\'Caj Seafood Comic Generation - Full E2E Flow', () => {
     });
     await expect(lacajCard2).toBeVisible({ timeout: 10000 });
     await lacajCard2.click();
+    
+    // Brief pause so the 429 response listener in beforeEach has time to fire.
+    await page.waitForTimeout(1500);
+    test.skip(rateLimitedInTest, 'Comics API rate-limited (429) — re-run after rate limit window expires');
     
     await page.waitForURL(/\/comic\/.+/, { timeout: 10000 });
     await page.waitForLoadState('networkidle');

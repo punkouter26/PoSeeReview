@@ -130,11 +130,7 @@ try
             .WithTracing(tracing => tracing
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
-                .AddSource("Po.SeeReview.*")
-                .AddAzureMonitorTraceExporter(options =>
-                {
-                    options.ConnectionString = appInsightsConnectionString;
-                }))
+                .AddSource("Po.SeeReview.*"))
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()
                 .AddHttpClientInstrumentation()
@@ -153,12 +149,22 @@ try
             var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
             return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 60,
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:GlobalPermitLimit", 60),
                 Window = TimeSpan.FromMinutes(1),
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                 QueueLimit = 0,
                 AutoReplenishment = true
             });
+        });
+
+        // Stricter per-endpoint limiter for the expensive AI comic-generation endpoint
+        options.AddFixedWindowLimiter("comics-post", limiterOptions =>
+        {
+            limiterOptions.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:ComicsPostPermitLimit", 3);
+            limiterOptions.Window = TimeSpan.FromMinutes(1);
+            limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+            limiterOptions.QueueLimit = 0;
+            limiterOptions.AutoReplenishment = true;
         });
 
         options.OnRejected = (context, _) =>
@@ -186,11 +192,7 @@ try
         .AddCheck<GoogleMapsHealthCheck>(
             "google_maps_api",
             failureStatus: HealthStatus.Degraded,
-            tags: new[] { "ready", "external" })
-        .AddCheck<AzureOpenAIHealthCheck>(
-            "azure_openai",
-            failureStatus: HealthStatus.Degraded,
-            tags: ["ready", "external"]);
+            tags: new[] { "ready", "external" });
 
     // Configure OpenAPI (built-in .NET 10 support)
     builder.Services.AddOpenApi();
@@ -226,7 +228,7 @@ try
             else
             {
                 // Production fallback: same-origin only (API serves Blazor WASM)
-                policy.WithOrigins("https://posee-review.azurecontainerapps.io")
+                policy.WithOrigins("https://app-poseereview.azurewebsites.net")
                       .AllowAnyMethod()
                       .AllowAnyHeader()
                       .AllowCredentials();
@@ -271,9 +273,14 @@ try
             options.GetLevel = (httpContext, elapsed, ex) =>
             {
                 // Don't log successful static file requests
+                var path = httpContext.Request.Path.Value ?? "";
+
+                // Silence browser-generated noise regardless of status code
+                if (path.StartsWith("/.well-known/", StringComparison.OrdinalIgnoreCase))
+                    return LogEventLevel.Debug;
+
                 if (ex == null && httpContext.Response.StatusCode < 400)
                 {
-                    var path = httpContext.Request.Path.Value ?? "";
                     if (path.StartsWith("/_framework/") || 
                         path.StartsWith("/css/") || 
                         path.StartsWith("/lib/") ||

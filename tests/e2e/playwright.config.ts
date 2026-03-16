@@ -9,9 +9,10 @@ export default defineConfig({
   reporter: 'html',
   
   use: {
-    baseURL: 'http://localhost:5000',
+    baseURL: 'https://localhost:5001',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    ignoreHTTPSErrors: true,
   },
 
   projects: [
@@ -19,19 +20,26 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'mobile-chrome',
+      use: { ...devices['Pixel 5'] },
+    },
   ],
 
-  // Automatically start the API before running tests
-  webServer: {
-    command: 'dotnet run --project ../../src/Po.SeeReview.Api/Po.SeeReview.Api.csproj',
-    url: 'http://localhost:5000/api/health/live',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000, // 2 minutes for build + startup
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: {
-      ASPNETCORE_ENVIRONMENT: 'Test',
-      ASPNETCORE_URLS: 'http://localhost:5000',
+  // Build the client before starting, then reuse the existing running API
+  webServer: [
+    {
+      command: 'dotnet build ../../src/Po.SeeReview.Client/Po.SeeReview.Client.csproj --configuration Debug --no-restore -v q',
+      reuseExistingServer: true,
     },
-  },
+    {
+      command: 'dotnet run --project ../../src/Po.SeeReview.Api/Po.SeeReview.Api.csproj --launch-profile https',
+      url: 'https://localhost:5001/api/health/live',
+      reuseExistingServer: true,
+      ignoreHTTPSErrors: true,
+      timeout: 120 * 1000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
 });

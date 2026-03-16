@@ -4,11 +4,39 @@
 
 .top-row {
     min-height: 3.5rem;
-    background-color: rgba(0,0,0,0.4);
+    background-color: rgba(0, 0, 0, 0.35);
 }
 
 .navbar-brand {
-    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none !important;
+}
+
+.brand-icon {
+    flex-shrink: 0;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
+}
+
+.brand-name {
+    font-family: var(--font-display, 'Bangers', cursive);
+    font-size: 1.4rem;
+    letter-spacing: 0.05em;
+    color: white;
+    line-height: 1;
+}
+
+.brand-tagline {
+    font-family: var(--font-body, 'DM Sans', sans-serif);
+    font-size: 0.72rem;
+    font-style: italic;
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 0.4rem 1rem 0.6rem;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 0.25rem;
 }
 
 .bi {

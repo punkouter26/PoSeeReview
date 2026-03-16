@@ -1,9 +1,20 @@
 @page "/diag"
 @inject HttpClient Http
 @inject ILogger<Diagnostics> Logger
+@inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
 <PageTitle>Diagnostics - PoSeeReview</PageTitle>
 
+@if (HostEnvironment.Environment != "Development")
+{
+    <div class="diagnostics-container">
+        <h1>Diagnostics</h1>
+        <p>This page is only available in development environments.</p>
+        <a href="/" class="btn btn-secondary">← Back to Home</a>
+    </div>
+}
+else
+{
 <div class="diagnostics-container">
     <h1>System Diagnostics</h1>
     <p class="subtitle">Real-time health status of all application dependencies</p>
@@ -69,6 +80,7 @@
         </div>
     }
 </div>
+}
 
 @code {
     private bool isLoading = true;

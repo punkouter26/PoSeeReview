@@ -40,27 +40,6 @@ public class ApiClient
     }
 
     /// <summary>
-    /// Gets restaurant details by place ID.
-    /// </summary>
-    public async Task<RestaurantDetailsDto?> GetRestaurantDetailsAsync(
-        string placeId,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var response = await _httpClient.GetFromJsonAsync<RestaurantDetailsDto>(
-                $"/api/restaurants/{placeId}",
-                cancellationToken);
-
-            return response;
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Generates a comic for the given restaurant place ID.
     /// This may take 8-10 seconds for a new comic generation.
     /// </summary>
@@ -79,23 +58,6 @@ public class ApiClient
         response.EnsureSuccessStatusCode();
 
         var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken: cancellationToken);
-        return comic ?? throw new InvalidOperationException("Comic response was null");
-    }
-
-    /// <summary>
-    /// Gets a cached comic for the given restaurant place ID.
-    /// </summary>
-    public async Task<ComicDto> GetCachedComicAsync(
-        string placeId,
-        CancellationToken cancellationToken = default)
-    {
-        var response = await _httpClient.GetAsync(
-            $"/api/comics/{placeId}",
-            cancellationToken);
-
-        response.EnsureSuccessStatusCode();
-
-        var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");
     }
 
@@ -121,14 +83,24 @@ public class ApiClient
             return null;
         }
     }
-}
 
-/// <summary>
-/// Response from nearby restaurants endpoint.
-/// </summary>
-public class NearbyRestaurantsResponse
-{
-    public List<RestaurantDto> Restaurants { get; set; } = new();
-    public int TotalCount { get; set; }
-    public DateTimeOffset CachedAt { get; set; }
+    /// <summary>
+    /// Gets the leaderboard entries for a given region.
+    /// </summary>
+    public async Task<LeaderboardResponse?> GetLeaderboardAsync(
+        string region = "US",
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _httpClient.GetFromJsonAsync<LeaderboardResponse>(
+                $"/api/leaderboard?region={region}&limit={limit}",
+                cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
 }

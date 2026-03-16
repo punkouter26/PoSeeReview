@@ -67,12 +67,13 @@ public static class PoSeeReviewTelemetry
         description: "Duration of comic generation requests in milliseconds");
 
     /// <summary>
-    /// Counter for restaurant lookups.
-    /// Tracks restaurant API queries by source (Google Maps, cache, etc.).
-    /// Tags: source (google_maps, cache), success (true/false)
+    /// Counter for force-regenerate requests on the comics POST endpoint.
+    /// Elevated frequency may indicate cost abuse or a client bug.
+    /// Tags: place_id
     /// </summary>
-    public static readonly Counter<long> RestaurantLookups = Meter.CreateCounter<long>(
-        name: "po.seereview.restaurants.lookups",
-        unit: "lookups",
-        description: "Total number of restaurant lookups");
+    public static readonly Counter<long> ForceRegenerateRequests = Meter.CreateCounter<long>(
+        name: "po.seereview.comics.force_regenerate",
+        unit: "requests",
+        description: "Total number of force-regenerate comic requests");
+
 }

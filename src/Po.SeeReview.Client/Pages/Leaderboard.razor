@@ -1,7 +1,7 @@
 @page "/leaderboard"
-@using Po.SeeReview.Shared.Models
+@using Po.SeeReview.Shared.Dtos
 @using Po.SeeReview.Client.Services
-@inject HttpClient Http
+@inject ApiClient ApiClient
 @inject ILogger<Leaderboard> Logger
 @inject ShareService ShareService
 @inject NavigationManager Navigation
@@ -17,27 +17,27 @@
 
     <div class="region-selector">
         <label for="region">Region:</label>
-        <select id="region" @bind="selectedRegion" @bind:after="LoadLeaderboardAsync" class="form-select">
-            <option value="US">United States</option>
-            <option value="CA">Canada</option>
-            <option value="GB">United Kingdom</option>
-            <option value="AU">Australia</option>
-            <option value="NZ">New Zealand</option>
-            <option value="IE">Ireland</option>
-            <option value="IN">India</option>
-            <option value="SG">Singapore</option>
-        </select>
+        <FluentSelect TOption="string" id="region" @bind-Value="selectedRegion" @bind-Value:after="LoadLeaderboardAsync">
+            <FluentOption TOption="string" Value="US">United States</FluentOption>
+            <FluentOption TOption="string" Value="CA">Canada</FluentOption>
+            <FluentOption TOption="string" Value="GB">United Kingdom</FluentOption>
+            <FluentOption TOption="string" Value="AU">Australia</FluentOption>
+            <FluentOption TOption="string" Value="NZ">New Zealand</FluentOption>
+            <FluentOption TOption="string" Value="IE">Ireland</FluentOption>
+            <FluentOption TOption="string" Value="IN">India</FluentOption>
+            <FluentOption TOption="string" Value="SG">Singapore</FluentOption>
+        </FluentSelect>
 
-        <label for="limit" class="ms-4">Show:</label>
-        <select id="limit" @bind="limit" @bind:after="LoadLeaderboardAsync" class="form-select">
-            <option value="10">Top 10</option>
-            <option value="25">Top 25</option>
-            <option value="50">Top 50</option>
-        </select>
+        <label for="limit">Show:</label>
+        <FluentSelect TOption="string" id="limit" @bind-Value="limitStr" @bind-Value:after="OnLimitChangedAsync">
+            <FluentOption TOption="string" Value="10">Top 10</FluentOption>
+            <FluentOption TOption="string" Value="25">Top 25</FluentOption>
+            <FluentOption TOption="string" Value="50">Top 50</FluentOption>
+        </FluentSelect>
 
         @if (isLoading)
         {
-            <span class="spinner-border spinner-border-sm ms-3" role="status"></span>
+            <FluentProgressRing />
         }
     </div>
 
@@ -50,13 +50,23 @@
     else if (leaderboardEntries == null || leaderboardEntries.Count == 0)
     {
         <div class="no-entries">
-            <p>No entries yet for this region. Be the first to add a strange restaurant experience!</p>
+            <div class="empty-panels">
+                <div class="empty-panel">&#128269;</div>
+                <div class="empty-panel">&#127869;&#65039;</div>
+                <div class="empty-panel">&#129300;</div>
+                <div class="empty-panel">&#10067;</div>
+            </div>
+            <h2 class="empty-title">No Weird Stories Yet!</h2>
+            <p class="empty-body">No strange restaurant tales from <strong>@GetRegionName(selectedRegion)</strong> yet.<br />Go discover one — the weirder the better!</p>
+            <a href="/" class="empty-home-btn">&#127968; Find Restaurants Near Me</a>
         </div>
     }
     else
     {
         <div class="last-updated">
+            <span class="refresh-ring @(isLoading ? "" : "spinning")" title="Auto-refreshing every 30 seconds"></span>
             Last updated: @lastUpdated.ToString("g")
+            <span class="refresh-hint">&#8226; Auto-refreshing</span>
         </div>
 
         <div class="leaderboard-list">
@@ -66,19 +76,19 @@
                     <div class="rank-badge">
                         @if (entry.Rank == 1)
                         {
-                            <span class="rank-number gold">#@entry.Rank</span>
+                            <div class="medal medal-gold">&#127881;</div>
                         }
                         else if (entry.Rank == 2)
                         {
-                            <span class="rank-number silver">#@entry.Rank</span>
+                            <div class="medal medal-silver">&#129352;</div>
                         }
                         else if (entry.Rank == 3)
                         {
-                            <span class="rank-number bronze">#@entry.Rank</span>
+                            <div class="medal medal-bronze">&#129353;</div>
                         }
                         else
                         {
-                            <span class="rank-number">#@entry.Rank</span>
+                            <div class="medal medal-default">#@entry.Rank</div>
                         }
                     </div>
 
@@ -96,9 +106,9 @@
                     </div>
 
                     <div class="entry-actions">
-                        <a href="/comic/@entry.PlaceId" class="btn btn-primary">View Comic</a>
+                        <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary">View Comic</a>
                         <button class="btn btn-share-small" @onclick="() => ShareComicAsync(entry)" title="Share this comic">
-                            📤
+                            &#128228;
                         </button>
                     </div>
                 </div>
@@ -111,6 +121,7 @@
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private string selectedRegion = "US";
     private int limit = 10;
+    private string limitStr = "10";
     private DateTimeOffset lastUpdated = DateTimeOffset.MinValue;
     private string? errorMessage;
     private bool isLoading = false;
@@ -131,6 +142,13 @@
         }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
+    private async Task OnLimitChangedAsync()
+    {
+        if (int.TryParse(limitStr, out var parsed))
+            limit = parsed;
+        await LoadLeaderboardAsync();
+    }
+
     private async Task LoadLeaderboardAsync()
     {
         isLoading = true;
@@ -140,8 +158,7 @@
         {
             Logger.LogInformation("Fetching leaderboard for region {Region} with limit {Limit}", selectedRegion, limit);
             
-            var response = await Http.GetFromJsonAsync<LeaderboardResponse>(
-                $"api/leaderboard?region={selectedRegion}&limit={limit}");
+            var response = await ApiClient.GetLeaderboardAsync(selectedRegion, limit);
 
             if (response != null)
             {
@@ -149,11 +166,10 @@
                 lastUpdated = response.LastUpdated;
                 Logger.LogInformation("Loaded {Count} leaderboard entries", leaderboardEntries.Count);
             }
-        }
-        catch (HttpRequestException ex)
-        {
-            Logger.LogError(ex, "Error loading leaderboard");
-            errorMessage = "Unable to load leaderboard. Please try again later.";
+            else
+            {
+                errorMessage = "Unable to load leaderboard. Please try again later.";
+            }
         }
         catch (Exception ex)
         {
@@ -176,6 +192,19 @@
             _ => ""
         };
     }
+
+    private string GetRegionName(string region) => region switch
+    {
+        "US" => "the United States",
+        "CA" => "Canada",
+        "GB" => "the United Kingdom",
+        "AU" => "Australia",
+        "NZ" => "New Zealand",
+        "IE" => "Ireland",
+        "IN" => "India",
+        "SG" => "Singapore",
+        _ => region
+    };
 
     private async Task ShareComicAsync(LeaderboardEntryDto entry)
     {

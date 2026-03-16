@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Po.SeeReview.Api.Telemetry;
+using Po.SeeReview.Core;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Shared.Dtos;
 
@@ -38,6 +40,7 @@ public class ComicsController : ControllerBase
     /// <response code="404">Restaurant not found</response>
     /// <response code="500">Comic generation failed (e.g., DALL-E API error)</response>
     [HttpPost("{placeId}")]
+    [EnableRateLimiting("comics-post")]
     [ProducesResponseType(typeof(ComicDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
@@ -71,7 +74,7 @@ public class ComicsController : ControllerBase
             _logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
                 placeId, forceRegenerate);
 
-            var comic = await _comicGenerationService.GenerateComicAsync(placeId, forceRegenerate);
+            var comic = await _comicGenerationService.GenerateComicAsync(placeId, forceRegenerate, HttpContext.RequestAborted);
 
             // Record custom metrics
             var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
@@ -84,6 +87,14 @@ public class ComicsController : ControllerBase
 
             PoSeeReviewTelemetry.ComicsGenerated.Add(1, tags);
             PoSeeReviewTelemetry.ComicGenerationDuration.Record(elapsedMs, tags);
+
+            if (forceRegenerate)
+            {
+                PoSeeReviewTelemetry.ForceRegenerateRequests.Add(1, new[]
+                {
+                    new KeyValuePair<string, object?>("place_id", placeId)
+                });
+            }
 
             activity?.SetTag("comic_id", comic.Id);
             activity?.SetTag("cache_hit", comic.IsCached);
@@ -124,7 +135,7 @@ public class ComicsController : ControllerBase
                 Instance = HttpContext.Request.Path
             });
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("reviews"))
+        catch (InsufficientReviewsException ex)
         {
             PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]
             {
@@ -189,9 +200,9 @@ public class ComicsController : ControllerBase
         try
         {
             // Try to get cached comic only (don't generate)
-            var cachedComic = await _comicGenerationService.GetCachedComicAsync(placeId);
+            var cachedComic = await _comicGenerationService.GetCachedComicAsync(placeId, HttpContext.RequestAborted);
 
-            if (cachedComic != null && cachedComic.ExpiresAt > DateTime.UtcNow)
+            if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
             {
                 var dto = new ComicDto
                 {

@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
-using Po.SeeReview.Shared.Models;
+using Po.SeeReview.Shared.Dtos;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -152,9 +152,9 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
     }
 
     [Theory]
-    [InlineData("US", 10)]
-    [InlineData("CA", 25)]
-    [InlineData("GB", 50)]
+    [InlineData("US-LIMIT-TEST", 10)]
+    [InlineData("CA-LIMIT-TEST", 25)]
+    [InlineData("GB-LIMIT-TEST", 50)]
     public async Task GET_Leaderboard_Respects_Limit_Parameter_For_Each_Region(string region, int limit)
     {
         // Arrange

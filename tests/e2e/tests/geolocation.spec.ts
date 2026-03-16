@@ -5,10 +5,13 @@ import { test, expect, Page, BrowserContext } from '@playwright/test';
  * Tests the actual UI flow: page loads -> enable location -> restaurants display -> user clicks restaurant
  */
 
-const BASE_URL = 'http://localhost:5000';
+const BASE_URL = 'https://localhost:5001';
 
-// Setup geolocation for all tests in this file
+// Capture JS errors for all tests and fail immediately if Blazor fails to boot
+const jsErrors: string[] = [];
 test.beforeEach(async ({ context, page }) => {
+  jsErrors.length = 0;
+  page.on('pageerror', (err) => jsErrors.push(err.message));
   // Grant geolocation permission and set mock location (Seattle)
   await context.grantPermissions(['geolocation']);
   await context.setGeolocation({
@@ -27,11 +30,18 @@ test.beforeEach(async ({ context, page }) => {
   await page.waitForTimeout(2000);
 });
 
+test.afterEach(async () => {
+  const fatal = jsErrors.filter(e => e.includes('Failed to start platform') || e.includes('failed 404'));
+  if (fatal.length > 0) {
+    throw new Error(`Blazor WASM boot failed — JS errors detected:\n${fatal.slice(0, 3).join('\n')}`);
+  }
+});
+
 test.describe('Restaurant List Tests', () => {
   
   test('HomePage: On load, displays nearby restaurants after enabling location', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -48,7 +58,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('HomePage: Shows restaurant details', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -67,7 +77,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantCard: When clicked, navigates to details page', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click the button to request location and load restaurants
@@ -101,7 +111,7 @@ test.describe('Restaurant List Tests', () => {
     });
 
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     // Click button to trigger geolocation and API call
@@ -132,7 +142,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantList: Displays distance from user location', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();
@@ -151,7 +161,7 @@ test.describe('Restaurant List Tests', () => {
 
   test('RestaurantList: Displays review count', async ({ page }) => {
     // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Enable Location' });
+    const enableButton = page.getByRole('button', { name: 'Use My Location' });
     await expect(enableButton).toBeVisible({ timeout: 10000 });
     
     await enableButton.click();

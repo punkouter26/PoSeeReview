@@ -10,6 +10,7 @@ env:
   APP_NAME: app-poseereview
   RESOURCE_GROUP: PoSeeReview
   DOTNET_VERSION: '10.0.x'
+  HEALTH_URL: https://app-poseereview.azurewebsites.net/api/health/live
 
 permissions:
   id-token: write
@@ -29,9 +30,20 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Restore & Publish
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Run unit tests
       run: |
-        dotnet restore
+        dotnet test tests/Po.SeeReview.UnitTests/Po.SeeReview.UnitTests.csproj \
+          --no-restore \
+          --configuration Release \
+          --logger "console;verbosity=minimal" \
+          --results-directory ./test-results
+      continue-on-error: false
+
+    - name: Publish API (includes Blazor WASM client)
+      run: |
         dotnet publish src/Po.SeeReview.Api/Po.SeeReview.Api.csproj \
           -c Release \
           -o ./publish \
@@ -57,5 +69,21 @@ jobs:
       with:
         app-name: ${{ env.APP_NAME }}
         package: ./publish
+
+    - name: Health check (liveness)
+      run: |
+        echo "Waiting 30s for app to warm up..."
+        sleep 30
+        for i in {1..5}; do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}")
+          echo "Attempt $i: HTTP $STATUS"
+          if [ "$STATUS" = "200" ]; then
+            echo "Health check passed!"
+            exit 0
+          fi
+          sleep 15
+        done
+        echo "Health check failed after 5 attempts"
+        exit 1
 
 

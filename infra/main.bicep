@@ -67,7 +67,6 @@ module containerAppsEnvironment './modules/containerappenv.bicep' = {
     location: location
     tags: tags
     resourceToken: resourceToken
-    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     logAnalyticsWorkspaceCustomerId: monitoring.outputs.logAnalyticsCustomerId
     logAnalyticsWorkspaceSharedKey: monitoring.outputs.logAnalyticsSharedKey
   }
@@ -97,14 +96,12 @@ module api './modules/containerapp.bicep' = {
     containerAppsEnvironmentId: containerAppsEnvironment.outputs.id
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     keyVaultEndpoint: keyVault.outputs.endpoint
-    storageAccountName: storage.outputs.name
     storageTableEndpoint: storage.outputs.tableEndpoint
     storageBlobEndpoint: storage.outputs.blobEndpoint
     appSettings: {
       ASPNETCORE_ENVIRONMENT: environmentName == 'prod' ? 'Production' : 'Development'
     }
   }
-  dependsOn: [keyVault]
 }
 
 // Key Vault Access - Grant API managed identity access to Key Vault
@@ -115,7 +112,6 @@ module keyVaultAccess './modules/keyvaultaccess.bicep' = {
     keyVaultName: keyVault.outputs.name
     principalId: api.outputs.identityPrincipalId
   }
-  dependsOn: [api]
 }
 
 // Store secrets in Key Vault (placeholders - update via CLI or Portal)

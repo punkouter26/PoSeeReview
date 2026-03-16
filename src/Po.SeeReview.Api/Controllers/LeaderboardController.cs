@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Po.SeeReview.Core.Interfaces;
-using Po.SeeReview.Shared.Models;
+using Po.SeeReview.Shared.Dtos;
 
 namespace Po.SeeReview.Api.Controllers;
 

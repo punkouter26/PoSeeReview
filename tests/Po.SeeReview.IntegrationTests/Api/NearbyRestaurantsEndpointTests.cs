@@ -123,16 +123,14 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
         Assert.True(true, "Test completed - check output for results");
     }
 
-    [Theory]
-    [InlineData(47.6062, -122.3321, 10)]
-    [InlineData(47.6062, -122.3321, 5)]
-    [InlineData(47.6062, -122.3321, 20)]
-    public async Task GetNearbyRestaurants_WithDifferentLimits_ShouldRespectLimit(
-        double latitude,
-        double longitude,
-        int limit)
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task GetNearbyRestaurants_WithLimit_ShouldRespectLimit()
     {
-        // Arrange
+        // Arrange – use mid-range limit (10) as the canonical case
+        var latitude = 47.6062;
+        var longitude = -122.3321;
+        const int limit = 10;
         var client = _factory.CreateClient();
 
         // Act

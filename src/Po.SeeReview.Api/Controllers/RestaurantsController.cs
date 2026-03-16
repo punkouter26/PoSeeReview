@@ -66,7 +66,7 @@ public class RestaurantsController : ControllerBase
                 "Getting nearby restaurants at ({Latitude}, {Longitude}), limit {Limit}",
                 lat, lon, limit);
 
-            var restaurants = await _restaurantService.GetNearbyRestaurantsAsync(lat, lon, limit);
+            var restaurants = await _restaurantService.GetNearbyRestaurantsAsync(lat, lon, limit, HttpContext.RequestAborted);
 
             // Calculate distance from user location for each restaurant
             var restaurantDtos = restaurants.Select(r => new RestaurantDto
@@ -144,14 +144,18 @@ public class RestaurantsController : ControllerBase
             });
         }
 
-        // For now, use hardcoded coordinates for common cities
-        // In production, this should use a geocoding service
         var coordinates = GetCoordinatesForLocation(location);
         if (coordinates == null)
         {
-            // Default to Seattle if location not recognized
-            coordinates = (47.6062, -122.3321);
-            _logger.LogWarning("Location '{Location}' not recognized, defaulting to Seattle", location);
+            _logger.LogWarning("Location '{Location}' not recognized — returning 400", location);
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Unrecognized Location",
+                Detail = $"Location '{location}' is not recognized. "
+                    + "Supported cities: Seattle, San Francisco, New York, Los Angeles, Chicago, "
+                    + "Boston, Portland, Austin, Denver, Miami (or their ZIP codes)."
+            });
         }
 
         return await GetNearbyRestaurants(coordinates.Value.lat, coordinates.Value.lon, limit);
@@ -265,14 +269,4 @@ public class RestaurantsController : ControllerBase
             });
         }
     }
-}
-
-/// <summary>
-/// Response DTO for GET /api/restaurants/nearby
-/// </summary>
-public class NearbyRestaurantsResponse
-{
-    public List<RestaurantDto> Restaurants { get; set; } = new();
-    public int TotalCount { get; set; }
-    public DateTimeOffset CachedAt { get; set; }
 }

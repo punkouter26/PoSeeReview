@@ -9,6 +9,8 @@ param resourceToken string
 
 // Storage Account
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  // resourceToken always resolves to 14+ alphanumeric chars (environmentName + uniqueString); static analysis can't infer this
+  #disable-next-line BCP334
   name: 'st${take(replace(resourceToken, '-', ''), 21)}'
   location: location
   tags: tags

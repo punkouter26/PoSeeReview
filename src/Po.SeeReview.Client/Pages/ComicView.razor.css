@@ -1,7 +1,217 @@
 .comic-view {
     min-height: 100vh;
     padding: 1rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--color-surface, #F8F7FF);
+}
+
+.error-container {
+    max-width: 600px;
+    margin: 4rem auto;
+    background: white;
+    border-radius: var(--radius-card, 12px);
+    padding: 3rem 2rem;
+    text-align: center;
+    box-shadow: var(--shadow-card, 0 8px 24px rgba(0, 0, 0, 0.15));
+}
+
+.error-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.error-container h2 {
+    color: var(--color-text-primary, #333);
+    margin-bottom: 1rem;
+    font-size: 1.75rem;
+    font-family: var(--font-display, 'Bangers', cursive);
+    letter-spacing: 0.04em;
+}
+
+.error-message {
+    color: var(--color-text-secondary, #666);
+    line-height: 1.6;
+    margin-bottom: 2rem;
+}
+
+.comic-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: white;
+    border-radius: var(--radius-card, 12px);
+    padding: 2rem;
+    box-shadow: var(--shadow-card, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.comic-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: clamp(1rem, 2vw, 2rem);
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.comic-header h1 {
+    font-family: var(--font-display, 'Bangers', cursive);
+    font-size: clamp(2rem, 5vw, 3rem);
+    letter-spacing: 0.04em;
+    color: var(--color-text-primary, #1e1e2e);
+    margin: 0;
+    line-height: 1.15;
+}
+
+/* Fluent UI Badge styling for strangeness score */
+::deep .strangeness-badge-fluent {
+    padding: 0.75rem 1.25rem;
+    font-size: 1rem;
+    background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%)) !important;
+}
+
+.badge-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.badge-content .score {
+    font-family: var(--font-display, 'Bangers', cursive);
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    letter-spacing: 0.04em;
+    line-height: 1;
+}
+
+.badge-content .label {
+    font-size: clamp(0.65rem, 1.5vw, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    opacity: 0.9;
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: clamp(0.75rem, 2vw, 1rem);
+    margin-top: 1.5rem;
+}
+
+/* Strangeness score ring gauge */
+.strangeness-ring-wrap {
+    position: relative;
+    width: clamp(80px, 14vw, 110px);
+    height: clamp(80px, 14vw, 110px);
+    flex-shrink: 0;
+}
+
+.strangeness-ring {
+    width: 100%;
+    height: 100%;
+    transform: rotate(-90deg);
+}
+
+.ring-bg {
+    fill: none;
+    stroke: rgba(124, 58, 237, 0.18);
+    stroke-width: 9;
+}
+
+.ring-fill {
+    fill: none;
+    stroke: url(#ringGrad);
+    stroke-width: 9;
+    stroke-linecap: round;
+    transition: stroke-dasharray 0.8s ease-out;
+    filter: drop-shadow(0 0 4px rgba(245, 87, 108, 0.5));
+}
+
+.ring-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
+    border-radius: 50%;
+    margin: 10%;
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.4);
+}
+
+.ring-score {
+    font-family: var(--font-display, 'Bangers', cursive);
+    font-size: clamp(1.5rem, 3.5vw, 2rem);
+    color: white;
+    line-height: 1;
+    letter-spacing: 0.04em;
+}
+
+.ring-text {
+    font-size: clamp(0.55rem, 1vw, 0.65rem);
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Mobile floating share FAB */
+.share-fab {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .share-fab {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #f5576c 100%));
+        font-size: 1.4rem;
+        cursor: pointer;
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.5);
+        z-index: 100;
+        transition: transform 0.2s, box-shadow 0.2s;
+        user-select: none;
+        border: none;
+    }
+
+    .share-fab:hover,
+    .share-fab:active {
+        transform: scale(1.1);
+        box-shadow: 0 6px 28px rgba(124, 58, 237, 0.7);
+    }
+}
+
+@container (max-width: 600px) {
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+}
+
+.copied-message {
+    text-align: center;
+    margin-top: 1rem;
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .error-container {

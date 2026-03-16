@@ -25,9 +25,6 @@ param applicationInsightsConnectionString string
 @description('Key Vault endpoint URL')
 param keyVaultEndpoint string
 
-@description('Storage account name')
-param storageAccountName string
-
 @description('Storage Table endpoint')
 param storageTableEndpoint string
 
@@ -61,6 +58,8 @@ var registryName = 'acr${replace(resourceToken, '-', '')}'
 
 // Azure Container Registry
 resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
+  // resourceToken always resolves to 14+ alphanumeric chars (environmentName + uniqueString); static analysis can't infer this
+  #disable-next-line BCP334
   name: registryName
   location: location
   tags: tags

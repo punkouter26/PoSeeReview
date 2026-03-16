@@ -19,6 +19,13 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     // One container per factory instance (one per IClassFixture<> type)
     private AzuriteContainer? _azuriteContainer;
 
+    // Connection string captured after container starts; used by ConfigureWebHost to wire DI correctly.
+    private string? _azuriteConnectionString;
+
+    // Unique 8-char hex prefix per factory instance — prevents table name collisions when multiple
+    // test classes run in parallel against the same Azurite process.
+    private readonly string _tablePrefix = Guid.NewGuid().ToString("N")[..8];
+
     public CustomWebApplicationFactory()
     {
         // Env vars that must be present BEFORE WebApplication.CreateBuilder(args) runs because
@@ -52,11 +59,12 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             .Build();
         await _azuriteContainer.StartAsync();
 
-        var cs = _azuriteContainer.GetConnectionString();
-        // Override storage env vars with the actual Testcontainers Azurite connection string.
-        // These are read by AddInfrastructure when CreateClient() triggers WebApp startup.
-        Environment.SetEnvironmentVariable("ConnectionStrings__AzureTableStorage", cs);
-        Environment.SetEnvironmentVariable("ConnectionStrings__AzureBlobStorage", cs);
+        _azuriteConnectionString = _azuriteContainer.GetConnectionString();
+
+        // Also set env vars so that AddInfrastructure picks up the right CS if it reads them
+        // before ConfigureAppConfiguration fires (timing-safe double-coverage).
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureTableStorage", _azuriteConnectionString);
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureBlobStorage", _azuriteConnectionString);
     }
 
     /// <summary>Disposes the WebApp host, then tears down the Azurite container.</summary>
@@ -92,15 +100,16 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             // Provide default test configuration that satisfies all required dependencies
             var testConfig = new Dictionary<string, string?>
             {
-                // Azure Storage - use Azurite emulator (standard ports)
-                ["ConnectionStrings:AzureTableStorage"] = "UseDevelopmentStorage=true",
-                ["ConnectionStrings:AzureBlobStorage"] = "UseDevelopmentStorage=true",
-                
-                // Azure OpenAI - use placeholder values for tests that don't call real AI
-                ["AzureOpenAI:Endpoint"] = "https://test-openai.openai.azure.com",
-                ["AzureOpenAI:ApiKey"] = "test-api-key-for-integration-tests",
-                ["AzureOpenAI:DeploymentName"] = "gpt-4",
-                ["AzureOpenAI:DalleDeploymentName"] = "dall-e-3",
+                    // Azure Storage — use the per-factory Testcontainers Azurite instance so each
+                    // factory class gets its own isolated storage process.
+                    ["ConnectionStrings:AzureTableStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
+                    ["ConnectionStrings:AzureBlobStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
+
+                    // Isolate table names per factory instance to prevent cross-test-class state
+                    // pollution when multiple IClassFixture<> factories run in parallel.
+                    ["AzureStorage:LeaderboardTableName"] = $"Test{_tablePrefix}Leaderboard",
+                    ["AzureStorage:ComicsTableName"] = $"Test{_tablePrefix}Comics",
+                    ["AzureStorage:RestaurantsTableName"] = $"Test{_tablePrefix}Restaurants",
                 
                 // Google Maps - use placeholder for tests that don't call real API
                 ["GoogleMaps:ApiKey"] = "test-google-maps-api-key"

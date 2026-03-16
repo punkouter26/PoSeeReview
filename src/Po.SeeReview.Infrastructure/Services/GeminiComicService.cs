@@ -11,11 +11,11 @@ using Polly.Retry;
 namespace Po.SeeReview.Infrastructure.Services;
 
 /// <summary>
-/// Google Gemini image generation service — drop-in replacement for the deprecated DALL-E 3 service.
-/// Uses the <c>gemini-2.0-flash-exp-image-generation</c> model via the Generative Language REST API.
+/// Google Gemini image generation service using Imagen 4.
+/// Uses the Generative Language REST API.
 /// Requires <c>Google:GeminiApiKey</c> in configuration (stored as "PoSeeReview--Google--GeminiApiKey" in Key Vault).
 /// </summary>
-public sealed class GeminiComicService : IDalleComicService
+public sealed class GeminiComicService : IImageGenerationService
 {
     // Imagen 4 Fast: good quality, lower latency, uses :predict endpoint
     private const string DefaultModel = "imagen-4.0-fast-generate-001";
@@ -203,30 +203,33 @@ public sealed class GeminiComicService : IDalleComicService
         };
 
         return $"""
-Create a vibrant {panelCount}-panel comic strip in a clean, modern illustration style.
+CRITICAL CONSTRAINT — THIS IS A SILENT COMIC WITH ABSOLUTELY NO TEXT IN THE IMAGE:
+- DO NOT draw speech bubbles or word balloons of any shape or size
+- DO NOT draw thought bubbles
+- DO NOT write any dialogue, captions, signs, labels, or letters anywhere
+- DO NOT render any text, symbols, or writing — even decorative or background text
+- Characters may open their mouths to speak but NO bubble or text appears
+- Leave all space around characters completely clean and empty
 
-REQUIREMENTS:
-1. Create EXACTLY {panelCount} panel(s)
-2. Do NOT draw any text, speech bubbles, word balloons, captions, labels, signs, or writing anywhere
-3. This is a SILENT COMIC — tell the story purely through visuals
+Create a vibrant {panelCount}-panel comic strip in a clean, modern illustration style.
 
 Story context:
 "{narrative}"
 
 Layout: {panelLayout}
 - Consistent characters across panels with matching outfits and visual traits
-- Clean panel gutters/borders separating EXACTLY {panelCount} panel(s)
+- Clean black panel gutters/borders separating EXACTLY {panelCount} panel(s)
 
 Panel breakdown:
 {panelBreakdown}
 
 Visual style:
-- 1024x1024 square with {panelCount} distinct panels
 - Bold outlines, vivid colors, exaggerated facial expressions
 - Modern cartoon illustration (NOT manga, NOT realistic)
-- No text, no speech bubbles, no labels, no signs with writing
-- Leave clear empty space in each panel for text overlay
-- Tell the story through actions, expressions, and body language only
+- Story told entirely through actions, expressions, and body language
+- Background walls/signs must be plain — no readable text on them
+
+REMEMBER: Zero text. Zero speech bubbles. Zero word balloons. Zero letters. Silent comic only.
 """;
     }
 
@@ -241,6 +244,8 @@ Visual style:
         };
 
         return $"""
+ABSOLUTE RULE: NO TEXT. NO SPEECH BUBBLES. NO WORD BALLOONS. NO CAPTIONS. NO LETTERS. NO WRITING OF ANY KIND.
+
 Create a vibrant {panelCount}-panel comic strip in a clean, modern cartoon illustration style.
 
 Scene: A cheerful, brightly lit restaurant. A happy customer sits at a table. A friendly waiter
@@ -249,8 +254,10 @@ brings an unusually large or creative dish. The customer reacts with wide-eyed s
 Layout: {panelLayout}
 - Bold outlines, vivid colors, exaggerated happy facial expressions
 - Modern cartoon illustration style, family-friendly
-- Do not include any text, speech bubbles, labels, or writing anywhere in the image
-- Leave clear empty space in each panel for text to be added later
+- ZERO text, ZERO speech bubbles, ZERO word balloons, ZERO labels, ZERO writing anywhere
+- Characters communicate ONLY through facial expressions and body language
+
+REMINDER: This image must contain absolutely NO text, letters, words, speech bubbles, or word balloons.
 """;
     }
 }

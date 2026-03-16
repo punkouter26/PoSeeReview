@@ -1,0 +1,57 @@
+erDiagram
+  RESTAURANT {
+    string PlaceId PK "Google Maps Place ID"
+    string Name
+    string Address
+    float Latitude
+    float Longitude
+    string Region "CC-ST-CITY e.g. US-CA-SF"
+    float AverageRating "0.0 to 5.0"
+    int TotalReviews
+    datetime CachedAt "TTL origin timestamp"
+  }
+
+  REVIEW {
+    string AuthorName
+    string Text
+    int Rating "1 to 5 stars"
+    datetime Time
+    int StrangenessScore "0-100 assigned by Azure OpenAI"
+  }
+
+  COMIC {
+    string Id PK
+    string PlaceId FK
+    string RestaurantName
+    string ImageUrl "Azure Blob Storage URL"
+    string Narrative "AI-generated paragraph"
+    int StrangenessScore "0-100"
+    datetime ExpiresAt "CreatedAt plus 7 days"
+    bool IsCached
+    datetime CreatedAt
+  }
+
+  LEADERBOARD_ENTRY {
+    string PlaceId PK "Azure Table RowKey"
+    string Region PK "Azure Table PartitionKey e.g. US-CA-SF"
+    string RestaurantName
+    string Address
+    int StrangenessScore "Min 20 to qualify"
+    string ComicBlobUrl
+    datetime LastUpdated
+  }
+
+  TAKEDOWN_REQUEST {
+    string PlaceId FK
+    string RequesterName
+    string ContactEmail
+    string Region "CC-ST-CITY format"
+    string Reason
+    string ProofOfAffiliationUrl
+    string AdditionalDetails
+  }
+
+  RESTAURANT ||--o{ REVIEW : "has up to 5 AI-analysed"
+  RESTAURANT ||--o| COMIC : "generates one per cache window"
+  COMIC ||--o| LEADERBOARD_ENTRY : "eligible when score gte 20"
+  COMIC ||--o| TAKEDOWN_REQUEST : "subject of removal"

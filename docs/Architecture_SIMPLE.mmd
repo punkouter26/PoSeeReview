@@ -1,0 +1,26 @@
+flowchart TD
+  U["Anonymous User"]
+  APP["PoSeeReview App\nBlazor WASM + .NET 10 API\nAzure App Service"]
+  ST["Azure Storage\nTables + Blobs"]
+  KV["Azure Key Vault"]
+  AI["Application Insights"]
+  GM["Google Maps\nPlaces API"]
+  OAI["Azure OpenAI\nGPT-4o-mini"]
+  GEM["Google Gemini\nImagen 4"]
+
+  U -->|HTTPS| APP
+  APP -->|Azure SDK| ST
+  APP -->|Managed Identity| KV
+  APP -->|OpenTelemetry| AI
+  APP -->|REST| GM
+  APP -->|REST| OAI
+  APP -->|REST| GEM
+
+  style U fill:#1558b0,stroke:#0d3c6e,color:#fff
+  style APP fill:#085f08,stroke:#064004,color:#fff
+  style ST fill:#5c2d91,stroke:#3e1a6e,color:#fff
+  style KV fill:#8e1a1a,stroke:#600f0f,color:#fff
+  style AI fill:#a03000,stroke:#722200,color:#fff
+  style GM fill:#0d3c6e,stroke:#091f3a,color:#fff
+  style OAI fill:#00363a,stroke:#001e20,color:#fff
+  style GEM fill:#0d0f4b,stroke:#050630,color:#fff

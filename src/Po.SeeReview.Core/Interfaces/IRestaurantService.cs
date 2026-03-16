@@ -17,23 +17,17 @@ public interface IRestaurantService
     /// <returns>List of restaurants with distance from user</returns>
     /// <exception cref="ArgumentException">Invalid coordinates</exception>
     /// <exception cref="HttpRequestException">Google Maps API failure</exception>
-    Task<List<Restaurant>> GetNearbyRestaurantsAsync(double latitude, double longitude, int limit = 10);
+    Task<List<Restaurant>> GetNearbyRestaurantsAsync(double latitude, double longitude, int limit = 10, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets detailed restaurant information by Google place ID
     /// Returns cached data if available (24-hour TTL), otherwise fetches from Google Maps
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
     /// <returns>Restaurant with reviews and strangeness scores</returns>
     /// <exception cref="ArgumentNullException">placeId is null or empty</exception>
     /// <exception cref="KeyNotFoundException">Restaurant not found</exception>
-    Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId);
+    Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Gets detailed restaurant information including reviews (alias for GetRestaurantByPlaceIdAsync)
-    /// Used by comic generation service to fetch reviews for analysis
-    /// </summary>
-    /// <param name="placeId">Google Maps place ID</param>
-    /// <returns>Restaurant with full review details, or null if not found</returns>
-    Task<Restaurant?> GetRestaurantDetailsAsync(string placeId);
 }

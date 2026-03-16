@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Configuration;
 
 namespace Po.SeeReview.Infrastructure.Services;
 
@@ -13,18 +15,18 @@ public class LeaderboardService : ILeaderboardService
     private readonly ILeaderboardRepository _repository;
     private readonly IBlobStorageService _blobStorageService;
     private readonly ILogger<LeaderboardService> _logger;
-
-    // Minimum score threshold to appear on leaderboard
-    private const int MinimumStrangenessScore = 20;
+    private readonly ComicOptions _options;
 
     public LeaderboardService(
         ILeaderboardRepository repository,
         IBlobStorageService blobStorageService,
-        ILogger<LeaderboardService> logger)
+        ILogger<LeaderboardService> logger,
+        IOptions<ComicOptions> options)
     {
         _repository = repository;
         _blobStorageService = blobStorageService;
         _logger = logger;
+        _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     }
 
     /// <summary>
@@ -50,25 +52,30 @@ public class LeaderboardService : ILeaderboardService
         {
             var entries = await _repository.GetTopEntriesAsync(region, limit);
 
-            // Refresh any SAS tokens that are expired or within 2 hours of expiry
-            foreach (var entry in entries.Where(e => IsSasExpiringSoon(e.ComicBlobUrl)))
-            {
-                _logger.LogInformation("Refreshing expired SAS for leaderboard entry {PlaceId}", entry.PlaceId);
-                entry.ComicBlobUrl = await _blobStorageService.RefreshSasUrlAsync(entry.ComicBlobUrl);
-                await _repository.UpsertAsync(entry);
-            }
-
-            // Verify blob existence for entries whose SAS is still valid but blob may have been purged.
-            // The cleanup service can delete blobs independently of leaderboard entries.
-            foreach (var entry in entries.Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl)))
-            {
-                if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
+            // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel
+            var sasRefreshTasks = entries
+                .Where(e => IsSasExpiringSoon(e.ComicBlobUrl))
+                .Select(async entry =>
                 {
-                    _logger.LogWarning("LeaderboardEntry {PlaceId} references a deleted blob — clearing ComicBlobUrl", entry.PlaceId);
-                    entry.ComicBlobUrl = string.Empty;
+                    _logger.LogInformation("Refreshing expired SAS for leaderboard entry {PlaceId}", entry.PlaceId);
+                    entry.ComicBlobUrl = await _blobStorageService.RefreshSasUrlAsync(entry.ComicBlobUrl);
                     await _repository.UpsertAsync(entry);
-                }
-            }
+                });
+            await Task.WhenAll(sasRefreshTasks);
+
+            // Verify blob existence for entries whose SAS is still valid — run in parallel
+            var blobCheckTasks = entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl))
+                .Select(async entry =>
+                {
+                    if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
+                    {
+                        _logger.LogWarning("LeaderboardEntry {PlaceId} references a deleted blob — clearing ComicBlobUrl", entry.PlaceId);
+                        entry.ComicBlobUrl = string.Empty;
+                        await _repository.UpsertAsync(entry);
+                    }
+                });
+            await Task.WhenAll(blobCheckTasks);
 
             // Ranks are already assigned by repository during query
             _logger.LogInformation("Retrieved {Count} entries for region {Region}", entries.Count, region);
@@ -125,18 +132,18 @@ public class LeaderboardService : ILeaderboardService
         }
 
         // Only add to leaderboard if score meets threshold
-        if (entry.StrangenessScore < MinimumStrangenessScore)
+        if (entry.StrangenessScore < _options.MinimumStrangenessScore)
         {
             _logger.LogInformation(
                 "Skipping leaderboard entry for {PlaceId} - score {Score} below threshold {Threshold}",
-                entry.PlaceId, entry.StrangenessScore, MinimumStrangenessScore);
+                entry.PlaceId, entry.StrangenessScore, _options.MinimumStrangenessScore);
             return;
         }
 
         try
         {
             // Set LastUpdated timestamp
-            entry.LastUpdated = DateTime.UtcNow;
+            entry.LastUpdated = DateTimeOffset.UtcNow;
 
             await _repository.UpsertAsync(entry);
 

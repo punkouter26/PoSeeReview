@@ -149,3 +149,10 @@ playwright/.cache/
 scripts/github-credentials.json
 scripts/configure-app-settings.ps1
 scripts/setup-secrets.ps1
+
+# Compiled ARM templates (generate via CI from Bicep source)
+infra/main.json
+
+# VS Code extension state
+.potune-state.json
+*.potune-state.json

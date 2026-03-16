@@ -5,7 +5,7 @@
 @inject NavigationManager Navigation
 @inject ShareService ShareService
 
-<PageTitle>Comic - PoSeeReview</PageTitle>
+<PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
 
 <div class="comic-view">
     @if (_isLoading)
@@ -28,63 +28,49 @@
         <FluentCard class="comic-container">
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
-                <FluentBadge Appearance="Appearance.Accent" class="strangeness-badge-fluent">
-                    <div class="badge-content">
-                        <span class="score">@_comic.StrangenessScore</span>
-                        <span class="label">Strangeness</span>
+                <div class="strangeness-ring-wrap">
+                    <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <circle class="ring-bg" cx="50" cy="50" r="42" />
+                        <circle class="ring-fill" cx="50" cy="50" r="42"
+                                style="stroke-dasharray: @((_comic.StrangenessScore / 100.0 * 263.9).ToString("F1")) 263.9" />
+                    </svg>
+                    <div class="ring-label">
+                        <span class="ring-score">@_comic.StrangenessScore</span>
+                        <span class="ring-text">Weird</span>
                     </div>
-                </FluentBadge>
+                </div>
             </div>
 
             <ComicStrip ImageUrl="@_comic.BlobUrl" 
                        RestaurantName="@_comic.RestaurantName" 
                        IsCached="@_comic.IsCached" />
 
-            <div class="comic-meta">
-                <FluentBadge Appearance="@(_comic.IsCached ? Appearance.Neutral : Appearance.Accent)">
-                    @if (_comic.IsCached)
+            <div class="action-buttons">
+                <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
+                    &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Back to Home")
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Neutral" @onclick="RegenerateComic" Disabled="@_isRegenerating">
+                    @if (_isRegenerating)
                     {
-                        <text>📦 Cached</text>
+                        <text>Regenerating...</text>
                     }
                     else
                     {
-                        <text>✨ Freshly Generated</text>
+                        <text>&#8635; Regenerate</text>
                     }
-                </FluentBadge>
-                <FluentBadge Appearance="Appearance.Lightweight">
-                    🕒 Generated @FormatTimestamp(_comic.GeneratedAt.DateTime)
-                </FluentBadge>
-                <FluentBadge Appearance="Appearance.Lightweight">
-                    ⏳ Expires @FormatTimestamp(_comic.ExpiresAt.DateTime)
-                </FluentBadge>
-            </div>
-
-            <div class="action-buttons">
-                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
-                    ← Back to Restaurants
                 </FluentButton>
-                <FluentButton Appearance="Appearance.Outline" @onclick="ShareComic" Disabled="@_isSharing">
+                <FluentButton Appearance="Appearance.Neutral" @onclick="ShareComic" Disabled="@_isSharing">
                     @if (_isSharing)
                     {
-                        <text>📤 Sharing...</text>
+                        <text>Sharing...</text>
                     }
                     else if (_shareSupported)
                     {
-                        <text>📤 Share Comic</text>
+                        <text>Share Comic</text>
                     }
                     else
                     {
-                        <text>📋 Copy Link</text>
-                    }
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Accent" @onclick="RegenerateComic" Disabled="@_isRegenerating">
-                    @if (_isRegenerating)
-                    {
-                        <text>🔄 Regenerating...</text>
-                    }
-                    else
-                    {
-                        <text>🔄 Generate New</text>
+                        <text>Copy Link</text>
                     }
                 </FluentButton>
             </div>
@@ -92,68 +78,33 @@
             @if (_showCopiedMessage)
             {
                 <FluentMessageBar Intent="MessageIntent.Success" class="copied-message">
-                    ✓ Link copied to clipboard!
+                    &#10003; Link copied to clipboard!
                 </FluentMessageBar>
             }
         </FluentCard>
     }
-</div>
 
-@if (_showReviewsModal)
-{
-    <div class="modal-overlay" @onclick="CloseReviewsModal">
-        <div class="modal-content" @onclick:stopPropagation="true">
-            <div class="modal-header">
-                <h2>Original Reviews</h2>
-                <button class="modal-close" @onclick="CloseReviewsModal">×</button>
-            </div>
-            <div class="modal-body">
-                @if (_reviews == null)
-                {
-                    <div class="loading-reviews">
-                        <p>Loading reviews...</p>
-                    </div>
-                }
-                else if (_reviews.Count == 0)
-                {
-                    <p class="no-reviews">No reviews available.</p>
-                }
-                else
-                {
-                    <div class="reviews-list">
-                        <div class="api-limitation-notice">
-                            ℹ️ Note: Google Maps API only provides 5 reviews (not all @(_reviews.Count == 5 ? "1000+" : "available") reviews). 
-                            We prioritize negative reviews for more interesting comics.
-                        </div>
-                        @foreach (var review in _reviews)
-                        {
-                            <div class="review-item">
-                                <div class="review-header">
-                                    <span class="review-author">@review.AuthorName</span>
-                                    <span class="review-rating">@GetStarDisplay(review.Rating)</span>
-                                </div>
-                                <p class="review-text">@review.Text</p>
-                                <span class="review-date">@review.Time.ToString("MMM dd, yyyy")</span>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+    @if (_comic != null)
+    {
+        <div class="share-fab" @onclick="ShareComic" title="@(_shareSupported ? "Share Comic" : "Copy Link")">
+            &#128228;
         </div>
-    </div>
-}
+    }
+</div>
 
 @code {
     [Parameter]
     public string PlaceId { get; set; } = string.Empty;
 
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? From { get; set; }
+
     private ComicDto? _comic;
-    private List<ReviewDto>? _reviews;
     private bool _isLoading = true;
-    private bool _isRegenerating = false;
     private bool _isSharing = false;
+    private bool _isRegenerating = false;
     private bool _shareSupported = false;
-    private bool _showReviewsModal = false;
     private bool _showCopiedMessage = false;
     private string? _error;
     private string _errorTitle = "Oops!";
@@ -162,6 +113,13 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadComic(forceRegenerate: false);
+
+        // Auto-regenerate if the comic is older than 7 days
+        if (_comic != null && (DateTimeOffset.UtcNow - _comic.GeneratedAt).TotalDays > 7)
+        {
+            await LoadComic(forceRegenerate: true);
+        }
+
         _shareSupported = await ShareService.IsShareSupportedAsync();
     }
 
@@ -178,23 +136,7 @@
 
         try
         {
-            if (forceRegenerate)
-            {
-                _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: true);
-            }
-            else
-            {
-                // Try to get cached comic first
-                try
-                {
-                    _comic = await ApiClient.GetCachedComicAsync(PlaceId);
-                }
-                catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-                {
-                    // No cached comic, generate new one
-                    _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: false);
-                }
-            }
+            _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: forceRegenerate);
         }
         catch (HttpRequestException ex)
         {
@@ -222,21 +164,28 @@
         finally
         {
             _isLoading = false;
-            _isRegenerating = false;
             StateHasChanged();
         }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo(From == "leaderboard" ? "/leaderboard" : "/");
     }
 
     private async Task RegenerateComic()
     {
         _isRegenerating = true;
         StateHasChanged();
-        await LoadComic(forceRegenerate: true);
-    }
-
-    private void GoBack()
-    {
-        Navigation.NavigateTo("/");
+        try
+        {
+            await LoadComic(forceRegenerate: true);
+        }
+        finally
+        {
+            _isRegenerating = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ShareComic()
@@ -304,63 +253,6 @@
         }
     }
 
-    private string FormatTimestamp(DateTime timestamp)
-    {
-        var now = DateTime.UtcNow;
-        var diff = now - timestamp;
 
-        if (diff.TotalMinutes < 1)
-            return "just now";
-        if (diff.TotalHours < 1)
-            return $"{(int)diff.TotalMinutes} min ago";
-        if (diff.TotalDays < 1)
-            return $"{(int)diff.TotalHours} hours ago";
-        
-        return timestamp.ToString("MMM dd, yyyy");
-    }
 
-    private async Task ShowReviewsModal()
-    {
-        Console.WriteLine("ShowReviewsModal called");
-        
-        if (_reviews == null)
-        {
-            // Fetch reviews from API
-            try
-            {
-                Console.WriteLine($"Fetching reviews for PlaceId: {PlaceId}");
-                var restaurant = await ApiClient.GetRestaurantDetailsAsync(PlaceId);
-                _reviews = restaurant?.Reviews ?? new List<ReviewDto>();
-                Console.WriteLine($"Fetched {_reviews.Count} reviews");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error fetching reviews: {ex.Message}");
-                _reviews = new List<ReviewDto>();
-            }
-        }
-        
-        _showReviewsModal = true;
-        Console.WriteLine($"Modal state set to: {_showReviewsModal}");
-        StateHasChanged();
-    }
-
-    private void CloseReviewsModal()
-    {
-        _showReviewsModal = false;
-        StateHasChanged();
-    }
-
-    private string GetStarDisplay(int rating)
-    {
-        return rating switch
-        {
-            1 => "⭐ (1 star - negative)",
-            2 => "⭐⭐ (2 stars - negative)",
-            3 => "⭐⭐⭐ (3 stars - mixed)",
-            4 => "⭐⭐⭐⭐ (4 stars)",
-            5 => "⭐⭐⭐⭐⭐ (5 stars)",
-            _ => $"⭐ {rating}"
-        };
-    }
 }

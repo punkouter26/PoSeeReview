@@ -1,5 +1,30 @@
+/* === Design Tokens === */
+:root {
+    --color-brand: #7C3AED;
+    --color-brand-dark: #1A0533;
+    --color-accent: #F59E0B;
+    --color-accent-dark: #B45309;
+    --color-surface: #F8F7FF;
+    --color-surface-alt: #f5f5f5;
+    --color-text-primary: #1e1e2e;
+    --color-text-secondary: #555;
+    --color-text-muted: #7f8c8d;
+    --color-success: #10b981;
+    --color-danger: #dc3545;
+    --color-border: #e8e8f0;
+    --font-display: 'Bangers', cursive;
+    --font-body: 'DM Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --radius-card: 12px;
+    --shadow-card: 0 2px 12px rgba(124, 58, 237, 0.08);
+    --shadow-card-hover: 0 6px 24px rgba(124, 58, 237, 0.18);
+    --gradient-brand: linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%);
+    --gradient-sidebar: linear-gradient(180deg, #1A0533 0%, #2D1052 60%, #3b0764 100%);
+}
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: var(--font-body);
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
 }
 
 h1:focus {

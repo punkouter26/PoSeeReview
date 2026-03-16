@@ -10,7 +10,10 @@ main {
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background-image:
+        radial-gradient(circle, rgba(255,255,255,0.06) 1px, transparent 1px),
+        var(--gradient-sidebar, linear-gradient(180deg, #1A0533 0%, #2D1052 60%, #3b0764 100%));
+    background-size: 18px 18px, 100% 100%;
 }
 
 .top-row {

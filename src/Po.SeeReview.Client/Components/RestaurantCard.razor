@@ -1,8 +1,9 @@
 @using Po.SeeReview.Shared.Dtos
 
 <FluentCard Class="@($"restaurant-card {GetCardClass()}")" 
-            @onclick="OnClickIfEnabled" 
-            title="@GetTooltipText()">
+            title="@GetTooltipText()"
+            data-testid="restaurant-card"
+            @onclick="OnClickIfEnabled">
     <div class="card-header">
         <h3 class="restaurant-name">@Restaurant.Name</h3>
         <div class="rating">
@@ -17,7 +18,7 @@
     
     <div class="card-footer">
         <FluentBadge Appearance="Appearance.Accent" class="distance-badge">
-            @FormatDistance(Restaurant.Distance)
+            <span class="distance">@FormatDistance(Restaurant.Distance)</span>
         </FluentBadge>
         <span class="review-count">
             <FluentBadge Appearance="Appearance.Lightweight">
@@ -25,15 +26,25 @@
             </FluentBadge>
         </span>
     </div>
-    
-    @if (!IsEnabled)
-    {
-        <div class="disabled-overlay">
-            <FluentBadge Appearance="Appearance.Neutral" class="disabled-badge">
-                Requires 5+ reviews
-            </FluentBadge>
-        </div>
-    }
+
+    <div class="card-cta">
+        @if (!IsEnabled)
+        {
+            <div class="disabled-overlay">
+                <span class="disabled-badge">Requires 5+ reviews</span>
+            </div>
+            <FluentButton Appearance="Appearance.Neutral" Disabled="true" class="cta-btn">
+                Needs 5+ Reviews
+            </FluentButton>
+            <p class="not-enough-hint">&#129302; Needs at least @MinReviews reviews to generate a story</p>
+        }
+        else
+        {
+            <FluentButton Appearance="Appearance.Accent" class="cta-btn" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
+                Generate Comic
+            </FluentButton>
+        }
+    </div>
 </FluentCard>
 
 @code {
@@ -43,7 +54,8 @@
     [Parameter]
     public EventCallback<RestaurantDto> OnRestaurantClick { get; set; }
 
-    private bool IsEnabled => Restaurant.TotalReviews >= 5;
+    private const int MinReviews = 5;
+    private bool IsEnabled => Restaurant.TotalReviews >= MinReviews;
 
     private string GetCardClass() => IsEnabled ? "" : "disabled";
 

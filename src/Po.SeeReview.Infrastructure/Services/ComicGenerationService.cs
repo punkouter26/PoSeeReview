@@ -1,9 +1,13 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Po.SeeReview.Core;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Configuration;
 
 namespace Po.SeeReview.Infrastructure.Services;
 
@@ -11,13 +15,13 @@ namespace Po.SeeReview.Infrastructure.Services;
 /// Orchestrates comic generation workflow: review fetching, strangeness analysis,
 /// narrative creation, DALL-E image generation, and blob storage upload.
 /// Prioritizes 1-star reviews as source material (most interesting stories).
-/// Implements 24-hour caching with ExpiresAt validation.
+/// Implements 7-day caching with ExpiresAt validation.
 /// </summary>
 public class ComicGenerationService : IComicGenerationService
 {
     private readonly IRestaurantService _restaurantService;
     private readonly IAzureOpenAIService _azureOpenAIService;
-    private readonly IDalleComicService _dalleComicService;
+    private readonly IImageGenerationService _imageGenerationService;
     private readonly IComicTextOverlayService _comicTextOverlayService;
     private readonly IBlobStorageService _blobStorageService;
     private readonly IComicRepository _comicRepository;
@@ -25,30 +29,30 @@ public class ComicGenerationService : IComicGenerationService
     private readonly ILogger<ComicGenerationService> _logger;
     private readonly TelemetryClient _telemetryClient;
 
-    private const int MinimumReviewsRequired = 5;
-    private const int MaximumReviewsForAnalysis = 5; // Reduced from 10 to cut GPT costs in half
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromDays(7); // Extended from 24h to reduce AI costs
+    private readonly ComicOptions _options;
 
     public ComicGenerationService(
         IRestaurantService restaurantService,
         IAzureOpenAIService azureOpenAIService,
-        IDalleComicService dalleComicService,
+        IImageGenerationService imageGenerationService,
         IComicTextOverlayService comicTextOverlayService,
         IBlobStorageService blobStorageService,
         IComicRepository comicRepository,
         ILeaderboardService leaderboardService,
         ILogger<ComicGenerationService> logger,
-        TelemetryClient telemetryClient)
+        TelemetryClient telemetryClient,
+        IOptions<ComicOptions> options)
     {
         _restaurantService = restaurantService ?? throw new ArgumentNullException(nameof(restaurantService));
         _azureOpenAIService = azureOpenAIService ?? throw new ArgumentNullException(nameof(azureOpenAIService));
-        _dalleComicService = dalleComicService ?? throw new ArgumentNullException(nameof(dalleComicService));
+        _imageGenerationService = imageGenerationService ?? throw new ArgumentNullException(nameof(imageGenerationService));
         _comicTextOverlayService = comicTextOverlayService ?? throw new ArgumentNullException(nameof(comicTextOverlayService));
         _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
         _comicRepository = comicRepository ?? throw new ArgumentNullException(nameof(comicRepository));
         _leaderboardService = leaderboardService ?? throw new ArgumentNullException(nameof(leaderboardService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+        _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
     }
 
     /// <summary>
@@ -58,8 +62,8 @@ public class ComicGenerationService : IComicGenerationService
     /// <param name="forceRegenerate">If true, regenerates even if valid cache exists</param>
     /// <returns>Generated or cached Comic entity</returns>
     /// <exception cref="KeyNotFoundException">If restaurant not found</exception>
-    /// <exception cref="InvalidOperationException">If restaurant has fewer than 5 reviews</exception>
-    public async Task<Comic> GenerateComicAsync(string placeId, bool forceRegenerate = false)
+    /// <exception cref="InsufficientReviewsException">If restaurant has fewer than required reviews</exception>
+    public async Task<Comic> GenerateComicAsync(string placeId, bool forceRegenerate = false, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(placeId))
             throw new ArgumentNullException(nameof(placeId));
@@ -73,7 +77,7 @@ public class ComicGenerationService : IComicGenerationService
         if (!forceRegenerate)
         {
             var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
-            if (cachedComic != null && cachedComic.ExpiresAt > DateTime.UtcNow)
+            if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
             {
                 _logger.LogInformation("Returning cached comic for placeId: {PlaceId}", placeId);
 
@@ -96,21 +100,25 @@ public class ComicGenerationService : IComicGenerationService
         _telemetryClient.GetMetric("Comics.CacheMiss").TrackValue(1);
 
         // Fetch restaurant details with reviews
-        var restaurant = await _restaurantService.GetRestaurantDetailsAsync(placeId);
-        if (restaurant == null)
+        Restaurant restaurant;
+        try
+        {
+            restaurant = await _restaurantService.GetRestaurantByPlaceIdAsync(placeId, cancellationToken);
+        }
+        catch (KeyNotFoundException)
         {
             _logger.LogWarning("Restaurant not found: {PlaceId}", placeId);
-            throw new KeyNotFoundException($"Restaurant not found: {placeId}");
+            throw;
         }
 
         // Validate minimum review count
         var reviews = restaurant.Reviews ?? new List<Review>();
-        if (reviews.Count < MinimumReviewsRequired)
+        if (reviews.Count < _options.MinimumReviewsRequired)
         {
             _logger.LogWarning("Insufficient reviews for placeId: {PlaceId}. Found {Count}, need {Minimum}",
-                placeId, reviews.Count, MinimumReviewsRequired);
-            throw new InvalidOperationException(
-                $"Restaurant must have at least {MinimumReviewsRequired} reviews to generate a comic. Found {reviews.Count}.");
+                placeId, reviews.Count, _options.MinimumReviewsRequired);
+            throw new InsufficientReviewsException(
+                $"Restaurant must have at least {_options.MinimumReviewsRequired} reviews to generate a comic. Found {reviews.Count}.");
         }
 
         // Prioritize 1-star reviews (most interesting), then add higher ratings if needed
@@ -124,15 +132,15 @@ public class ComicGenerationService : IComicGenerationService
 
         // Filter inappropriate content
         var filteredReviews = FilterInappropriateReviews(reviewTexts);
-        if (filteredReviews.Count < MinimumReviewsRequired)
+        if (filteredReviews.Count < _options.MinimumReviewsRequired)
         {
             _logger.LogWarning("Insufficient appropriate reviews after filtering for placeId: {PlaceId}", placeId);
-            throw new InvalidOperationException(
+            throw new InsufficientReviewsException(
                 $"Restaurant does not have enough appropriate reviews for comic generation.");
         }
 
         // Limit to top N reviews for analysis (cost control)
-        var reviewsForAnalysis = filteredReviews.Take(MaximumReviewsForAnalysis).ToList();
+        var reviewsForAnalysis = filteredReviews.Take(_options.MaximumReviewsForAnalysis).ToList();
 
         _logger.LogInformation("Analyzing {Count} reviews for strangeness", reviewsForAnalysis.Count);
 
@@ -145,15 +153,15 @@ public class ComicGenerationService : IComicGenerationService
             strangenessScore, panelCount, narrative.Length);
         _telemetryClient.GetMetric("Comics.Generation.AnalysisDurationMs").TrackValue(analysisStopwatch.Elapsed.TotalMilliseconds);
 
-        // Generate comic image with DALL-E (panel count between 1-4)
+        // Generate comic image (panel count capped at 2)
         var imageStopwatch = Stopwatch.StartNew();
-        var imageBytes = await _dalleComicService.GenerateComicImageAsync(narrative, panelCount);
+        var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount);
         imageStopwatch.Stop();
 
         _logger.LogInformation("Generated {PanelCount}-panel comic image: {Size} bytes", panelCount, imageBytes.Length);
         _telemetryClient.GetMetric("Comics.Generation.ImageDurationMs").TrackValue(imageStopwatch.Elapsed.TotalMilliseconds);
 
-        // Add text overlay to comic (fixes DALL-E's gibberish text)
+        // Add readable text caption overlays to each panel (replaces garbled AI-rendered text)
         var overlayStopwatch = Stopwatch.StartNew();
         imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, narrative, panelCount);
         overlayStopwatch.Stop();
@@ -167,7 +175,7 @@ public class ComicGenerationService : IComicGenerationService
 
         _logger.LogInformation("Uploaded comic to blob: {BlobUrl}", blobUrl);
 
-        // Create comic entity with 24-hour expiration
+        // Create comic entity with 7-day expiration
         var comic = new Comic
         {
             Id = comicId,
@@ -176,8 +184,8 @@ public class ComicGenerationService : IComicGenerationService
             ImageUrl = blobUrl,
             Narrative = narrative,
             StrangenessScore = strangenessScore,
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = DateTime.UtcNow.Add(CacheDuration),
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(_options.CacheDurationDays),
             IsCached = false
         };
 
@@ -195,7 +203,7 @@ public class ComicGenerationService : IComicGenerationService
                 Region = restaurant.Region ?? "US",
                 StrangenessScore = strangenessScore,
                 ComicBlobUrl = blobUrl,
-                LastUpdated = DateTime.UtcNow
+                LastUpdated = DateTimeOffset.UtcNow
             };
 
             await _leaderboardService.UpsertEntryAsync(leaderboardEntry);
@@ -270,9 +278,9 @@ public class ComicGenerationService : IComicGenerationService
         prioritized.AddRange(sortedNegative);
 
         // Only add positive reviews if we need more to reach minimum
-        if (prioritized.Count < MaximumReviewsForAnalysis)
+        if (prioritized.Count < _options.MaximumReviewsForAnalysis)
         {
-            var needed = MaximumReviewsForAnalysis - prioritized.Count;
+            var needed = _options.MaximumReviewsForAnalysis - prioritized.Count;
             prioritized.AddRange(sortedPositive.Take(needed));
         }
 
@@ -297,11 +305,14 @@ public class ComicGenerationService : IComicGenerationService
         if (string.IsNullOrWhiteSpace(review))
             return false;
 
-        // Simple word boundary check
-        var words = review.Split(new[] { ' ', '.', ',', '!', '?', ';', ':' },
-            StringSplitOptions.RemoveEmptyEntries);
+        // Use regex word-boundary so "(shit)" or "shit-faced" are caught too
+        foreach (var keyword in keywords)
+        {
+            if (Regex.IsMatch(review, $@"\b{Regex.Escape(keyword)}\b", RegexOptions.IgnoreCase))
+                return true;
+        }
 
-        return words.Any(word => keywords.Contains(word.Trim()));
+        return false;
     }
 
     /// <summary>
@@ -332,14 +343,14 @@ public class ComicGenerationService : IComicGenerationService
     /// <summary>
     /// Gets cached comic for a restaurant if it exists and hasn't expired
     /// </summary>
-    public async Task<Comic?> GetCachedComicAsync(string placeId)
+    public async Task<Comic?> GetCachedComicAsync(string placeId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(placeId))
             throw new ArgumentNullException(nameof(placeId));
 
         var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
 
-        if (cachedComic != null && cachedComic.ExpiresAt > DateTime.UtcNow)
+        if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
         {
             _logger.LogInformation("Found valid cached comic for placeId: {PlaceId}", placeId);
 

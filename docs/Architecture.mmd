@@ -1,0 +1,19 @@
+C4Context
+  title PoSeeReview — System Context (C4 Level 1)
+  Person(user, "Anonymous User", "Discovers weird restaurant stories via browser GPS or text search — no account required")
+  System_Boundary(azb, "Azure Cloud") {
+    System(app, "PoSeeReview App", "Blazor WASM + .NET 10 API on Azure App Service. Handles routing, rate limiting, orchestration, and Blazor WASM hosting.")
+    SystemDb(storage, "Azure Storage", "Table Storage: PoSeeReviewComics, PoSeeReviewRestaurants, PoSeeReviewLeaderboard. Blob Storage: comic PNG images. 7-day TTL on all cached data.")
+    System(kv, "Azure Key Vault kv-poshared", "Secrets management. All API keys and connection strings loaded at startup via Managed Identity. Two-pass loading: shared secrets then PoSeeReview-- prefixed overrides.")
+    System(ai, "Azure Application Insights", "Distributed tracing via OpenTelemetry, structured logs via Serilog enriched with CorrelationId and SessionId, custom strangeness-score metrics, Log Analytics backend.")
+  }
+  System_Ext(gmaps, "Google Maps Places API", "Nearby restaurant search within 5km radius. Up to 5 reviews per restaurant. 1-star reviews prioritised for AI analysis.")
+  System_Ext(aoai, "Azure OpenAI GPT-4o-mini", "Analyses up to 5 reviews. Returns strangeness score 0-100 and narrative paragraph. Polly resilience: 3 retries with exponential backoff.")
+  System_Ext(gemini, "Google Gemini Imagen 4", "Generates four-panel comic strip PNG from narrative prompt. Model: imagen-4.0-fast-generate-001.")
+  Rel(user, app, "HTTPS — location search, restaurant grid, comic view, Hall of Fame leaderboard, takedown requests")
+  Rel(app, storage, "Azure SDK — cache restaurants, store comic metadata and PNG blob URLs, maintain leaderboard entries")
+  Rel(app, kv, "Managed Identity — load secrets at startup, no secrets in source control or config files")
+  Rel(app, ai, "OpenTelemetry SDK — distributed traces, structured logs, custom metrics")
+  Rel(app, gmaps, "HTTPS REST — nearby places by lat/lon, review text per placeId (Polly retries)")
+  Rel(app, aoai, "HTTPS REST — send review batch, receive strangeness score and narrative (Polly retries)")
+  Rel(app, gemini, "HTTPS REST — send narrative prompt, receive PNG bytes for blob upload")

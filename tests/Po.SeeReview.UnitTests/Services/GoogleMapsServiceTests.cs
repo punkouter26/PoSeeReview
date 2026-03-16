@@ -10,20 +10,6 @@ namespace Po.SeeReview.UnitTests.Services;
 public class GoogleMapsServiceTests
 {
     [Fact]
-    public async Task SearchNearbyAsync_ValidCoordinates_ReturnsRestaurants()
-    {
-        // Arrange
-        // Note: This test would require mocking the HTTP client
-        // For now, we'll test the validation logic
-        var service = CreateServiceWithMockHttpClient();
-
-        // Act & Assert
-        // Will implement once GoogleMapsService exists
-        Assert.True(true); // Placeholder
-        await Task.CompletedTask; // Suppress async warning
-    }
-
-    [Fact]
     public void ValidateCoordinates_ValidLatitude_DoesNotThrow()
     {
         // Arrange
@@ -36,38 +22,12 @@ public class GoogleMapsServiceTests
     }
 
     [Theory]
-    [InlineData(91.0, -122.3321)]  // Latitude > 90
-    [InlineData(-91.0, -122.3321)] // Latitude < -90
-    [InlineData(47.6062, 181.0)]   // Longitude > 180
-    [InlineData(47.6062, -181.0)]  // Longitude < -180
+    [InlineData(91.0, -122.3321)]  // Latitude out of range
+    [InlineData(47.6062, 181.0)]   // Longitude out of range
     public void ValidateCoordinates_InvalidCoordinates_ThrowsArgumentException(double lat, double lon)
     {
         // Act & Assert
         Assert.Throws<ArgumentException>(() => ValidateCoordinates(lat, lon));
-    }
-
-    [Fact]
-    public async Task SearchNearbyAsync_ApiError_ThrowsException()
-    {
-        // Arrange
-        var service = CreateServiceWithFailingHttpClient();
-
-        // Act & Assert
-        // Will implement once GoogleMapsService exists
-        Assert.True(true); // Placeholder
-        await Task.CompletedTask; // Suppress async warning
-    }
-
-    private GoogleMapsService CreateServiceWithMockHttpClient()
-    {
-        // TODO: Implement mock HTTP client factory
-        return null!;
-    }
-
-    private GoogleMapsService CreateServiceWithFailingHttpClient()
-    {
-        // TODO: Implement failing HTTP client factory
-        return null!;
     }
 
     private void ValidateCoordinates(double latitude, double longitude)

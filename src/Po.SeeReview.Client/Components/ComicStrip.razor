@@ -1,11 +1,7 @@
 @* Comic strip component for displaying 4-panel comic images *@
 
 <div class="comic-strip-container">
-    @if (IsCached)
-    {
-        <div class="cached-indicator">📦 Cached</div>
-    }
-    
+
     <img src="@ImageUrl" 
          alt="Comic strip for @RestaurantName" 
          class="comic-strip-image"

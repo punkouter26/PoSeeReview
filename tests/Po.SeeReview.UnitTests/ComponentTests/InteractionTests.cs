@@ -1,5 +1,7 @@
 using Bunit;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.FluentUI.AspNetCore.Components;
 using Po.SeeReview.Client.Components;
 using Po.SeeReview.Shared.Dtos;
 using Xunit;
@@ -12,6 +14,13 @@ namespace Po.SeeReview.UnitTests.ComponentTests;
 /// </summary>
 public class InteractionTests : TestContext
 {
+    public InteractionTests()
+    {
+        // FluentUI web-components require LibraryConfiguration to be in DI.
+        // Register it here so FluentButton and other FluentUI components render without errors.
+        Services.AddSingleton(new LibraryConfiguration());
+    }
+
     [Fact]
     public void RestaurantCard_WithEnabledCard_FiresOnClickCallback()
     {

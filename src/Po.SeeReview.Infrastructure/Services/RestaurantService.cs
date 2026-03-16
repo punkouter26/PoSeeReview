@@ -32,7 +32,8 @@ public class RestaurantService : IRestaurantService
     public async Task<List<Restaurant>> GetNearbyRestaurantsAsync(
         double latitude,
         double longitude,
-        int limit = 10)
+        int limit = 10,
+        CancellationToken cancellationToken = default)
     {
         if (!_googleMapsService.ValidateCoordinates(latitude, longitude))
         {
@@ -74,7 +75,7 @@ public class RestaurantService : IRestaurantService
     /// Gets detailed restaurant information by Google place ID
     /// Returns cached data if available (24-hour TTL), otherwise fetches from Google Maps
     /// </summary>
-    public async Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId)
+    public async Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(placeId))
         {
@@ -107,21 +108,6 @@ public class RestaurantService : IRestaurantService
         _logger.LogInformation("Cached restaurant {PlaceId} with {ReviewCount} reviews", placeId, restaurant.Reviews?.Count ?? 0);
 
         return restaurant;
-    }
-
-    /// <summary>
-    /// Gets detailed restaurant information including reviews (for comic generation)
-    /// </summary>
-    public async Task<Restaurant?> GetRestaurantDetailsAsync(string placeId)
-    {
-        try
-        {
-            return await GetRestaurantByPlaceIdAsync(placeId);
-        }
-        catch (KeyNotFoundException)
-        {
-            return null;
-        }
     }
 
     /// <summary>

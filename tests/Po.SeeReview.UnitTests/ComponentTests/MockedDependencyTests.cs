@@ -1,4 +1,5 @@
 using Bunit;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Moq.Protected;
@@ -18,6 +19,15 @@ namespace Po.SeeReview.UnitTests.ComponentTests;
 /// </summary>
 public class MockedDependencyTests : TestContext
 {
+    public MockedDependencyTests()
+    {
+        // Diagnostics.razor requires IWebAssemblyHostEnvironment; return "Development"
+        // so that the health check UI renders (not the production guard)
+        var mockHostEnv = new Mock<IWebAssemblyHostEnvironment>();
+        mockHostEnv.Setup(e => e.Environment).Returns("Development");
+        mockHostEnv.Setup(e => e.BaseAddress).Returns("https://localhost:5001/");
+        Services.AddSingleton(mockHostEnv.Object);
+    }
     [Fact]
     public async Task Diagnostics_WithMockedHttpClient_LoadsHealthStatus()
     {
