@@ -76,16 +76,50 @@ jobs:
     # The v3 action waits for OneDeploy to complete AND for the new container to become
     # healthy — a 10+ min wait that hits Kudu's 10-min SCM timeout, causing 504 failures.
     # --async true uploads the zip and returns immediately; Azure handles the container
-    # lifecycle in the background. The app is already confirmed healthy after startup.
+    # lifecycle in the background.
+    # Retry logic handles transient 504s from Kudu cold-start (Linux cert update ~5 min +
+    # Managed Identity cold start ~2 min can leave Kudu unresponsive at deploy time).
     - name: Deploy to App Service
       run: |
         zip -r publish.zip ./publish
-        az webapp deploy \
-          --name ${{ env.APP_NAME }} \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --src-path publish.zip \
-          --type zip \
-          --async true
+
+        for attempt in 1 2 3; do
+          echo "Deployment attempt $attempt of 3..."
+          if az webapp deploy \
+            --name ${{ env.APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --src-path publish.zip \
+            --type zip \
+            --async true; then
+            echo "Deployment submitted successfully on attempt $attempt"
+            exit 0
+          fi
+          if [ $attempt -lt 3 ]; then
+            WAIT=$((attempt * 90))
+            echo "Deployment failed, waiting ${WAIT}s before retry (attempt $((attempt+1)))..."
+            sleep $WAIT
+          fi
+        done
+
+        echo "All 3 deployment attempts failed"
+        exit 1
+
+    - name: Verify deployment health
+      run: |
+        echo "Waiting 60s for new container to start..."
+        sleep 60
+        for i in $(seq 1 10); do
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://${{ env.APP_NAME }}.azurewebsites.net/health" || echo "000")
+          echo "Attempt $i: health endpoint returned $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "App is healthy after deployment"
+            exit 0
+          fi
+          sleep 30
+        done
+        echo "WARNING: App did not return 200 from /health within 5 minutes"
+        exit 1
 
 
 
