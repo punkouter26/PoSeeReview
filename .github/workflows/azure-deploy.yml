@@ -72,13 +72,31 @@ jobs:
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --settings WEBSITES_CONTAINER_START_TIME_LIMIT=900
 
-    # Use az webapp deploy --async true instead of azure/webapps-deploy@v3.
-    # The v3 action waits for OneDeploy to complete AND for the new container to become
-    # healthy — a 10+ min wait that hits Kudu's 10-min SCM timeout, causing 504 failures.
-    # --async true uploads the zip and returns immediately; Azure handles the container
-    # lifecycle in the background.
-    # Retry logic handles transient 504s from Kudu cold-start (Linux cert update ~5 min +
-    # Managed Identity cold start ~2 min can leave Kudu unresponsive at deploy time).
+    # Pre-warm Kudu SCM before deploying.
+    # The az webapp deploy command's internal warmup frequently 504s on cold-start instances.
+    # Polling the SCM root ourselves first ensures Kudu is actually responsive before we upload.
+    # 401/403 = Kudu is up (auth wall). 302 = also up (redirect to auth). Only 5xx/000 = not ready.
+    - name: Wait for Kudu SCM to be responsive
+      run: |
+        echo "Polling https://${{ env.APP_NAME }}.scm.azurewebsites.net until Kudu is ready..."
+        for i in $(seq 1 24); do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+            "https://${{ env.APP_NAME }}.scm.azurewebsites.net/" 2>/dev/null || echo "000")
+          echo "Poll $i/24: SCM returned HTTP $STATUS"
+          if [ "$STATUS" != "000" ] && \
+             [ "$STATUS" != "502" ] && \
+             [ "$STATUS" != "503" ] && \
+             [ "$STATUS" != "504" ]; then
+            echo "Kudu SCM is responsive (HTTP $STATUS) — proceeding to deploy"
+            exit 0
+          fi
+          echo "Kudu not ready yet, waiting 30s..."
+          sleep 30
+        done
+        echo "Kudu SCM never became responsive after 12 minutes — attempting deploy anyway"
+
+    # Use az webapp deploy --async true so the CLI returns immediately after upload.
+    # --async true avoids the secondary 10-min wait for container health, which also 504s.
     - name: Deploy to App Service
       run: |
         zip -r publish.zip ./publish
@@ -95,7 +113,7 @@ jobs:
             exit 0
           fi
           if [ $attempt -lt 3 ]; then
-            WAIT=$((attempt * 90))
+            WAIT=$((attempt * 60))
             echo "Deployment failed, waiting ${WAIT}s before retry (attempt $((attempt+1)))..."
             sleep $WAIT
           fi
