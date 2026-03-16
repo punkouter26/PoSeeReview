@@ -127,6 +127,7 @@ build-output.txt
 # Playwright screenshots (local test artifacts)
 docs/screenshots/
 tests/e2e/debug-*
+tests/e2e/adhoc-screenshots/
 
 # Blazor specific
 wwwroot/lib/

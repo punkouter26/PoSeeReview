@@ -97,21 +97,39 @@ jobs:
 
     # Use az webapp deploy --async true so the CLI returns immediately after upload.
     # --async true avoids the secondary 10-min wait for container health, which also 504s.
+    # Treat HTTP 504 from deploy submission as transient: submission can still succeed server-side.
     - name: Deploy to App Service
       run: |
-        zip -r publish.zip ./publish
+        zip -qr publish.zip ./publish
 
+        DEPLOY_SUBMITTED=false
         for attempt in 1 2 3; do
           echo "Deployment attempt $attempt of 3..."
-          if az webapp deploy \
+
+          set +e
+          DEPLOY_OUTPUT=$(az webapp deploy \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --src-path publish.zip \
             --type zip \
-            --async true; then
+            --async true 2>&1)
+          DEPLOY_EXIT=$?
+          set -e
+
+          echo "$DEPLOY_OUTPUT"
+
+          if [ $DEPLOY_EXIT -eq 0 ]; then
             echo "Deployment submitted successfully on attempt $attempt"
-            exit 0
+            DEPLOY_SUBMITTED=true
+            break
           fi
+
+          if echo "$DEPLOY_OUTPUT" | grep -q "Status Code: 504"; then
+            echo "WARNING: Deploy API returned 504 on attempt $attempt; treating as transient and continuing to health verification"
+            DEPLOY_SUBMITTED=true
+            break
+          fi
+
           if [ $attempt -lt 3 ]; then
             WAIT=$((attempt * 60))
             echo "Deployment failed, waiting ${WAIT}s before retry (attempt $((attempt+1)))..."
@@ -119,24 +137,37 @@ jobs:
           fi
         done
 
-        echo "All 3 deployment attempts failed"
-        exit 1
+        if [ "$DEPLOY_SUBMITTED" != "true" ]; then
+          echo "All 3 deployment attempts failed to submit"
+          exit 1
+        fi
 
     - name: Verify deployment health
       run: |
+        BASE_URL="https://${{ env.APP_NAME }}.azurewebsites.net"
+
         echo "Waiting 60s for new container to start..."
         sleep 60
-        for i in $(seq 1 10); do
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://${{ env.APP_NAME }}.azurewebsites.net/health" || echo "000")
-          echo "Attempt $i: health endpoint returned $HTTP_STATUS"
-          if [ "$HTTP_STATUS" = "200" ]; then
+
+        for i in $(seq 1 20); do
+          LIVE_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 \
+            "$BASE_URL/api/health/live" || echo "000")
+          READY_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 \
+            "$BASE_URL/api/health" || echo "000")
+
+          echo "Attempt $i: /api/health/live=$LIVE_STATUS, /api/health=$READY_STATUS"
+
+          if [ "$LIVE_STATUS" = "200" ] && [ "$READY_STATUS" = "200" ]; then
             echo "App is healthy after deployment"
             exit 0
           fi
+
           sleep 30
         done
-        echo "WARNING: App did not return 200 from /health within 5 minutes"
+
+        echo "WARNING: App did not return healthy status from /api/health/live and /api/health within 10 minutes"
+        echo "Last health response body from /api/health (best effort):"
+        curl -sS --max-time 20 "$BASE_URL/api/health" || true
         exit 1
 
 
