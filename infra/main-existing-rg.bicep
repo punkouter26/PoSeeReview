@@ -1,5 +1,6 @@
-// Deploy Container Apps to existing PoSeeReview resource group
+// Deploy to existing PoSeeReview resource group
 // Reuses existing Storage, Key Vault, and references shared OpenAI services
+// Deploys both a Container Apps path (future) and the live App Service (current CI/CD target)
 
 targetScope = 'resourceGroup'
 
@@ -12,6 +13,9 @@ param environmentName string = 'prod'
 // Existing resource names (from PoSeeReview resource group)
 param existingStorageAccountName string = 'poseereviewstorage'
 param existingKeyVaultName string = 'poseereview-kv'
+
+// App Service name must match the existing App Service used by CI/CD
+param appServiceName string = 'app-poseereview'
 
 // Resource token for new resources
 var resourceToken = 'poseereview'
@@ -257,3 +261,26 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.properties.loginServer
 output AZURE_CONTAINER_REGISTRY_NAME string = acr.name
 output APPLICATION_INSIGHTS_CONNECTION_STRING string = applicationInsights.properties.ConnectionString
 output MANAGED_IDENTITY_CLIENT_ID string = managedIdentity.properties.clientId
+
+// ─── App Service (current CI/CD target) ─────────────────────────────────────
+// This module manages the live App Service that azure-deploy.yml deploys to.
+// It persists WEBSITES_CONTAINER_START_TIME_LIMIT=900 as IaC (prevents ContainerTimeout
+// crash loops caused by .NET 10 cold start: cert update ~5 min + MI token ~2 min).
+
+module appService './modules/appservice.bicep' = {
+  name: 'appservice'
+  params: {
+    location: location
+    tags: tags
+    appName: appServiceName
+    keyVaultEndpoint: existingKeyVault.properties.vaultUri
+    storageTableEndpoint: existingStorage.properties.primaryEndpoints.table
+    storageBlobEndpoint: existingStorage.properties.primaryEndpoints.blob
+    applicationInsightsConnectionString: applicationInsights.properties.ConnectionString
+    aspnetcoreEnvironment: environmentName == 'prod' ? 'Production' : 'Development'
+  }
+}
+
+// App Service outputs
+output APP_SERVICE_URL string = 'https://${appService.outputs.hostName}'
+output APP_SERVICE_IDENTITY_PRINCIPAL_ID string = appService.outputs.identityPrincipalId
