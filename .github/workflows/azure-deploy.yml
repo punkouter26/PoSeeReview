@@ -173,16 +173,19 @@ jobs:
       run: |
         BASE_URL="https://${{ env.APP_NAME }}.azurewebsites.net"
 
-        echo "Waiting 60s for new container to start..."
-        sleep 60
+        echo "Waiting 90s for new container to start..."
+        sleep 90
 
-        for i in $(seq 1 20); do
-          LIVE_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 \
-            "$BASE_URL/api/health/live" || echo "000")
-          READY_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 \
-            "$BASE_URL/api/health" || echo "000")
+        for i in $(seq 1 24); do
+          # Capture HTTP status safely: redirect stderr to /dev/null so exit code 28
+          # (curl timeout) doesn't corrupt the status string written to stdout.
+          LIVE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 \
+            "$BASE_URL/api/health/live" 2>/dev/null) || LIVE_STATUS="000"
+          # /api/health runs real dependency checks (Table Storage) — allow 60s
+          READY_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+            "$BASE_URL/api/health" 2>/dev/null) || READY_STATUS="000"
 
-          echo "Attempt $i: /api/health/live=$LIVE_STATUS, /api/health=$READY_STATUS"
+          echo "Attempt $i/24: /api/health/live=$LIVE_STATUS, /api/health=$READY_STATUS"
 
           if [ "$LIVE_STATUS" = "200" ] && [ "$READY_STATUS" = "200" ]; then
             echo "App is healthy after deployment"
@@ -192,9 +195,9 @@ jobs:
           sleep 30
         done
 
-        echo "WARNING: App did not return healthy status from /api/health/live and /api/health within 10 minutes"
+        echo "WARNING: App did not return healthy status within 12 minutes after deployment"
         echo "Last health response body from /api/health (best effort):"
-        curl -sS --max-time 20 "$BASE_URL/api/health" || true
+        curl -s --max-time 60 "$BASE_URL/api/health" 2>/dev/null || true
         exit 1
 
 
