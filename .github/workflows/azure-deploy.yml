@@ -64,26 +64,41 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+    # Set startup timeout BEFORE deploy so the new container has enough warmup time.
+    # Root cause: Linux cert update (~5 min) + Managed Identity cold start (~2 min) = ~10 min total.
+    - name: Configure App Service startup timeout
+      run: |
+        az webapp config appsettings set \
+          --name ${{ env.APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --settings WEBSITES_CONTAINER_START_TIME_LIMIT=900
+
     - name: Deploy to App Service
       uses: azure/webapps-deploy@v3
       with:
         app-name: ${{ env.APP_NAME }}
         package: ./publish
 
+    # App Service on Linux with .NET 10 has a long first-start:
+    #   ~5 min cert update + ~2 min Managed Identity cold start = ~10-11 min total.
+    # Poll every 30s for up to 13 minutes before declaring failure.
     - name: Health check (liveness)
       run: |
-        echo "Waiting 30s for app to warm up..."
-        sleep 30
-        for i in {1..5}; do
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${{ env.HEALTH_URL }}")
-          echo "Attempt $i: HTTP $STATUS"
+        echo "Waiting for app to start (up to 13 minutes)..."
+        MAX_WAIT=780
+        INTERVAL=30
+        ELAPSED=0
+        while [ $ELAPSED -lt $MAX_WAIT ]; do
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "${{ env.HEALTH_URL }}")
+          echo "[${ELAPSED}s] HTTP $STATUS"
           if [ "$STATUS" = "200" ]; then
-            echo "Health check passed!"
+            echo "Health check passed after ${ELAPSED}s!"
             exit 0
           fi
-          sleep 15
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
         done
-        echo "Health check failed after 5 attempts"
+        echo "Health check failed after ${MAX_WAIT}s"
         exit 1
 
 
