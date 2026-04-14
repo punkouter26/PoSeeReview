@@ -50,7 +50,7 @@ public class RestaurantService : IRestaurantService
             latitude, longitude, limit);
 
         // Search via Google Maps API
-        var restaurants = await _googleMapsService.SearchNearbyAsync(latitude, longitude);
+        var restaurants = await _googleMapsService.SearchNearbyAsync(latitude, longitude, cancellationToken: cancellationToken);
 
         // Calculate distance from user location for each restaurant
         foreach (var restaurant in restaurants)

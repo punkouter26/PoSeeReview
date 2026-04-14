@@ -140,7 +140,8 @@ public class GoogleMapsService
     public async Task<List<Restaurant>> SearchNearbyAsync(
         double latitude,
         double longitude,
-        int radiusMeters = 5000)
+        int radiusMeters = 5000,
+        CancellationToken cancellationToken = default)
     {
         if (!ValidateCoordinates(latitude, longitude))
         {
@@ -177,11 +178,11 @@ public class GoogleMapsService
         request.Headers.Add("X-Goog-Api-Key", _apiKey);
         request.Headers.Add("X-Goog-FieldMask", "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount");
 
-        var response = await _httpClient.SendAsync(request);
+        var response = await _httpClient.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            var errorContent = await response.Content.ReadAsStringAsync();
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Google Places API error: {StatusCode} - {ErrorContent}", response.StatusCode, errorContent);
             // Include the actual Google API error body so callers can surface it for debugging
             throw new HttpRequestException(
@@ -190,7 +191,7 @@ public class GoogleMapsService
                 statusCode: response.StatusCode);
         }
 
-        var result = await response.Content.ReadFromJsonAsync<GooglePlacesResponse>();
+        var result = await response.Content.ReadFromJsonAsync<GooglePlacesResponse>(cancellationToken: cancellationToken);
 
         return result?.Places?.Select(p => new Restaurant
         {

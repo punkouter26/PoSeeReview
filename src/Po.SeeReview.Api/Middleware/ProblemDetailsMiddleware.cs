@@ -38,6 +38,17 @@ public class ProblemDetailsMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        // If the response has already started (e.g. CORS headers written), we cannot
+        // modify status or headers — log the original exception and bail out so Kestrel
+        // closes the connection cleanly rather than throwing a secondary exception that
+        // propagates unhandled through the middleware chain and causes Azure to return 502.
+        if (context.Response.HasStarted)
+        {
+            _logger.LogError(exception,
+                "Unhandled exception after response headers were already sent; cannot write error response");
+            return;
+        }
+
         var problemDetails = new ProblemDetails
         {
             Type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",

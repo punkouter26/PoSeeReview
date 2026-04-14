@@ -101,6 +101,17 @@ public class RestaurantsController : ControllerBase
                 Detail = ex.Message
             });
         }
+        catch (OperationCanceledException)
+        {
+            // Client disconnected or request timed out — no response to write.
+            _logger.LogInformation("Nearby restaurant search cancelled (client disconnected or timed out)");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Title = "Request Cancelled",
+                Detail = "The request was cancelled before it could complete."
+            });
+        }
         catch (HttpRequestException ex)
         {
             _logger.LogError(ex, "Google Maps API error for nearby search: {Message}", ex.Message);
@@ -112,6 +123,17 @@ public class RestaurantsController : ControllerBase
             {
                 Status = StatusCodes.Status503ServiceUnavailable,
                 Title = "Google Maps API Unavailable",
+                Detail = detail
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error in nearby restaurant search at ({Latitude}, {Longitude})", latitude, longitude);
+            var detail = _env.IsDevelopment() ? ex.Message : "An unexpected error occurred while fetching restaurants.";
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Status = StatusCodes.Status503ServiceUnavailable,
+                Title = "Service Error",
                 Detail = detail
             });
         }
@@ -147,7 +169,31 @@ public class RestaurantsController : ControllerBase
         var coordinates = GetCoordinatesForLocation(location);
         if (coordinates == null)
         {
-            coordinates = await _restaurantService.GeocodeLocationAsync(location, HttpContext.RequestAborted);
+            try
+            {
+                coordinates = await _restaurantService.GeocodeLocationAsync(location, HttpContext.RequestAborted);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Geocoding cancelled for location '{Location}' (client disconnected)", location);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+                {
+                    Status = StatusCodes.Status503ServiceUnavailable,
+                    Title = "Request Cancelled",
+                    Detail = "The request was cancelled before geocoding could complete."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Geocoding failed for location '{Location}': {Message}", location, ex.Message);
+                var detail = _env.IsDevelopment() ? ex.Message : "Unable to resolve the specified location.";
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+                {
+                    Status = StatusCodes.Status503ServiceUnavailable,
+                    Title = "Geocoding Failed",
+                    Detail = detail
+                });
+            }
         }
 
         if (coordinates == null)
@@ -181,6 +227,7 @@ public class RestaurantsController : ControllerBase
             "austin" or "78701" => (30.2672, -97.7431),
             "denver" or "80201" => (39.7392, -104.9903),
             "miami" or "33101" => (25.7617, -80.1918),
+            "washington" or "washington, dc" or "washington dc" or "dc" or "20001" => (38.9072, -77.0369),
             _ => null
         };
     }
