@@ -8,7 +8,6 @@ on:
 
 env:
   APP_NAME: app-poseereview
-  RESOURCE_GROUP: PoSeeReview
   DOTNET_VERSION: '10.0.x'
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
@@ -54,81 +53,18 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    - name: Ensure Kudu Basic Auth Is Enabled
-      run: |
-        SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-        az resource update \
-          --ids "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${{ env.RESOURCE_GROUP }}/providers/Microsoft.Web/sites/${{ env.APP_NAME }}/basicPublishingCredentialsPolicies/scm" \
-          --set properties.allow=true
-
-    - name: Package Published App
-      run: |
-        cd publish
-        zip -qr ../publish.zip .
-
     - name: Deploy to App Service
-      run: |
-        CREDS_JSON=$(az webapp deployment list-publishing-credentials \
-          --name ${{ env.APP_NAME }} \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --query "{user:publishingUserName, pass:publishingPassword}" \
-          -o json)
-        KUDU_USER=$(echo "$CREDS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['user'])")
-        KUDU_PASS=$(echo "$CREDS_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['pass'])")
-        KUDU_URL="https://${{ env.APP_NAME }}.scm.azurewebsites.net/api/zipdeploy?isAsync=true"
-
-        for attempt in 1 2 3; do
-          echo "Deploy attempt $attempt of 3..."
-
-          set +e
-          curl -sS \
-            --max-time 300 \
-            -o /tmp/deploy_response.txt \
-            -w "%{http_code}" \
-            -X POST "$KUDU_URL" \
-            -u "$KUDU_USER:$KUDU_PASS" \
-            -H "Content-Type: application/zip" \
-            --data-binary @publish.zip \
-            > /tmp/deploy_status.txt 2>/tmp/deploy_error.txt
-          CURL_EXIT=$?
-          set -e
-
-          HTTP_STATUS=$(cat /tmp/deploy_status.txt 2>/dev/null || echo "000")
-          echo "HTTP status: $HTTP_STATUS (curl exit: $CURL_EXIT)"
-          cat /tmp/deploy_response.txt 2>/dev/null || true
-          if [ -s /tmp/deploy_error.txt ]; then
-            echo "curl stderr: $(cat /tmp/deploy_error.txt)"
-          fi
-
-          if [ "$HTTP_STATUS" = "202" ] || [ "$HTTP_STATUS" = "200" ]; then
-            echo "Deployment accepted with HTTP $HTTP_STATUS"
-            exit 0
-          fi
-
-          if [ "$CURL_EXIT" = "28" ]; then
-            echo "Deploy upload timed out on attempt $attempt"
-          elif [ -z "$HTTP_STATUS" ] || [ "$HTTP_STATUS" = "000" ]; then
-            echo "Deploy connection failed on attempt $attempt"
-          else
-            echo "Deploy returned HTTP $HTTP_STATUS on attempt $attempt"
-          fi
-
-          if [ $attempt -lt 3 ]; then
-            WAIT=$((attempt * 60))
-            echo "Waiting ${WAIT}s before retry..."
-            sleep $WAIT
-          fi
-        done
-
-        echo "All deploy attempts failed"
-        exit 1
+      uses: azure/webapps-deploy@v3
+      with:
+        app-name: ${{ env.APP_NAME }}
+        package: ./publish
 
     - name: Verify deployment health
       run: |
         BASE_URL="https://${{ env.APP_NAME }}.azurewebsites.net"
 
-        echo "Waiting 90s for new container to start..."
-        sleep 90
+        echo "Waiting 30s for app to start..."
+        sleep 30
 
         for i in $(seq 1 20); do
           LIVE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 \
