@@ -4,6 +4,9 @@ using Xunit;
 
 namespace Po.SeeReview.IntegrationTests.Storage;
 
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Storage")]
+[Trait("Suite", "CriticalPath")]
 public class BlobStorageTests : IClassFixture<AzuriteFixture>, IDisposable
 {
     private readonly AzuriteFixture _fixture;

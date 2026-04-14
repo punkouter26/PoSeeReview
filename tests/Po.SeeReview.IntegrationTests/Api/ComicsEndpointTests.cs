@@ -7,6 +7,9 @@ using Xunit.Abstractions;
 
 namespace Po.SeeReview.IntegrationTests.Api;
 
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Api")]
+[Trait("Suite", "CriticalPath")]
 public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;

@@ -30,4 +30,12 @@ public interface IRestaurantService
     /// <exception cref="KeyNotFoundException">Restaurant not found</exception>
     Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Geocodes a free-form location query (city, ZIP/postal code, etc.) to coordinates.
+    /// </summary>
+    /// <param name="locationQuery">User-entered location text</param>
+    /// <param name="cancellationToken">Cancellation token for async operations</param>
+    /// <returns>Latitude/longitude when geocoding succeeds; otherwise null</returns>
+    Task<(double lat, double lon)?> GeocodeLocationAsync(string locationQuery, CancellationToken cancellationToken = default);
+
 }

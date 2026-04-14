@@ -97,6 +97,7 @@
             {
                 <RestaurantCard 
                     Restaurant="restaurant" 
+                    IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                     OnRestaurantClick="HandleRestaurantClick" />
             }
         </div>
@@ -112,6 +113,8 @@
     private int _totalCount = 0;
     private string _searchQuery = string.Empty;
     private string _lastSearch = string.Empty;
+    private bool _isNavigatingToComic;
+    private string? _activeComicPlaceId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -223,6 +226,13 @@
             _lastSearch = _searchQuery;
             _flowState = LocationFlowState.Ready;
         }
+        catch (HttpRequestException ex)
+        {
+            _errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Failed to search restaurants. Please try again later."
+                : ex.Message;
+            _flowState = LocationFlowState.Error;
+        }
         catch (Exception)
         {
             _errorMessage = "Failed to search restaurants. Please try again later.";
@@ -244,8 +254,19 @@
         }
     }
 
-    private void HandleRestaurantClick(RestaurantDto restaurant)
+    private async Task HandleRestaurantClick(RestaurantDto restaurant)
     {
+        if (_isNavigatingToComic)
+        {
+            return;
+        }
+
+        _isNavigatingToComic = true;
+        _activeComicPlaceId = restaurant.PlaceId;
+        StateHasChanged();
+
+        // Yield once so the UI can render the disabled button state before navigation.
+        await Task.Yield();
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
     }
 
@@ -255,6 +276,8 @@
         _totalCount = 0;
         _lastSearch = string.Empty;
         _searchQuery = string.Empty;
+        _isNavigatingToComic = false;
+        _activeComicPlaceId = null;
         _flowState = LocationFlowState.Idle;
     }
 }

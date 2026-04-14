@@ -48,6 +48,89 @@ public class GoogleMapsService
     }
 
     /// <summary>
+    /// Geocodes a free-form location query (city, ZIP/postal code, etc.) into coordinates.
+    /// </summary>
+    public async Task<(double lat, double lon)?> GeocodeLocationAsync(
+        string locationQuery,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(locationQuery))
+        {
+            return null;
+        }
+
+        var encoded = Uri.EscapeDataString(locationQuery.Trim());
+        var url = $"https://maps.googleapis.com/maps/api/geocode/json?address={encoded}&key={_apiKey}";
+
+        _logger.LogInformation("Geocoding location query: {LocationQuery}", locationQuery);
+
+        var response = await _httpClient.GetAsync(url, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("Google Geocoding API returned {StatusCode} for '{LocationQuery}': {ErrorContent}",
+                response.StatusCode,
+                locationQuery,
+                errorContent);
+            return null;
+        }
+
+        var geocode = await response.Content.ReadFromJsonAsync<GeocodeResponse>(cancellationToken: cancellationToken);
+        if (geocode == null || !string.Equals(geocode.Status, "OK", StringComparison.OrdinalIgnoreCase) || geocode.Results == null || geocode.Results.Count == 0)
+        {
+            _logger.LogInformation("No geocode results for location query: {LocationQuery}. Status: {Status}", locationQuery, geocode?.Status);
+            return await TryResolveLocationWithPlacesTextSearchAsync(locationQuery, cancellationToken);
+        }
+
+        var first = geocode.Results[0].Geometry?.Location;
+        if (first == null || !ValidateCoordinates(first.Latitude, first.Longitude))
+        {
+            return null;
+        }
+
+        return (first.Latitude, first.Longitude);
+    }
+
+    private async Task<(double lat, double lon)?> TryResolveLocationWithPlacesTextSearchAsync(
+        string locationQuery,
+        CancellationToken cancellationToken)
+    {
+        var requestBody = new
+        {
+            textQuery = locationQuery,
+            maxResultCount = 1
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "https://places.googleapis.com/v1/places:searchText")
+        {
+            Content = JsonContent.Create(requestBody)
+        };
+        request.Headers.Add("X-Goog-Api-Key", _apiKey);
+        request.Headers.Add("X-Goog-FieldMask", "places.location");
+
+        var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("Google Places Text Search returned {StatusCode} for '{LocationQuery}': {ErrorContent}",
+                response.StatusCode,
+                locationQuery,
+                errorContent);
+            return null;
+        }
+
+        var textSearch = await response.Content.ReadFromJsonAsync<GooglePlacesResponse>(cancellationToken: cancellationToken);
+        var candidate = textSearch?.Places?.FirstOrDefault()?.Location;
+        if (candidate == null || !ValidateCoordinates(candidate.Latitude, candidate.Longitude))
+        {
+            return null;
+        }
+
+        _logger.LogInformation("Resolved location query '{LocationQuery}' via Places Text Search fallback", locationQuery);
+        return (candidate.Latitude, candidate.Longitude);
+    }
+
+    /// <summary>
     /// Searches for nearby restaurants using Google Places API (New)
     /// </summary>
     /// <param name="latitude">Search center latitude</param>
@@ -343,5 +426,26 @@ public class GoogleMapsService
 
         [JsonPropertyName("photoUri")]
         public string? PhotoUri { get; set; }
+    }
+
+    private class GeocodeResponse
+    {
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("results")]
+        public List<GeocodeResult>? Results { get; set; }
+    }
+
+    private class GeocodeResult
+    {
+        [JsonPropertyName("geometry")]
+        public GeocodeGeometry? Geometry { get; set; }
+    }
+
+    private class GeocodeGeometry
+    {
+        [JsonPropertyName("location")]
+        public Location? Location { get; set; }
     }
 }

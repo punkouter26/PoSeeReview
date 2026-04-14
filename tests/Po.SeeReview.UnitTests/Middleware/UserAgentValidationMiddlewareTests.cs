@@ -6,6 +6,8 @@ using Xunit;
 
 namespace Po.SeeReview.UnitTests.Middleware;
 
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class UserAgentValidationMiddlewareTests
 {
     [Fact]

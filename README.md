@@ -1,181 +1,83 @@
-# SeeReview
+# PoSeeReview
 
-**Turning Real Reviews into Surreal Stories** — transforms real restaurant reviews into AI-generated four-panel comic strips. No account required.
+PoSeeReview turns unusual restaurant reviews into four-panel comics and publishes ranked results to a global Hall of Fame leaderboard. The solution runs as Blazor WebAssembly and .NET 10 API in one Azure App Service, with Azure Storage for persistence and external AI services for narrative and image generation.
 
-## What is SeeReview?
+## Consolidated Architecture Overview
 
-SeeReview detects your location, finds the 10 nearest restaurants via Google Maps, pulls their strangest reviews, and feeds them to AI. Azure OpenAI GPT-4o-mini scores each review's "strangeness" (0–100) and writes a narrative. Google Gemini Imagen 4 renders that narrative as a four-panel comic strip PNG stored in Azure Blob Storage. The weirdest restaurants surface in a global Hall of Fame leaderboard ranked by strangeness score.
+- Edge Delivery: browser client, static WASM assets, and same-origin host.
+- Compute Tier: API endpoints, middleware safeguards, background cleanup, telemetry.
+- Data Persistence: Azure Table/Blob storage plus Key Vault-backed configuration.
+- External Intelligence: Google Maps Places, Azure OpenAI, and Gemini image generation.
 
-## Architecture
+## Documentation Suite
 
-```mermaid
-flowchart TD
-  U["Anonymous User"]
-  APP["PoSeeReview App\nBlazor WASM + .NET 10 API\nAzure App Service"]
-  ST["Azure Storage\nTables + Blobs"]
-  KV["Azure Key Vault"]
-  AI["Application Insights"]
-  GM["Google Maps\nPlaces API"]
-  OAI["Azure OpenAI\nGPT-4o-mini"]
-  GEM["Google Gemini\nImagen 4"]
+### Master diagrams
 
-  U -->|HTTPS| APP
-  APP -->|Azure SDK| ST
-  APP -->|Managed Identity| KV
-  APP -->|OpenTelemetry| AI
-  APP -->|REST| GM
-  APP -->|REST| OAI
-  APP -->|REST| GEM
+- [docs/Architecture_MASTER.mmd](./docs/Architecture_MASTER.mmd)
+- [docs/DataLifecycle_MASTER.mmd](./docs/DataLifecycle_MASTER.mmd)
+- [docs/DataModel.mmd](./docs/DataModel.mmd)
+- [docs/SystemFlow_MASTER.mmd](./docs/SystemFlow_MASTER.mmd)
+- [docs/MultiplayerFlow.mmd](./docs/MultiplayerFlow.mmd)
 
-  style U fill:#1558b0,stroke:#0d3c6e,color:#fff
-  style APP fill:#085f08,stroke:#064004,color:#fff
-  style ST fill:#5c2d91,stroke:#3e1a6e,color:#fff
-  style KV fill:#8e1a1a,stroke:#600f0f,color:#fff
-  style AI fill:#a03000,stroke:#722200,color:#fff
-  style GM fill:#0d3c6e,stroke:#091f3a,color:#fff
-  style OAI fill:#00363a,stroke:#001e20,color:#fff
-  style GEM fill:#0d0f4b,stroke:#050630,color:#fff
-```
+### Simplicity variants
 
-**Frontend**: Blazor WebAssembly (same origin as API — no separate host)  
-**Backend**: ASP.NET Core 10 Web API — rate-limited, bot-filtered, Key Vault-backed  
-**Storage**: Azure Table Storage (comics, restaurants, leaderboard) + Blob Storage (comic PNGs)  
-**AI**: Azure OpenAI GPT-4o-mini (narrative + score) + Google Gemini Imagen 4 (comic PNG)  
-**Data Source**: Google Maps Places API for nearby restaurants and reviews
+- [docs/Architecture_MASTER_SIMPLE.mmd](./docs/Architecture_MASTER_SIMPLE.mmd)
+- [docs/DataLifecycle_MASTER_SIMPLE.mmd](./docs/DataLifecycle_MASTER_SIMPLE.mmd)
+- [docs/DataModel_SIMPLE.mmd](./docs/DataModel_SIMPLE.mmd)
+- [docs/SystemFlow_MASTER_SIMPLE.mmd](./docs/SystemFlow_MASTER_SIMPLE.mmd)
+- [docs/MultiplayerFlow_SIMPLE.mmd](./docs/MultiplayerFlow_SIMPLE.mmd)
 
-## Quick Start
+### Visual assets
 
-### Prerequisites
+- [docs/screenshots](./docs/screenshots) is reserved for UI screenshots and flow captures.
 
-- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (version pinned in `global.json`)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) — for Azurite local storage
-- [Node.js LTS](https://nodejs.org/) — for Playwright E2E tests
-- Google Maps API Key, Azure OpenAI resource, Google Gemini API Key
+## Refactor Blast Radius Assessment
 
-### Running the Application
+### Refactor: Replace direct provider clients with a single orchestration service
 
-#### 1. Clone and Navigate
+- Purpose: centralize Google Maps, LLM, and image-model execution with explicit retries, fallback policy, and correlation IDs.
+- Blast radius:
+  - API layer: changes to service registration and endpoint call paths.
+  - Infrastructure layer: adapter wrappers around existing provider SDK clients.
+  - Telemetry: metric names and traces may shift to orchestration-centric spans.
+  - Tests: unit/integration tests mocking provider dependencies must be updated.
+  - Downstream dependencies: provider quota behavior and timeout strategy become coupled to orchestrator policy.
 
-```powershell
-git clone <repository-url>
-cd PoSeeReview
-```
+### Refactor: Introduce projection worker for leaderboard materialization
 
-#### 2. Start Azurite (Local Storage Emulator)
+- Purpose: decouple ranking updates from request path to reduce p95 latency.
+- Blast radius:
+  - API layer: request handlers move from synchronous projection writes to enqueue-only behavior.
+  - Data layer: adds queue/table checkpoint records and idempotency keys.
+  - UI layer: leaderboard eventual-consistency window must be communicated.
+  - Operations: requires new health checks and backlog alerts.
+  - Downstream dependencies: consumers reading immediate ranks may observe delayed updates.
 
-```powershell
-docker compose up azurite -d
-```
+### Refactor: Add versioned state machine for comic lifecycle
 
-#### 3. Configure User Secrets
+- Purpose: make status transitions explicit and enforceable across create, publish, expire, and takedown flows.
+- Blast radius:
+  - Core model: enum/state transition rules and validation constraints change.
+  - API contracts: response fields may include state version and transition metadata.
+  - Storage schema: migration required for lifecycle version and transition audit fields.
+  - Background jobs: cleanup/takedown workers must honor state-machine gates.
+  - Downstream dependencies: reporting and moderation tools must map to new state values.
 
-```powershell
-cd src/Po.SeeReview.Api
+### Refactor: Introduce anti-corruption DTO boundary between API and shared client contracts
 
-dotnet user-secrets set "AzureStorage:ConnectionString"    "UseDevelopmentStorage=true"
-dotnet user-secrets set "GoogleMaps:ApiKey"                "YOUR_GOOGLE_MAPS_KEY"
-dotnet user-secrets set "AzureOpenAI:Endpoint"             "https://YOUR_RESOURCE.openai.azure.com/"
-dotnet user-secrets set "AzureOpenAI:ApiKey"               "YOUR_AZURE_OPENAI_KEY"
-dotnet user-secrets set "AzureOpenAI:DeploymentName"       "gpt-4o-mini"
-dotnet user-secrets set "Google:GeminiApiKey"              "YOUR_GEMINI_KEY"
-dotnet user-secrets set "ApplicationInsights:ConnectionString" "YOUR_APP_INSIGHTS_CS"  # optional
+- Purpose: reduce accidental coupling between persistence entities and external payloads.
+- Blast radius:
+  - API endpoints: mapping logic added for read/write DTO translations.
+  - Client app: contract changes may require adapter updates in typed services.
+  - Tests: snapshot and serialization tests need baseline refresh.
+  - Performance: additional mapping allocations may require profiling.
+  - Downstream dependencies: any external consumer of existing DTO shape may need migration coordination.
 
-cd ../..
-```
-
-#### 4. Run the Application
+## Build and Run
 
 ```powershell
+dotnet restore
+dotnet build PoSeeReview.sln
 dotnet run --project src/Po.SeeReview.Api --launch-profile https
 ```
-
-The application starts at `https://localhost:5001` (API + Blazor WASM on the same origin).
-Diagnostics: `https://localhost:5001/diag` (Development mode only).
-
-Open your browser to the URL displayed in the console.
-
-#### 5. Verify Application Health
-
-Navigate to `/diag` to see the health status of all application dependencies (Azure Table, Blob, Google Maps).
-
-#### 6. Request Requirements & Limits
-
-- Attach a browser-style `User-Agent` header when exercising APIs (non-browser clients without one receive `400`).
-- Rate limiting allows 60 requests per minute per client IP; exceeding the limit returns `429` with `Retry-After: 60` seconds.
-- Health check and takedown endpoints are subject to the same safeguards.
-
-### Development Workflow
-
-```powershell
-# Restore all packages
-dotnet restore
-
-# Build entire solution
-dotnet build
-
-# Run all tests (locally only)
-dotnet test
-
-# Format code
-dotnet format
-
-# Run E2E tests (Playwright)
-cd tests/e2e
-npm install
-npx playwright test
-```
-
-## Azure Deployment
-
-Deploy to Azure using **Azure Developer CLI (azd)**:
-
-```powershell
-azd auth login
-azd up        # provision + deploy (first time)
-azd deploy    # code-only redeploy
-azd monitor --logs
-azd down      # remove all resources
-```
-
-See [docs/DevOps.md](./docs/DevOps.md) for the full CI/CD pipeline, Key Vault secrets reference, and security checklist.
-
-
-## Project Structure
-
-```
-src/
-├── Po.SeeReview.Api/            # ASP.NET Core 10 Web API + Blazor WASM host
-│   ├── Controllers/             # REST endpoints (restaurants, comics, leaderboard, takedowns)
-│   ├── Middleware/              # UserAgent filtering, ProblemDetails, request logging
-│   ├── HostedServices/          # ExpiredComicCleanupService (runs every 30 min)
-│   └── Program.cs               # DI, rate limiting, CORS, Key Vault, Serilog
-│
-├── Po.SeeReview.Client/         # Blazor WebAssembly frontend
-│   ├── Pages/                   # Index, ComicView, Leaderboard, Diagnostics
-│   ├── Components/              # RestaurantCard, ComicStrip, LoadingIndicator
-│   └── Services/                # ApiClient, GeolocationService, ShareService
-│
-├── Po.SeeReview.Core/           # Domain entities and interfaces (no external deps)
-├── Po.SeeReview.Infrastructure/ # Azure Storage, Google Maps, OpenAI, Gemini integrations
-└── Po.SeeReview.Shared/         # Shared DTOs between Client and API
-
-tests/
-├── Po.SeeReview.UnitTests/      # XUnit + Moq
-├── Po.SeeReview.IntegrationTests/ # WebApplicationFactory
-└── e2e/                         # Playwright (TypeScript)
-```
-
-## Documentation
-
-| File | Description |
-|---|---|
-| [docs/Architecture.mmd](./docs/Architecture.mmd) | C4 Level 1 system context — Azure deployment topology |
-| [docs/Architecture_SIMPLE.mmd](./docs/Architecture_SIMPLE.mmd) | Simplified architecture overview |
-| [docs/SystemFlow.mmd](./docs/SystemFlow.mmd) | Full user journey + comic generation pipeline sequence diagram |
-| [docs/SystemFlow_SIMPLE.mmd](./docs/SystemFlow_SIMPLE.mmd) | Simplified user flow |
-| [docs/DataModel.mmd](./docs/DataModel.mmd) | Entity relationship diagram — all entities and relations |
-| [docs/DataModel_SIMPLE.mmd](./docs/DataModel_SIMPLE.mmd) | Simplified ER diagram |
-| [docs/ProductSpec.md](./docs/ProductSpec.md) | PRD, business rules, success metrics, acceptance criteria |
-| [docs/DevOps.md](./docs/DevOps.md) | CI/CD, onboarding, Key Vault secrets, security checklist, blast radius assessment |
-| [infra/README.md](./infra/README.md) | Azure Bicep infrastructure modules |
 

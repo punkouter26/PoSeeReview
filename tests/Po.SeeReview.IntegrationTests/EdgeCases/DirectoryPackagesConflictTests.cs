@@ -6,6 +6,8 @@ namespace Po.SeeReview.IntegrationTests.EdgeCases;
 /// Tests for Directory.Packages.props version conflict scenarios.
 /// Validates constitution requirement: FR-001 (centralized package management).
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "EdgeCases")]
 public class DirectoryPackagesConflictTests
 {
     [Fact]

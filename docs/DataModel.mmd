@@ -1,57 +1,62 @@
 erDiagram
+  RESTAURANT ||--o{ COMIC : "contains"
+  COMIC ||--|| LEADERBOARD_ENTRY : "projects_to"
+  RESTAURANT ||--o{ REVIEW_SOURCE : "sourced_from"
+  COMIC ||--o{ TAKEDOWN_REQUEST : "may_have"
+
   RESTAURANT {
-    string PlaceId PK "Google Maps Place ID"
+    string RestaurantId PK
+    string PlaceId
     string Name
     string Address
     float Latitude
     float Longitude
-    string Region "CC-ST-CITY e.g. US-CA-SF"
-    float AverageRating "0.0 to 5.0"
-    int TotalReviews
-    datetime CachedAt "TTL origin timestamp"
+    string CurrentStatusEnum
+    string AllowedCurrentStatusTransitions
+    datetime LastUpdatedUtc
   }
 
-  REVIEW {
-    string AuthorName
-    string Text
-    int Rating "1 to 5 stars"
-    datetime Time
-    int StrangenessScore "0-100 assigned by Azure OpenAI"
+  REVIEW_SOURCE {
+    string ReviewSourceId PK
+    string RestaurantId FK
+    string ReviewerAlias
+    string ReviewText
+    int OriginalRating
+    datetime CapturedUtc
+    string IngestionStatusEnum
+    string AllowedIngestionStatusTransitions
   }
 
   COMIC {
-    string Id PK
-    string PlaceId FK
-    string RestaurantName
-    string ImageUrl "Azure Blob Storage URL"
-    string Narrative "AI-generated paragraph"
-    int StrangenessScore "0-100"
-    datetime ExpiresAt "CreatedAt plus 7 days"
-    bool IsCached
-    datetime CreatedAt
+    string ComicId PK
+    string RestaurantId FK
+    string BlobPath
+    string Narrative
+    int StrangenessScore
+    string GenerationStatusEnum
+    string AllowedGenerationStatusTransitions
+    datetime CreatedUtc
+    datetime ExpiresUtc
   }
 
   LEADERBOARD_ENTRY {
-    string PlaceId PK "Azure Table RowKey"
-    string Region PK "Azure Table PartitionKey e.g. US-CA-SF"
+    string LeaderboardEntryId PK
+    string ComicId FK
     string RestaurantName
-    string Address
-    int StrangenessScore "Min 20 to qualify"
-    string ComicBlobUrl
-    datetime LastUpdated
+    int Rank
+    int Score
+    datetime PublishedUtc
+    string ProjectionStatusEnum
+    string AllowedProjectionStatusTransitions
   }
 
   TAKEDOWN_REQUEST {
-    string PlaceId FK
-    string RequesterName
-    string ContactEmail
-    string Region "CC-ST-CITY format"
+    string TakedownRequestId PK
+    string ComicId FK
+    string RequestedBy
     string Reason
-    string ProofOfAffiliationUrl
-    string AdditionalDetails
+    string RequestStatusEnum
+    string AllowedRequestStatusTransitions
+    datetime RequestedUtc
+    datetime ProcessedUtc
   }
-
-  RESTAURANT ||--o{ REVIEW : "has up to 5 AI-analysed"
-  RESTAURANT ||--o| COMIC : "generates one per cache window"
-  COMIC ||--o| LEADERBOARD_ENTRY : "eligible when score gte 20"
-  COMIC ||--o| TAKEDOWN_REQUEST : "subject of removal"

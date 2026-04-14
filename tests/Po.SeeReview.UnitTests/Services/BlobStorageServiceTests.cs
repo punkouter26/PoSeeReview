@@ -6,6 +6,8 @@ namespace Po.SeeReview.UnitTests.Services;
 /// <summary>
 /// Unit tests for BlobStorageService - Azure Blob Storage integration for comic image persistence
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class BlobStorageServiceTests
 {
     [Fact]

@@ -147,14 +147,17 @@ public class RestaurantsController : ControllerBase
         var coordinates = GetCoordinatesForLocation(location);
         if (coordinates == null)
         {
+            coordinates = await _restaurantService.GeocodeLocationAsync(location, HttpContext.RequestAborted);
+        }
+
+        if (coordinates == null)
+        {
             _logger.LogWarning("Location '{Location}' not recognized — returning 400", location);
             return BadRequest(new ProblemDetails
             {
                 Status = StatusCodes.Status400BadRequest,
                 Title = "Unrecognized Location",
-                Detail = $"Location '{location}' is not recognized. "
-                    + "Supported cities: Seattle, San Francisco, New York, Los Angeles, Chicago, "
-                    + "Boston, Portland, Austin, Denver, Miami (or their ZIP codes)."
+                Detail = $"Location '{location}' could not be geocoded. Try including city/state or a full ZIP/postal code."
             });
         }
 

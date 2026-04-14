@@ -7,6 +7,9 @@ namespace Po.SeeReview.IntegrationTests.Infrastructure;
 /// <summary>
 /// Integration tests for RestaurantEntity CRUD operations with Azurite
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Storage")]
+[Trait("Suite", "CriticalPath")]
 public class TableStorageTests : IClassFixture<AzuriteFixture>
 {
     private readonly AzuriteFixture _fixture;

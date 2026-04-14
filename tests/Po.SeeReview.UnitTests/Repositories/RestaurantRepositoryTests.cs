@@ -9,6 +9,8 @@ namespace Po.SeeReview.UnitTests.Repositories;
 /// <summary>
 /// Unit tests for RestaurantRepository cache operations
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class RestaurantRepositoryTests
 {
     [Fact]

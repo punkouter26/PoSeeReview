@@ -1,4 +1,4 @@
-import { test, expect, Page, BrowserContext } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
  * End-to-end tests for restaurant list functionality
@@ -9,6 +9,25 @@ const BASE_URL = 'https://localhost:5001';
 
 // Capture JS errors for all tests and fail immediately if Blazor fails to boot
 const jsErrors: string[] = [];
+
+async function waitForHomeReady(page: Page): Promise<void> {
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
+  await expect(page.locator('body')).toBeVisible({ timeout: 15000 });
+  await page.waitForFunction(() => document.readyState === 'complete');
+}
+
+async function enableLocationAndWaitForRestaurants(page: Page): Promise<void> {
+  const enableButton = page.getByRole('button', { name: 'Use My Location' });
+
+  // Some flows may already have location enabled from previous state.
+  if (await enableButton.isVisible({ timeout: 4000 }).catch(() => false)) {
+    await enableButton.click();
+  }
+
+  const restaurantCards = page.locator('.restaurant-card');
+  await expect(restaurantCards.first()).toBeVisible({ timeout: 25000 });
+}
+
 test.beforeEach(async ({ context, page }) => {
   jsErrors.length = 0;
   page.on('pageerror', (err) => jsErrors.push(err.message));
@@ -19,15 +38,7 @@ test.beforeEach(async ({ context, page }) => {
     longitude: -122.3321
   });
   
-  // Navigate to the page and wait for network to be idle
-  await page.goto(BASE_URL, { waitUntil: 'networkidle' });
-  
-  // Wait for Blazor to fully initialize and render
-  await page.waitForLoadState('domcontentloaded');
-  await page.waitForLoadState('networkidle');
-  
-  // Give Blazor extra time to initialize the router
-  await page.waitForTimeout(2000);
+  await waitForHomeReady(page);
 });
 
 test.afterEach(async () => {
@@ -40,16 +51,9 @@ test.afterEach(async () => {
 test.describe('Restaurant List Tests', () => {
   
   test('HomePage: On load, displays nearby restaurants after enabling location', async ({ page }) => {
-    // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Use My Location' });
-    await expect(enableButton).toBeVisible({ timeout: 10000 });
-    
-    // Click the button to request location and load restaurants
-    await enableButton.click();
-    
-    // Wait for restaurants to load automatically
+    await enableLocationAndWaitForRestaurants(page);
+
     const restaurantCards = page.locator('.restaurant-card');
-    await expect(restaurantCards.first()).toBeVisible({ timeout: 15000 });
 
     // Assert - Verify at least one restaurant is displayed
     const count = await restaurantCards.count();
@@ -57,16 +61,9 @@ test.describe('Restaurant List Tests', () => {
   });
 
   test('HomePage: Shows restaurant details', async ({ page }) => {
-    // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Use My Location' });
-    await expect(enableButton).toBeVisible({ timeout: 10000 });
-    
-    // Click the button to request location and load restaurants
-    await enableButton.click();
-    
-    // Wait for restaurants to load
+    await enableLocationAndWaitForRestaurants(page);
+
     const restaurantCards = page.locator('.restaurant-card');
-    await expect(restaurantCards.first()).toBeVisible({ timeout: 15000 });
 
     // Assert - Verify at least one restaurant has required elements
     const firstCard = restaurantCards.first();
@@ -76,22 +73,15 @@ test.describe('Restaurant List Tests', () => {
   });
 
   test('RestaurantCard: When clicked, navigates to details page', async ({ page }) => {
-    // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Use My Location' });
-    await expect(enableButton).toBeVisible({ timeout: 10000 });
-    
-    // Click the button to request location and load restaurants
-    await enableButton.click();
-    
-    // Wait for restaurants to load
+    await enableLocationAndWaitForRestaurants(page);
+
     const restaurantCards = page.locator('.restaurant-card');
-    await expect(restaurantCards.first()).toBeVisible({ timeout: 15000 });
 
     // Act - Click the first restaurant card
     await restaurantCards.first().click();
 
     // Assert - Wait for navigation or content change
-    await page.waitForTimeout(1000);
+    await page.waitForURL('**/comic/**', { timeout: 15000 });
     
     // Check if we navigated to a comic page
     const url = page.url();
@@ -110,25 +100,14 @@ test.describe('Restaurant List Tests', () => {
       }
     });
 
-    // Wait for the location prompt to appear
-    const enableButton = page.getByRole('button', { name: 'Use My Location' });
-    await expect(enableButton).toBeVisible({ timeout: 10000 });
-    
-    // Click button to trigger geolocation and API call
-    await enableButton.click();
-    
-    // Wait for restaurants to appear (confirming API was called)
-    const restaurantCards = page.locator('.restaurant-card');
-    await expect(restaurantCards.first()).toBeVisible({ timeout: 15000 });
+    await enableLocationAndWaitForRestaurants(page);
 
     // Assert - Verify the API was called with coordinates
     expect(apiCallMade).toBeTruthy();
   });
 
   test('GeolocationService: Verifies JavaScript interop works', async ({ page }) => {
-    // Arrange
-    await page.goto(BASE_URL);
-    await page.waitForLoadState('networkidle');
+    await waitForHomeReady(page);
 
     // Act - Evaluate that the geolocation JavaScript object and function exist
     const hasGeolocationFunction = await page.evaluate(() => {

@@ -157,3 +157,12 @@ infra/main.json
 # VS Code extension state
 .potune-state.json
 *.potune-state.json
+
+# Azure Developer CLI local state (environment values passed via GitHub Secrets in CI)
+.azure/
+
+# Test results (local runs only)
+TESTRESULTS/
+
+# Playwright test artifacts
+tests/e2e/playwright-last.json

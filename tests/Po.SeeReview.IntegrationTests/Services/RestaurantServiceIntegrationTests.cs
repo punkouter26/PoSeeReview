@@ -16,6 +16,9 @@ namespace Po.SeeReview.IntegrationTests.Services;
 /// NOTE: These tests require a real Google Maps API key and will make actual API calls.
 /// Use [Trait("Category", "Expensive")] to filter them out in normal test runs.
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Services")]
+[Trait("Suite", "CriticalPath")]
 public class RestaurantServiceIntegrationTests : IAsyncLifetime
 {
     private readonly ITestOutputHelper _output;

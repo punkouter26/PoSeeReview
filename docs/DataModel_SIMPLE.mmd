@@ -1,31 +1,20 @@
 erDiagram
-  RESTAURANT {
-    string PlaceId PK
-    string Name
-    string Region
-    float AverageRating
-  }
+  RESTAURANT ||--o{ COMIC : "contains"
+  COMIC ||--|| LEADERBOARD_ENTRY : "projects_to"
 
-  REVIEW {
-    string AuthorName
-    int Rating
-    int StrangenessScore
+  RESTAURANT {
+    string RestaurantId PK
+    string Name
   }
 
   COMIC {
-    string Id PK
-    string PlaceId FK
+    string ComicId PK
     int StrangenessScore
-    datetime ExpiresAt
-    bool IsCached
+    string GenerationStatus
   }
 
   LEADERBOARD_ENTRY {
-    string PlaceId PK
-    string Region PK
-    int StrangenessScore
+    string LeaderboardEntryId PK
+    int Rank
+    int Score
   }
-
-  RESTAURANT ||--o{ REVIEW : "has"
-  RESTAURANT ||--o| COMIC : "generates"
-  COMIC ||--o| LEADERBOARD_ENTRY : "eligible when score gte 20"

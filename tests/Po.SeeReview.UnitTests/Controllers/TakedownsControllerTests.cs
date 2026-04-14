@@ -14,6 +14,8 @@ namespace Po.SeeReview.UnitTests.Controllers;
 /// Unit tests for TakedownsController - covers the data-deletion path
 /// that removes comic assets from Table Storage and Blob Storage.
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public sealed class TakedownsControllerTests
 {
     private readonly Mock<IComicRepository> _mockComicRepository;

@@ -9,6 +9,8 @@ namespace Po.SeeReview.IntegrationTests.Api;
 /// <summary>
 /// Integration tests for GET /api/restaurants endpoints
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Api")]
 public class RestaurantsEndpointTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;

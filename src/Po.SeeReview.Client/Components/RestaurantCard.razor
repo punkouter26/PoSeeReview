@@ -40,8 +40,8 @@
         }
         else
         {
-            <FluentButton Appearance="Appearance.Accent" class="cta-btn" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
-                Generate Comic
+            <FluentButton Appearance="Appearance.Accent" class="cta-btn" Disabled="@IsLoading" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
+                @(IsLoading ? "Generating..." : "Generate Comic")
             </FluentButton>
         }
     </div>
@@ -54,6 +54,9 @@
     [Parameter]
     public EventCallback<RestaurantDto> OnRestaurantClick { get; set; }
 
+    [Parameter]
+    public bool IsLoading { get; set; }
+
     private const int MinReviews = 5;
     private bool IsEnabled => Restaurant.TotalReviews >= MinReviews;
 
@@ -62,13 +65,13 @@
     private string GetTooltipText()
     {
         return IsEnabled 
-            ? "Click to generate a comic based on reviews" 
+            ? (IsLoading ? "Comic generation in progress" : "Click to generate a comic based on reviews")
             : "This restaurant needs at least 5 reviews to generate a comic";
     }
 
     private async Task OnClickIfEnabled()
     {
-        if (IsEnabled)
+        if (IsEnabled && !IsLoading)
         {
             await OnRestaurantClick.InvokeAsync(Restaurant);
         }

@@ -9,6 +9,8 @@ namespace Po.SeeReview.UnitTests.Services;
 /// Unit tests for LeaderboardService following TDD principles
 /// Tests GetTopComicsAsync and UpsertEntryAsync operations
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public sealed class LeaderboardServiceTests
 {
     private readonly Mock<ILeaderboardRepository> _mockRepository;

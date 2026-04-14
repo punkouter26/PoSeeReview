@@ -9,6 +9,8 @@ namespace Po.SeeReview.UnitTests.Services;
 /// <summary>
 /// Unit tests for RestaurantService
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class RestaurantServiceTests
 {
     [Fact]

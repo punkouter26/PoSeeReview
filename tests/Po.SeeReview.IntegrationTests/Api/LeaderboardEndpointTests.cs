@@ -14,6 +14,8 @@ namespace Po.SeeReview.IntegrationTests.Api;
 /// Integration tests for GET /api/leaderboard endpoint
 /// Tests regional leaderboard retrieval with real Azure Table Storage (Azurite)
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Api")]
 public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly HttpClient _client;

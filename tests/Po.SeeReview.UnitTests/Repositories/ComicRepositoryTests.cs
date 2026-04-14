@@ -7,6 +7,8 @@ namespace Po.SeeReview.UnitTests.Repositories;
 /// <summary>
 /// Unit tests for ComicRepository - 24-hour cache management with ExpiresAt logic
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class ComicRepositoryTests
 {
     [Fact]

@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Po.SeeReview.Shared.Dtos;
 
 namespace Po.SeeReview.Client.Services;
@@ -69,19 +70,58 @@ public class ApiClient
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var response = await _httpClient.GetFromJsonAsync<NearbyRestaurantsResponse>(
-                $"/api/restaurants/search?location={Uri.EscapeDataString(locationQuery)}&limit={limit}",
-                cancellationToken);
+        var url = $"/api/restaurants/search?location={Uri.EscapeDataString(locationQuery)}&limit={limit}";
+        using var response = await _httpClient.GetAsync(url, cancellationToken);
 
-            return response;
-        }
-        catch (HttpRequestException)
+        if (!response.IsSuccessStatusCode)
         {
-            // Log error - for now just return null
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var message = TryExtractProblemDetail(errorBody)
+                ?? $"Search request failed with status {(int)response.StatusCode}.";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+
+        var payload = await response.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
+        return payload;
+    }
+
+    private static string? TryExtractProblemDetail(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
             return null;
         }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("detail", out var detailElement))
+            {
+                var detail = detailElement.GetString();
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    return detail;
+                }
+            }
+
+            if (root.TryGetProperty("title", out var titleElement))
+            {
+                var title = titleElement.GetString();
+                if (!string.IsNullOrWhiteSpace(title))
+                {
+                    return title;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Response may not be JSON; fall through to null.
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -1,12 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const smokeOnly = process.env.E2E_SMOKE === '1';
+
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: true,
+  fullyParallel: !smokeOnly,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: smokeOnly ? 1 : (process.env.CI ? 1 : undefined),
   reporter: 'html',
+  grep: smokeOnly ? /@smoke/ : undefined,
   
   use: {
     baseURL: 'https://localhost:5001',
@@ -29,11 +32,11 @@ export default defineConfig({
   // Build the client before starting, then reuse the existing running API
   webServer: [
     {
-      command: 'dotnet build ../../src/Po.SeeReview.Client/Po.SeeReview.Client.csproj --configuration Debug --no-restore -v q',
+      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet build c:/Users/punko/Downloads/PoSeeReview/src/Po.SeeReview.Client/Po.SeeReview.Client.csproj --configuration Debug --no-restore -v q"',
       reuseExistingServer: true,
     },
     {
-      command: 'dotnet run --project ../../src/Po.SeeReview.Api/Po.SeeReview.Api.csproj --launch-profile https',
+      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet run --project c:/Users/punko/Downloads/PoSeeReview/src/Po.SeeReview.Api/Po.SeeReview.Api.csproj --launch-profile https"',
       url: 'https://localhost:5001/api/health/live',
       reuseExistingServer: true,
       ignoreHTTPSErrors: true,

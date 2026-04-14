@@ -7,6 +7,8 @@ namespace Po.SeeReview.UnitTests.Utilities;
 /// <summary>
 /// Unit tests for AzureRetryUtils transient failure detection.
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public sealed class AzureRetryUtilsTests
 {
     [Theory]

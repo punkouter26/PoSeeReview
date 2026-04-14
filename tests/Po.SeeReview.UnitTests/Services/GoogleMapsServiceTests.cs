@@ -7,6 +7,8 @@ namespace Po.SeeReview.UnitTests.Services;
 /// <summary>
 /// Unit tests for GoogleMapsService (Places API integration)
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class GoogleMapsServiceTests
 {
     [Fact]

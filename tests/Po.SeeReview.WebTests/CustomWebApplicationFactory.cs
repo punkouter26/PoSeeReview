@@ -120,6 +120,11 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             CancellationToken cancellationToken = default)
             => throw new KeyNotFoundException($"Restaurant not found in test environment: {placeId}");
 
+        public Task<(double lat, double lon)?> GeocodeLocationAsync(
+            string locationQuery,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<(double lat, double lon)?>(null);
+
         public Task<Restaurant?> GetRestaurantDetailsAsync(
             string placeId,
             CancellationToken cancellationToken = default)

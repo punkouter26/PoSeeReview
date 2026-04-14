@@ -19,6 +19,9 @@ namespace Po.SeeReview.IntegrationTests.Services;
 /// NOTE: These tests require real Azure OpenAI API calls and will incur costs.
 /// Use [Trait("Category", "Expensive")] to filter them out in normal test runs.
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Services")]
+[Trait("Suite", "CriticalPath")]
 public class ComicGenerationIntegrationTests
 {
     private readonly ITestOutputHelper _output;

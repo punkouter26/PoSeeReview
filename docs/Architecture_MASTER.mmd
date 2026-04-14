@@ -1,0 +1,52 @@
+flowchart LR
+  subgraph EdgeDelivery["Edge Delivery"]
+    User["Anonymous User Browser"]
+    Host["Azure App Service Host\n(Blazor WASM + .NET 10 API)"]
+    CDN["Static Asset Delivery\n(Blazor WASM)"]
+  end
+
+  subgraph ComputeTier["Compute Tier"]
+    API["ASP.NET Core API\nControllers + Middleware"]
+    Worker["Background Cleanup Service\nExpiredComicCleanupService"]
+    Telemetry["Application Insights + OpenTelemetry"]
+  end
+
+  subgraph DataPersistence["Data Persistence"]
+    TableStore["Azure Table Storage\nRestaurants, Comics, Leaderboard"]
+    BlobStore["Azure Blob Storage\nComic Strip PNG Assets"]
+    Vault["Azure Key Vault\nSecrets + Configuration"]
+  end
+
+  subgraph ExternalIntelligence["External Intelligence"]
+    Maps["Google Maps Places API"]
+    OpenAI["Azure OpenAI GPT-4o-mini"]
+    Gemini["Google Gemini Imagen 4"]
+  end
+
+  User -->|"HTTPS"| Host
+  Host -->|"Serves WASM"| CDN
+  CDN -->|"Interactive UI"| User
+  Host -->|"Routes API calls"| API
+  API -->|"Trace + Metrics"| Telemetry
+  Worker -->|"Trace + Metrics"| Telemetry
+  API -->|"Read/Write"| TableStore
+  API -->|"Read/Write"| BlobStore
+  API -->|"Managed Identity"| Vault
+  API -->|"Nearby Search + Reviews"| Maps
+  API -->|"Narrative + Score"| OpenAI
+  API -->|"Image Generation"| Gemini
+  Worker -->|"Deletes Expired Blobs + Rows"| BlobStore
+  Worker -->|"Deletes Expired Rows"| TableStore
+
+  style User fill:#0f172a,stroke:#38bdf8,color:#fff
+  style Host fill:#14532d,stroke:#4ade80,color:#fff
+  style CDN fill:#1e3a8a,stroke:#93c5fd,color:#fff
+  style API fill:#7c2d12,stroke:#fb923c,color:#fff
+  style Worker fill:#581c87,stroke:#d8b4fe,color:#fff
+  style Telemetry fill:#312e81,stroke:#818cf8,color:#fff
+  style TableStore fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style BlobStore fill:#164e63,stroke:#22d3ee,color:#fff
+  style Vault fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style Maps fill:#365314,stroke:#bef264,color:#fff
+  style OpenAI fill:#134e4a,stroke:#5eead4,color:#fff
+  style Gemini fill:#4a044e,stroke:#f0abfc,color:#fff

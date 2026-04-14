@@ -15,6 +15,8 @@ namespace Po.SeeReview.UnitTests.Services;
 /// <summary>
 /// Unit tests for ComicGenerationService - orchestrates review analysis, narrative generation, and comic creation
 /// </summary>
+[Trait("Tier", "Unit")]
+[Trait("Suite", "CriticalPath")]
 public class ComicGenerationServiceTests
 {
     private readonly Mock<IRestaurantService> _mockRestaurantService;

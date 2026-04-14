@@ -14,6 +14,8 @@ namespace Po.SeeReview.IntegrationTests.Api;
 /// Comprehensive integration tests for GET /api/restaurants/nearby endpoint
 /// Focuses on diagnosing the 503 Service Unavailable error
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "Api")]
 public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplicationFactory<Program>>
 {
     private readonly CustomWebApplicationFactory<Program> _factory;

@@ -110,6 +110,16 @@ public class RestaurantService : IRestaurantService
         return restaurant;
     }
 
+    public async Task<(double lat, double lon)?> GeocodeLocationAsync(string locationQuery, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(locationQuery))
+        {
+            return null;
+        }
+
+        return await _googleMapsService.GeocodeLocationAsync(locationQuery, cancellationToken);
+    }
+
     /// <summary>
     /// Attempts to get restaurant from cache across all regions
     /// (Simplified implementation - in production, use secondary index or cosmos DB)

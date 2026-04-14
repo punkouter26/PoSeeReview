@@ -11,6 +11,38 @@ namespace Po.SeeReview.Api.Controllers;
 [Route("api/[controller]")]
 public class DiagController(IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {
+    private static readonly string[] SensitivePatterns =
+    [
+        "key", "secret", "password", "connectionstring", "token", "apikey", "credential", "clientsecret", "private"
+    ];
+
+    private static readonly string[] ExcludedKeyPrefixes =
+    [
+        "PATH", "PATHEXT", "PSModulePath", "TEMP", "TMP", "USERNAME", "USERPROFILE", "HOMEPATH", "LOCALAPPDATA", "APPDATA",
+        "PROGRAMFILES", "PROGRAMDATA", "SYSTEMROOT", "WINDIR", "GIT_", "VSCODE_", "PROCESSOR_", "COMPUTERNAME"
+    ];
+
+    // Keep /api/diag focused on app-relevant settings to reduce noise and accidental exposure.
+    private static readonly string[] AllowedKeyPrefixes =
+    [
+        "AllowedHosts",
+        "ApplicationInsights",
+        "ASPNETCORE_ENVIRONMENT",
+        "Authentication",
+        "Azure",
+        "Cleanup",
+        "Comics",
+        "ConnectionStrings",
+        "Cors",
+        "DOTNET_",
+        "ExternalAuth",
+        "Google",
+        "HealthChecks",
+        "KeyVault",
+        "RateLimiting",
+        "Serilog"
+    ];
+
     /// <summary>
     /// Returns all configuration values with secrets partially masked.
     /// Restricted to Development environment only.
@@ -30,6 +62,11 @@ public class DiagController(IConfiguration configuration, IWebHostEnvironment en
         // Flatten all configuration sections
         foreach (var section in configuration.AsEnumerable())
         {
+            if (ShouldExcludeKey(section.Key) || !ShouldIncludeKey(section.Key))
+            {
+                continue;
+            }
+
             configEntries[section.Key] = MaskValue(section.Key, section.Value);
         }
 
@@ -59,22 +96,39 @@ public class DiagController(IConfiguration configuration, IWebHostEnvironment en
         if (string.IsNullOrEmpty(value))
             return value;
 
-        // Keys that likely contain sensitive data
-        var sensitivePatterns = new[]
-        {
-            "key", "secret", "password", "connectionstring", "token",
-            "apikey", "credential", "endpoint", "connection"
-        };
-
         var lowerKey = key.ToLowerInvariant();
-        var isSensitive = sensitivePatterns.Any(p => lowerKey.Contains(p));
+        var isSensitive = SensitivePatterns.Any(p => lowerKey.Contains(p));
 
-        if (!isSensitive)
-            return value;
+        // Common secret formats that should never leak any fragment.
+        var looksLikeSecretValue =
+            value.StartsWith("ghp_", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("gho_", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("AIza", StringComparison.OrdinalIgnoreCase) ||
+            value.StartsWith("DefaultEndpointsProtocol=", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("AccountKey=", StringComparison.OrdinalIgnoreCase) ||
+            value.Contains("Endpoint=", StringComparison.OrdinalIgnoreCase);
 
-        if (value.Length <= 6)
-            return "***";
+        if (isSensitive || looksLikeSecretValue)
+            return "[REDACTED]";
 
-        return string.Concat(value.AsSpan(0, 3), "***", value.AsSpan(value.Length - 3));
+        if (value.Length > 120)
+            return string.Concat(value.AsSpan(0, 117), "...");
+
+        return value;
+    }
+
+    private static bool ShouldExcludeKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return true;
+        }
+
+        return ExcludedKeyPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool ShouldIncludeKey(string key)
+    {
+        return AllowedKeyPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 }

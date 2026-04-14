@@ -6,6 +6,8 @@ namespace Po.SeeReview.IntegrationTests.EdgeCases;
 /// Validates nullable reference type enforcement across all projects (FR-003).
 /// Only assertions with real failure conditions are kept here; design notes belong in docs/.
 /// </summary>
+[Trait("Tier", "Integration")]
+[Trait("Domain", "EdgeCases")]
 public class NullableThirdPartyTests
 {
     [Fact]
