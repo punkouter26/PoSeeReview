@@ -12,26 +12,39 @@
 <div class="index-container">
     <header class="app-header">
         <h1>PoSeeReview</h1>
-        <p class="tagline">Discover the strangest restaurant stories near you</p>
+        <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
+        <p class="hero-kicker">Built for quick mobile discovery and instant sharing.</p>
         <a href="/leaderboard" class="leaderboard-hero-link">🏆 Hall of Fame — See the Weirdest Stories</a>
     </header>
 
-    @if (_flowState == LocationFlowState.Idle)
+    @if (_flowState == LocationFlowState.Idle || _flowState == LocationFlowState.Denied)
     {
         <div class="location-prompt">
             <FluentCard class="prompt-card">
+                <div class="prompt-eyebrow">Start here</div>
                 <h2>Find Nearby Restaurants</h2>
-                <p>Use your location for best results, or search by city&nbsp;/&nbsp;ZIP code below</p>
-                <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync" class="location-btn">
-                    Use My Location
-                </FluentButton>
-                <div class="divider-or"><span>or</span></div>
+                <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
+                @if (_flowState != LocationFlowState.Denied)
+                {
+                    <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync" class="location-btn">
+                        Use My Location
+                    </FluentButton>
+                    <div class="divider-or"><span>or</span></div>
+                }
+                @if (_flowState == LocationFlowState.Denied)
+                {
+                    <div class="denied-alert">
+                        <span class="denied-icon">📍</span>
+                        <span>Location access was denied. Search manually below or <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>try enabling location</a> again.</span>
+                    </div>
+                }
                 <div class="search-row">
-                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="e.g. Seattle, 10001, Chicago" @onkeydown="HandleSearchKeyDown" />
-                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))">
+                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
+                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))" title="Type a city, address, or ZIP code first">
                         Search
                     </FluentButton>
                 </div>
+                <p class="hint-text">Only restaurants with enough review history appear, so every result is comic-ready.</p>
             </FluentCard>
         </div>
     }
@@ -58,22 +71,6 @@
         </div>
     }
 
-    @if (_flowState == LocationFlowState.Denied)
-    {
-        <div class="location-search-fallback">
-            <FluentCard class="prompt-card">
-                <h2>Search by Location</h2>
-                <p>Enter a city name or ZIP code to discover restaurants with strange reviews</p>
-                <div class="search-row">
-                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="e.g. Seattle, 10001, Chicago" @onkeydown="HandleSearchKeyDown" />
-                    <FluentButton Appearance="Appearance.Accent" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))">
-                        Search
-                    </FluentButton>
-                </div>
-                <p class="hint-text">Or <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>try enabling location</a> again.</p>
-            </FluentCard>
-        </div>
-    }
 
     @if (_flowState == LocationFlowState.Error)
     {
@@ -91,7 +88,7 @@
                     &#128205; @_lastSearch
                     <button class="chip-clear" @onclick="ClearSearch" title="New search">&#215;</button>
                 </span>
-                <span class="results-count">@_totalCount restaurants</span>
+                <span class="results-count">@_totalCount comic-ready restaurants</span>
             </div>
             @foreach (var restaurant in _restaurants)
             {
@@ -112,12 +109,19 @@
     private List<RestaurantDto> _restaurants = new();
     private int _totalCount = 0;
     private string _searchQuery = string.Empty;
+    private string _searchPlaceholder = "e.g. Seattle, 10001, Chicago";
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
-
     protected override async Task OnInitializedAsync()
     {
+        // Restore last-searched location so returning users skip the friction
+        var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_last_search");
+        if (!string.IsNullOrWhiteSpace(lastLocation))
+        {
+            _searchPlaceholder = $"Last: {lastLocation}";
+        }
+
         // Check if user previously granted location permission
         var storedValue = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_location_enabled");
         var locationEnabled = storedValue == "true";
@@ -189,10 +193,31 @@
                 return;
             }
 
-            _restaurants = response.Restaurants;
-            _totalCount = response.TotalCount;
-            _lastSearch = "Nearby";
+            SetRestaurantResults(response.Restaurants, "Nearby");
             _flowState = LocationFlowState.Ready;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+            || ex.StatusCode == System.Net.HttpStatusCode.BadGateway)
+        {
+            _errorMessage = "The restaurant search service is temporarily unavailable. Please try again in a few minutes.";
+            _flowState = LocationFlowState.Error;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            _errorMessage = "Too many requests. Please wait a moment before trying again.";
+            _flowState = LocationFlowState.Error;
+        }
+        catch (HttpRequestException ex)
+        {
+            _errorMessage = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Failed to load restaurants. Please try again later."
+                : ex.Message;
+            _flowState = LocationFlowState.Error;
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "The request timed out. Please check your connection and try again.";
+            _flowState = LocationFlowState.Error;
         }
         catch (Exception)
         {
@@ -206,13 +231,15 @@
         if (string.IsNullOrWhiteSpace(_searchQuery))
             return;
 
+        var searchTerm = _searchQuery.Trim();
+
         _flowState = LocationFlowState.Loading;
-        _loadingMessage = $"Searching restaurants near {_searchQuery}...";
+        _loadingMessage = $"Searching restaurants near {searchTerm}...";
         StateHasChanged();
 
         try
         {
-            var response = await ApiClient.SearchRestaurantsByLocationAsync(_searchQuery);
+            var response = await ApiClient.SearchRestaurantsByLocationAsync(searchTerm);
 
             if (response == null || response.Restaurants.Count == 0)
             {
@@ -221,16 +248,38 @@
                 return;
             }
 
-            _restaurants = response.Restaurants;
-            _totalCount = response.TotalCount;
-            _lastSearch = _searchQuery;
+            SetRestaurantResults(response.Restaurants, searchTerm);
             _flowState = LocationFlowState.Ready;
+            await JS.InvokeVoidAsync("localStorage.setItem", "posee_last_search", searchTerm);
+            _searchQuery = searchTerm;
+            _searchPlaceholder = $"Last: {searchTerm}";
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _errorMessage = $"No restaurants found near \u201c{searchTerm}\u201d. Try a more specific city name or ZIP code.";
+            _flowState = LocationFlowState.Error;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+            || ex.StatusCode == System.Net.HttpStatusCode.BadGateway)
+        {
+            _errorMessage = "The restaurant search service is temporarily unavailable. Please try again in a few minutes.";
+            _flowState = LocationFlowState.Error;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+        {
+            _errorMessage = "Too many requests. Please wait a moment before trying again.";
+            _flowState = LocationFlowState.Error;
         }
         catch (HttpRequestException ex)
         {
             _errorMessage = string.IsNullOrWhiteSpace(ex.Message)
                 ? "Failed to search restaurants. Please try again later."
                 : ex.Message;
+            _flowState = LocationFlowState.Error;
+        }
+        catch (TaskCanceledException)
+        {
+            _errorMessage = "The request timed out. Please check your connection and try again.";
             _flowState = LocationFlowState.Error;
         }
         catch (Exception)
@@ -280,4 +329,21 @@
         _activeComicPlaceId = null;
         _flowState = LocationFlowState.Idle;
     }
+
+    private void SetRestaurantResults(IEnumerable<RestaurantDto> restaurants, string label)
+    {
+        _restaurants = restaurants
+            .Where(static restaurant => restaurant.TotalReviews >= 5)
+            .ToList();
+
+        _totalCount = _restaurants.Count;
+        _lastSearch = label;
+
+        if (_restaurants.Count == 0)
+        {
+            _errorMessage = "We found restaurants, but none have enough reviews yet to generate a comic. Try a busier area.";
+            _flowState = LocationFlowState.Error;
+        }
+    }
+
 }

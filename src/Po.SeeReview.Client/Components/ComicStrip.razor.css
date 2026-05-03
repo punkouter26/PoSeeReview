@@ -7,6 +7,23 @@
     /* Cinematic letterbox frame */
     box-shadow: 0 0 0 4px #1e1e2e, 0 20px 56px rgba(0, 0, 0, 0.4);
     overflow: hidden;
+    animation: comicReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
+}
+
+@keyframes comicReveal {
+    from {
+        opacity: 0;
+        transform: scale(0.96);
+        box-shadow: 0 0 0 4px #7C3AED, 0 8px 24px rgba(124,58,237,0.5);
+    }
+    50% {
+        box-shadow: 0 0 0 4px #f5576c, 0 30px 60px rgba(245,87,108,0.35);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 0 0 4px #1e1e2e, 0 20px 56px rgba(0, 0, 0, 0.4);
+    }
 }
 
 .comic-strip-image {

@@ -1,0 +1,106 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "kill-dotnet-processes",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "Get-Process dotnet -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "start-api-https",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "src/Po.SeeReview.Api",
+        "--launch-profile",
+        "https"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "csharp",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*$",
+          "endsPattern": "Now listening on:\\s+https://localhost:5001"
+        }
+      }
+    },
+    {
+      "label": "start-azurite",
+      "type": "shell",
+      "command": "pwsh",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "docker start azurite 2>$null; if ($LASTEXITCODE -ne 0) { docker compose up -d azurite }"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "start-api-watch",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "watch",
+        "run",
+        "--project",
+        "src/Po.SeeReview.Api",
+        "--launch-profile",
+        "https"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "csharp",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "file": 1,
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^.*$",
+          "endsPattern": "Now listening on:\\s+https://localhost:5001"
+        }
+      }
+    },
+    {
+      "label": "start-api-clean",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "kill-dotnet-processes",
+        "start-azurite",
+        "start-api-https"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "start-api-watch-clean",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "kill-dotnet-processes",
+        "start-azurite",
+        "start-api-watch"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

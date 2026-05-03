@@ -13,10 +13,24 @@ builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.
 // Register Fluent UI services
 builder.Services.AddFluentUIComponents();
 
-// Register application services
+// Read login mode preference persisted from the previous session (popup → redirect fallback).
+// getMsalLoginMode() clears the value in sessionStorage so it is a one-shot setting.
+var loginMode = LoginModeInterop.GetMsalLoginMode();
 
+// Register MSAL authentication
+builder.Services.AddMsalAuthentication(options =>
+{
+    builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+    options.ProviderOptions.DefaultAccessTokenScopes.Add(
+        "api://cf43692d-ff5a-421e-bd7c-cc59c88414aa/access_as_user");
+    options.ProviderOptions.LoginMode = loginMode;
+});
+
+// Register application services
 builder.Services.AddScoped<GeolocationService>();
+builder.Services.AddScoped<DevSessionClient>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ShareService>();
+builder.Services.AddSingleton<DevSessionStateService>();
 
 await builder.Build().RunAsync();

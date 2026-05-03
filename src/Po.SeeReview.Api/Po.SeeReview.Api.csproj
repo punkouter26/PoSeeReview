@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>
+    <NoWarn>$(NoWarn);1591;NU1902;NU1903</NoWarn>
     <UserSecretsId>seereview-api-secrets</UserSecretsId>
   </PropertyGroup>
 
@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Po.SeeReview.Application\Po.SeeReview.Application.csproj" />
     <ProjectReference Include="..\Po.SeeReview.Infrastructure\Po.SeeReview.Infrastructure.csproj" />
     <ProjectReference Include="..\Po.SeeReview.Client\Po.SeeReview.Client.csproj" />
   </ItemGroup>

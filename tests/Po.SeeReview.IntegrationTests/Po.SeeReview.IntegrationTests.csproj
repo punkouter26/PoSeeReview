@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);NU1902;NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Po.SeeReview.Application\Po.SeeReview.Application.csproj" />
     <ProjectReference Include="..\..\src\Po.SeeReview.Api\Po.SeeReview.Api.csproj" />
   </ItemGroup>
 

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Flow Master · PoSeeReview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #eb6c36; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; padding: 3rem 2rem; }
+    .frame { max-width: 1400px; margin: 0 auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 0.5rem; }
+    .subtitle { font-size: 0.875rem; color: var(--color-muted); margin-bottom: 2rem; max-width: 60ch; }
+    .back { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); text-decoration: none; display: inline-block; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Logic · PoSeeReview Docs</p>
+    <h1>System Flow Master</h1>
+    <p class="subtitle">Consolidated system-level view combining User Journey and Data Pipeline. Shows how Auth, CRUD operations, and AI generation intertwine from session initiation through UI rendering.</p>
+
+    <div class="mermaid">
+flowchart LR
+  subgraph AuthExperience["Auth + Session Experience"]
+    U1["Anonymous User Opens App"]
+    U2["Session Identifier Issued\nANON{xxxxxx} or Azure AD JWT"]
+    U3["Rate Limit + Bot Guard\nUserAgentMiddleware + Policy"]
+    U4["Request Authorized\nAnonymous or authenticated flow"]
+  end
+
+  subgraph CoreCrudPipeline["CRUD + Generation Pipeline"]
+    C1["Create Comic Request\nPOST /api/comics/{placeId}"]
+    C2["Read Candidate Reviews\nGET /api/restaurants/nearby"]
+    C3["Update Restaurant Snapshot\nUpsert Table row"]
+    C4["Create Comic Artifact\nWrite Table + Blob"]
+    C5["Read Comic by Id\nReturn ComicDto"]
+    C6["Read Leaderboard Feed\nGET /api/leaderboard"]
+    C7["Delete Expired Comic Assets\nExpiredComicCleanupService"]
+  end
+
+  subgraph DataPipeline["AI Data Pipeline"]
+    D1["Ingest Places + Reviews\nGoogle Maps API"]
+    D2["Score + Narrative Generation\nAzure OpenAI GPT-4o-mini"]
+    D3["Image Rendering\nGemini Imagen 4"]
+    D4["Persist Table Rows + Blob\nAzure Storage"]
+    D5["Project Leaderboard\nRegion + inverted score key"]
+  end
+
+  subgraph UIRendering["UI Rendering"]
+    V1["Comic Page Renders Panels\nStrangeness ring SVG"]
+    V2["Timeline Updates with History\ncomponent state"]
+    V3["Hall of Fame Refreshes\nLeaderboard page"]
+  end
+
+  U1 --> U2 --> U3 --> U4
+  U4 --> C1
+  C1 --> C2 --> D1 --> D2 --> D3 --> C3 --> C4 --> D4
+  D4 --> C5 --> V1
+  C4 --> V2
+  D4 --> D5 --> C6 --> V3
+  C7 --> D4
+
+  style U1 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style U2 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style U3 fill:#7c2d12,stroke:#fb923c,color:#fff
+  style U4 fill:#14532d,stroke:#4ade80,color:#fff
+  style C1 fill:#14532d,stroke:#4ade80,color:#fff
+  style C2 fill:#14532d,stroke:#4ade80,color:#fff
+  style C3 fill:#14532d,stroke:#4ade80,color:#fff
+  style C4 fill:#14532d,stroke:#4ade80,color:#fff
+  style C5 fill:#14532d,stroke:#4ade80,color:#fff
+  style C6 fill:#14532d,stroke:#4ade80,color:#fff
+  style C7 fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style D1 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D2 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D3 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D4 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D5 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style V1 fill:#312e81,stroke:#818cf8,color:#fff
+  style V2 fill:#312e81,stroke:#818cf8,color:#fff
+  style V3 fill:#312e81,stroke:#818cf8,color:#fff
+    </div>
+
+    <a class="back" href="index.html">← All Diagrams</a>
+  </div>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#0f172a', primaryTextColor: '#ffffff', primaryBorderColor: '#38bdf8', lineColor: '#4f5d75', background: '#f5f5f5', mainBkg: '#0f172a', clusterBkg: '#1e293b', clusterBorder: '#334155', titleColor: '#2d3142', edgeLabelBackground: '#f5f5f5', fontFamily: 'Geist, system-ui, sans-serif', fontSize: '14px' } });
+  </script>
+</body>
+</html>

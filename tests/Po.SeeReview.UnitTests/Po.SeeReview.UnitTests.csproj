@@ -6,8 +6,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="bUnit" />
-    <PackageReference Include="bUnit.web" />
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Moq" />
@@ -20,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Po.SeeReview.Application\Po.SeeReview.Application.csproj" />
     <ProjectReference Include="..\..\src\Po.SeeReview.Core\Po.SeeReview.Core.csproj" />
     <ProjectReference Include="..\..\src\Po.SeeReview.Infrastructure\Po.SeeReview.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Po.SeeReview.Client\Po.SeeReview.Client.csproj" />

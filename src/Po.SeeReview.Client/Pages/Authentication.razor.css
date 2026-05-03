@@ -1,0 +1,105 @@
+.auth-status-container {
+    max-width: 480px;
+    margin: 3rem auto;
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.auth-status {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    color: #374151;
+}
+
+.auth-status p {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.auth-status--error p {
+    color: #dc2626;
+}
+
+/* Simple CSS spinner */
+.auth-spinner {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 4px solid #e5e7eb;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.auth-fallback {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: 1px dashed #d1d5db;
+    border-radius: 8px;
+    background: #f9fafb;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+
+.auth-fallback p {
+    margin: 0;
+}
+
+.auth-cancel-link {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    text-decoration: underline;
+}
+
+.auth-cancel-link:hover {
+    color: #6b7280;
+}
+
+/* Tertiary button — reused from Login.razor but scoped here for Authentication route */
+.login-btn {
+    border: 1px solid #2563eb;
+    background: #2563eb;
+    color: #fff;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.login-btn-secondary {
+    background: transparent;
+    color: #1f2937;
+    border-color: #94a3b8;
+}
+
+.login-btn-secondary:hover {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: #64748b;
+}
+
+.login-btn-tertiary {
+    background: transparent;
+    color: #6b7280;
+    border-color: #d1d5db;
+    font-weight: 400;
+    font-size: 0.85rem;
+}
+
+.login-btn-tertiary:hover {
+    background: rgba(209, 213, 219, 0.3);
+    border-color: #9ca3af;
+    color: #374151;
+}
+
+

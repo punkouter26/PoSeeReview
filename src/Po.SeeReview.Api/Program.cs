@@ -1,20 +1,13 @@
 using System.Diagnostics;
-using System.Text.Json;
-using System.Threading.RateLimiting;
-using System.Threading.Tasks;
-using Azure.Identity;
-using Azure.Monitor.OpenTelemetry.Exporter;
-using Azure.Security.KeyVault.Secrets;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
-using OpenTelemetry.Trace;
 using Po.SeeReview.Api;
 using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
+using Po.SeeReview.Api.Identity;
 using Po.SeeReview.Api.Middleware;
+using Po.SeeReview.Api.Telemetry;
+using Po.SeeReview.Application;
+using Po.SeeReview.Application.Abstractions;
 using Po.SeeReview.Infrastructure;
 using Scalar.AspNetCore;
 using Serilog;
@@ -44,54 +37,7 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
-    // Configure Azure Key Vault for secrets (all environments)
-    // Locally, DefaultAzureCredential delegates to 'az login' session.
-    if (!isTestMode)
-    {
-        try
-        {
-            // Key Vault URL from environment variable or configuration
-            var keyVaultUrl = builder.Configuration["KeyVault:Endpoint"]
-                ?? Environment.GetEnvironmentVariable("KeyVault__Endpoint");
-
-            if (!string.IsNullOrEmpty(keyVaultUrl))
-            {
-                Log.Information("Connecting to Azure Key Vault: {KeyVaultUrl}", keyVaultUrl);
-
-                // When running locally, skip the managed-identity IMDS probe to avoid a
-                // ~12-second timeout before falling through to AzureCliCredential.
-                var isRunningInAzure = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("IDENTITY_ENDPOINT"))
-                    || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-
-                var credentialOptions = new DefaultAzureCredentialOptions
-                {
-                    ExcludeManagedIdentityCredential = !isRunningInAzure,
-                };
-
-                var credential = new DefaultAzureCredential(credentialOptions);
-                var secretClient = new SecretClient(new Uri(keyVaultUrl), credential);
-
-                // Two-pass loading so app-specific secrets always override shared ones:
-                // Pass 1 – shared secrets (AzureOpenAI--, ConnectionStrings--, etc.)
-                builder.Configuration.AddAzureKeyVault(secretClient, new SharedKeyVaultSecretManager());
-                Log.Information("Key Vault: shared secrets registered");
-
-                // Pass 2 – PoSeeReview-specific secrets (override any shared values)
-                builder.Configuration.AddAzureKeyVault(secretClient, new PrefixKeyVaultSecretManager());
-                Log.Information("Key Vault: PoSeeReview app-specific secrets registered");
-            }
-            else
-            {
-                Log.Warning("KeyVault:Endpoint not configured. Secrets must be provided via environment variables.");
-            }
-        }
-        catch (Exception ex)
-        {
-            // Don't fail startup if Key Vault is unavailable — log warning and continue.
-            // The app can still run with environment variables / appsettings overrides.
-            Log.Warning(ex, "Failed to configure Azure Key Vault. Falling back to environment variables and app settings.");
-        }
-    }
+    builder.ConfigureAzureKeyVault(isTestMode);
 
     // Replace default logging with Serilog (unless in test mode)
     if (!isTestMode)
@@ -104,95 +50,30 @@ try
 
     // Add services to the container.
     builder.Services.AddControllers();
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+    builder.Services.AddProblemDetails();
+    builder.Services.AddScoped<ICurrentRequestIdentityAccessor, HttpContextRequestIdentityAccessor>();
+    builder.Services.AddApplication();
 
-    // Always add Application Insights (required by other services for TelemetryClient)
-    // Suppress console telemetry output in development
-    builder.Services.AddApplicationInsightsTelemetry(options =>
-    {
-        options.EnableAdaptiveSampling = false;
-        options.EnablePerformanceCounterCollectionModule = false;
-        options.EnableEventCounterCollectionModule = false;
-        options.EnableDependencyTrackingTelemetryModule = false;
-        options.EnableHeartbeat = false;
-        options.EnableAppServicesHeartbeatTelemetryModule = false;
-        options.EnableAzureInstanceMetadataTelemetryModule = false;
-        options.EnableQuickPulseMetricStream = false;
-        options.EnableAuthenticationTrackingJavaScript = false;
-    });
-
-    // Configure OpenTelemetry with custom tracing and metrics
-    var appInsightsConnectionString = builder.Configuration.GetValue<string>("ApplicationInsights:ConnectionString");
-    if (!string.IsNullOrEmpty(appInsightsConnectionString))
-    {
-        builder.Services.AddOpenTelemetry()
-            .ConfigureResource(resource => resource
-                .AddService(serviceName: "PoSeeReview.Api", serviceVersion: "1.0.0"))
-            .WithTracing(tracing => tracing
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddSource("Po.SeeReview.*"))
-            .WithMetrics(metrics => metrics
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                .AddMeter("Po.SeeReview.*")
-                .AddAzureMonitorMetricExporter(options =>
-                {
-                    options.ConnectionString = appInsightsConnectionString;
-                }));
-    }
-
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-        {
-            var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-            return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
-            {
-                PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:GlobalPermitLimit", 60),
-                Window = TimeSpan.FromMinutes(1),
-                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                QueueLimit = 0,
-                AutoReplenishment = true
-            });
-        });
-
-        // Stricter per-endpoint limiter for the expensive AI comic-generation endpoint
-        options.AddFixedWindowLimiter("comics-post", limiterOptions =>
-        {
-            limiterOptions.PermitLimit = builder.Configuration.GetValue<int>("RateLimiting:ComicsPostPermitLimit", 3);
-            limiterOptions.Window = TimeSpan.FromMinutes(1);
-            limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-            limiterOptions.QueueLimit = 0;
-            limiterOptions.AutoReplenishment = true;
-        });
-
-        options.OnRejected = (context, _) =>
-        {
-            var logger = context.HttpContext.RequestServices
-                .GetRequiredService<ILoggerFactory>()
-                .CreateLogger("RateLimiter");
-
-            logger.LogWarning("Rate limit exceeded for {IpAddress}", context.HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown");
-            context.HttpContext.Response.Headers.RetryAfter = "60";
-            return ValueTask.CompletedTask;
-        };
-    });
+    builder.Services.AddConfiguredTelemetry(builder.Configuration);
+    builder.Services.AddConfiguredRateLimiting(builder.Configuration);
 
     // Configure Health Checks
     builder.Services.AddHealthChecks()
         .AddCheck<AzureTableStorageHealthCheck>(
             "azure_table_storage",
             failureStatus: HealthStatus.Unhealthy,
-            tags: new[] { "ready", "storage" })
+            tags: ["ready", "storage"])
         .AddCheck<AzureBlobStorageHealthCheck>(
             "azure_blob_storage",
             failureStatus: HealthStatus.Unhealthy,
-            tags: new[] { "ready", "storage" })
+            tags: ["ready", "storage"])
         .AddCheck<GoogleMapsHealthCheck>(
             "google_maps_api",
             failureStatus: HealthStatus.Degraded,
-            tags: new[] { "ready", "external" });
+            tags: ["ready", "external"]);
 
     // Configure OpenAPI (built-in .NET 10 support)
     builder.Services.AddOpenApi();
@@ -244,75 +125,15 @@ try
 
     // Add custom middleware
     // Removed RequestLoggingMiddleware - using Serilog's UseSerilogRequestLogging instead
+    app.UseExceptionHandler();
     app.UseMiddleware<UserAgentValidationMiddleware>();
-    app.UseMiddleware<ProblemDetailsMiddleware>();
 
-    // Enrich all log entries with correlation ID, user context, and environment
-    app.Use(async (ctx, next) =>
-    {
-        var correlationId = ctx.Request.Headers["X-Correlation-ID"].FirstOrDefault()
-            ?? Activity.Current?.TraceId.ToString()
-            ?? ctx.TraceIdentifier;
-
-        using (Serilog.Context.LogContext.PushProperty("CorrelationId", correlationId))
-        using (Serilog.Context.LogContext.PushProperty("UserId", ctx.User?.Identity?.Name ?? "anonymous"))
-        using (Serilog.Context.LogContext.PushProperty("SessionId", ctx.Request.Headers["X-Session-ID"].FirstOrDefault() ?? correlationId))
-        using (Serilog.Context.LogContext.PushProperty("Environment", app.Environment.EnvironmentName))
-        {
-            ctx.Response.Headers["X-Correlation-ID"] = correlationId;
-            await next();
-        }
-    });
+    app.UseCorrelationEnrichment();
 
     // Request logging with Serilog (disabled in test mode)
     if (!isTestMode)
     {
-        app.UseSerilogRequestLogging(options =>
-        {
-            // Simplified logging - only log important requests
-            options.GetLevel = (httpContext, elapsed, ex) =>
-            {
-                // Don't log successful static file requests
-                var path = httpContext.Request.Path.Value ?? "";
-
-                // Silence browser-generated noise regardless of status code
-                if (path.StartsWith("/.well-known/", StringComparison.OrdinalIgnoreCase))
-                    return LogEventLevel.Debug;
-
-                if (ex == null && httpContext.Response.StatusCode < 400)
-                {
-                    if (path.StartsWith("/_framework/") || 
-                        path.StartsWith("/css/") || 
-                        path.StartsWith("/lib/") ||
-                        path.EndsWith(".wasm") ||
-                        path.EndsWith(".wasm.gz") ||
-                        path.EndsWith(".dat") ||
-                        path.EndsWith(".dat.gz") ||
-                        path.EndsWith(".js.map") ||
-                        path.EndsWith(".js.map.gz"))
-                    {
-                        return LogEventLevel.Debug; // Don't show in console
-                    }
-                }
-                
-                if (ex != null || httpContext.Response.StatusCode >= 500)
-                    return LogEventLevel.Error;
-                    
-                if (httpContext.Response.StatusCode >= 400)
-                    return LogEventLevel.Warning;
-                    
-                return LogEventLevel.Information;
-            };
-            
-            options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
-            {
-                diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value ?? "Unknown");
-                diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
-                var userAgent = httpContext.Request.Headers.UserAgent.FirstOrDefault();
-                string userAgentValue = userAgent ?? "Unknown";
-                diagnosticContext.Set("UserAgent", userAgentValue);
-            };
-        });
+        app.UseConfiguredSerilogRequestLogging();
     }
 
     // Configure the HTTP request pipeline.
@@ -335,66 +156,8 @@ try
     app.UseCors();
     app.UseRateLimiter();
 
-    // Health check endpoints
-    app.MapHealthChecks("/api/health", new HealthCheckOptions
-    {
-        ResponseWriter = async (context, report) =>
-        {
-            context.Response.ContentType = "application/json";
-
-            var result = JsonSerializer.Serialize(new
-            {
-                status = report.Status.ToString(),
-                timestamp = DateTime.UtcNow,
-                duration = report.TotalDuration,
-                checks = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString(),
-                    description = e.Value.Description,
-                    duration = e.Value.Duration,
-                    exception = e.Value.Exception?.Message,
-                    data = e.Value.Data
-                })
-            }, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-
-            await context.Response.WriteAsync(result);
-        }
-    });
-
-    app.MapHealthChecks("/api/health/live", new HealthCheckOptions
-    {
-        Predicate = _ => false // No health checks, just returns 200 if app is running
-    });
-
-    app.MapHealthChecks("/api/health/ready", new HealthCheckOptions
-    {
-        Predicate = check => check.Tags.Contains("ready"),
-        ResponseWriter = async (context, report) =>
-        {
-            context.Response.ContentType = "application/json";
-
-            var result = JsonSerializer.Serialize(new
-            {
-                status = report.Status.ToString(),
-                checks = report.Entries.Select(e => new
-                {
-                    name = e.Key,
-                    status = e.Value.Status.ToString()
-                })
-            }, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-
-            await context.Response.WriteAsync(result);
-        }
-    });
+    // Health check endpoints (/api/health, /api/health/live, /api/health/ready)
+    app.MapHealthEndpoints();
 
     app.MapControllers();
 

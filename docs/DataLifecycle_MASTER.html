@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Lifecycle Master · PoSeeReview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #eb6c36; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; padding: 3rem 2rem; }
+    .frame { max-width: 1400px; margin: 0 auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 0.5rem; }
+    .subtitle { font-size: 0.875rem; color: var(--color-muted); margin-bottom: 2rem; max-width: 60ch; }
+    .back { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); text-decoration: none; display: inline-block; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Data · PoSeeReview Docs</p>
+    <h1>Data Lifecycle Master</h1>
+    <p class="subtitle">High-density trace of data from Ingestion through Processing and Transformation to Egress and UI Update. Includes seven numbered sequence steps mapped to pipeline stages.</p>
+
+    <div class="mermaid">
+flowchart LR
+  subgraph Ingestion["Ingestion"]
+    A1["1. User Grants Geolocation\nlat/lon + accuracy"]
+    A2["2. Client Sends Coordinates\nGET /api/restaurants/nearby"]
+    A3["3. API Queries Nearby Restaurants\nGoogleMapsService.SearchNearbyAsync"]
+  end
+
+  subgraph Processing["Processing / Transformation"]
+    B1["4. API Selects Highest-Signal Review\nPrioritize 1-star · InsufficientReviewsException if none"]
+    B2["5. LLM Produces Narrative + Score\nAzure OpenAI GPT-4o-mini · temp=0.3 · score 0–100"]
+    B3["6. Image Model Generates Four-Panel Comic\nGemini Imagen 4 · returns PNG bytes"]
+    B4["7. API Normalizes + Validates Artifacts\nComicTextOverlayService stamps score + narrative"]
+  end
+
+  subgraph Persistence["Persistence"]
+    C1["8. Write Restaurant Snapshot\nPartition: RESTAURANT_{Region} · Row: PlaceId"]
+    C2["9. Write Comic Metadata Row\nPartition: COMIC · Row: PlaceId · TTL 24h"]
+    C3["10. Upload Comic PNG to Blob\ncontainer: comics · {ComicId}.png"]
+    C4["11. Leaderboard Projection Update\nPartition: Region · Row: InvertedScore"]
+  end
+
+  subgraph EgressUIUpdate["Egress / UI Update"]
+    D1["12. API Returns Comic DTO\n8-day SAS URL + narrative + score"]
+    D2["13. Client Renders Comic + Timeline\nStrangeness ring SVG + four panels"]
+    D3["14. Leaderboard Refreshes Ranking\nGET /api/leaderboard · sorted descending"]
+  end
+
+  A1 --> A2 --> A3 --> B1 --> B2 --> B3 --> B4
+  B4 --> C1 --> C2 --> C3 --> C4 --> D1 --> D2 --> D3
+
+  style A1 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style A2 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style A3 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style B1 fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style B2 fill:#134e4a,stroke:#5eead4,color:#fff
+  style B3 fill:#4a044e,stroke:#f0abfc,color:#fff
+  style B4 fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style C1 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C2 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C3 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C4 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D1 fill:#7c2d12,stroke:#fb923c,color:#fff
+  style D2 fill:#7c2d12,stroke:#fb923c,color:#fff
+  style D3 fill:#7c2d12,stroke:#fb923c,color:#fff
+    </div>
+
+    <a class="back" href="index.html">← All Diagrams</a>
+  </div>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#0f172a', primaryTextColor: '#ffffff', primaryBorderColor: '#38bdf8', lineColor: '#4f5d75', background: '#f5f5f5', mainBkg: '#0f172a', clusterBkg: '#1e293b', clusterBorder: '#334155', titleColor: '#2d3142', edgeLabelBackground: '#f5f5f5', fontFamily: 'Geist, system-ui, sans-serif', fontSize: '14px' } });
+  </script>
+</body>
+</html>

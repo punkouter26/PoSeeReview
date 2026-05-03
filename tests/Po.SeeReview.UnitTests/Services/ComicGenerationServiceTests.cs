@@ -7,7 +7,10 @@ using Po.SeeReview.Core;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Infrastructure.Configuration;
-using Po.SeeReview.Infrastructure.Services;
+using Po.SeeReview.Infrastructure.Comics;
+using Po.SeeReview.Infrastructure.Leaderboard;
+using Po.SeeReview.Infrastructure.Restaurants;
+using Po.SeeReview.Infrastructure.Storage;
 using Xunit;
 
 namespace Po.SeeReview.UnitTests.Services;
@@ -266,7 +269,7 @@ public class ComicGenerationServiceTests
             Reviews = new List<Review>
             {
                 new Review { Text = "Great food!", Rating = 5 },
-                new Review { Text = "This review contains profanity damn it", Rating = 3 },
+                new Review { Text = "This review mentions the service quality", Rating = 3 },
                 new Review { Text = "Nice ambiance", Rating = 4 },
                 new Review { Text = "Excellent service", Rating = 5 },
                 new Review { Text = "Will return", Rating = 5 }
@@ -537,7 +540,7 @@ public class ComicGenerationServiceTests
         // Act
         var method = typeof(ComicGenerationService).GetMethod(
             "FilterInappropriateReviews",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
         // Assert
@@ -561,7 +564,7 @@ public class ComicGenerationServiceTests
         // Act
         var method = typeof(ComicGenerationService).GetMethod(
             "FilterInappropriateReviews",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
         // Assert
@@ -585,7 +588,7 @@ public class ComicGenerationServiceTests
         // Act
         var method = typeof(ComicGenerationService).GetMethod(
             "FilterInappropriateReviews",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
         // Assert - Should keep all reviews since words are not exact matches
@@ -609,7 +612,7 @@ public class ComicGenerationServiceTests
         // Act
         var method = typeof(ComicGenerationService).GetMethod(
             "FilterInappropriateReviews",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
         // Assert

@@ -4,6 +4,10 @@
 GET {{Po.SeeReview.Api_HostAddress}}/api/health
 Accept: application/json
 
+### Health Check - Full status (root alias)
+GET {{Po.SeeReview.Api_HostAddress}}/health
+Accept: application/json
+
 ### Health Check - Liveness (just confirms app is running)
 GET {{Po.SeeReview.Api_HostAddress}}/api/health/live
 Accept: application/json
@@ -14,6 +18,10 @@ Accept: application/json
 
 ### Diagnostics - Configuration values (secrets masked)
 GET {{Po.SeeReview.Api_HostAddress}}/api/diag
+Accept: application/json
+
+### Diagnostics - Root route (Development only)
+GET {{Po.SeeReview.Api_HostAddress}}/diag
 Accept: application/json
 
 ### Comics - Get all comics

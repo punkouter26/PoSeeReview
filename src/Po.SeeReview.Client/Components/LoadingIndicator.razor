@@ -1,9 +1,62 @@
+@implements IDisposable
+@using System.Threading
+
 <div class="loading-indicator">
-    <FluentProgressRing />
-    <p class="loading-message">@Message</p>
+    @if (Steps is { Length: > 0 })
+    {
+        <div class="progress-stepper">
+            <div class="stepper-ring">
+                <svg viewBox="0 0 64 64" class="stepper-ring-svg">
+                    <circle class="stepper-ring-bg" cx="32" cy="32" r="28" />
+                    <circle class="stepper-ring-fill" cx="32" cy="32" r="28"
+                            style="stroke-dasharray: @(_stepProgress.ToString("F0")) 175.9" />
+                </svg>
+                <span class="stepper-ring-icon">@Steps[_stepIndex % Steps.Length].Icon</span>
+            </div>
+            <p class="loading-message stepper-message">@Steps[_stepIndex % Steps.Length].Label</p>
+            <div class="stepper-dots">
+                @for (var i = 0; i < Steps.Length; i++)
+                {
+                    <span class="stepper-dot @(i == _stepIndex % Steps.Length ? "active" : i < _stepIndex % Steps.Length ? "done" : "")"></span>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        <FluentProgressRing />
+        <p class="loading-message">@Message</p>
+    }
 </div>
 
 @code {
-    [Parameter]
-    public string Message { get; set; } = "Loading...";
+    [Parameter] public string Message { get; set; } = "Loading...";
+
+    [Parameter] public (string Icon, string Label)[]? Steps { get; set; }
+
+    private int _stepIndex = 0;
+    private double _stepProgress = 0;
+    private Timer? _timer;
+
+    protected override void OnParametersSet()
+    {
+        if (Steps is { Length: > 0 } && _timer == null)
+        {
+            _timer = new Timer(Tick, null, 0, 80);
+        }
+    }
+
+    private void Tick(object? _)
+    {
+        _stepProgress += 100.0 / (Steps!.Length * 30.0); // ~30 ticks per step @ 80ms ≈ 2.4s per step
+        if (_stepProgress >= 100)
+        {
+            _stepProgress = 0;
+            _stepIndex++;
+            if (_stepIndex >= Steps.Length) _stepIndex = Steps.Length - 1; // hold at last step
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => _timer?.Dispose();
 }

@@ -2,8 +2,8 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Po.SeeReview.Api.Telemetry;
+using Po.SeeReview.Application.Comics;
 using Po.SeeReview.Core;
-using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Shared.Dtos;
 
 namespace Po.SeeReview.Api.Controllers;
@@ -17,14 +17,17 @@ namespace Po.SeeReview.Api.Controllers;
 [Produces("application/json")]
 public class ComicsController : ControllerBase
 {
-    private readonly IComicGenerationService _comicGenerationService;
+    private readonly GenerateComicCommandHandler _generateComicCommandHandler;
+    private readonly GetCachedComicQueryHandler _getCachedComicQueryHandler;
     private readonly ILogger<ComicsController> _logger;
 
     public ComicsController(
-        IComicGenerationService comicGenerationService,
+        GenerateComicCommandHandler generateComicCommandHandler,
+        GetCachedComicQueryHandler getCachedComicQueryHandler,
         ILogger<ComicsController> logger)
     {
-        _comicGenerationService = comicGenerationService ?? throw new ArgumentNullException(nameof(comicGenerationService));
+        _generateComicCommandHandler = generateComicCommandHandler ?? throw new ArgumentNullException(nameof(generateComicCommandHandler));
+        _getCachedComicQueryHandler = getCachedComicQueryHandler ?? throw new ArgumentNullException(nameof(getCachedComicQueryHandler));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -74,7 +77,7 @@ public class ComicsController : ControllerBase
             _logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
                 placeId, forceRegenerate);
 
-            var comic = await _comicGenerationService.GenerateComicAsync(placeId, forceRegenerate, HttpContext.RequestAborted);
+            var comic = await _generateComicCommandHandler.ExecuteAsync(placeId, forceRegenerate, HttpContext.RequestAborted);
 
             // Record custom metrics
             var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
@@ -200,7 +203,7 @@ public class ComicsController : ControllerBase
         try
         {
             // Try to get cached comic only (don't generate)
-            var cachedComic = await _comicGenerationService.GetCachedComicAsync(placeId, HttpContext.RequestAborted);
+            var cachedComic = await _getCachedComicQueryHandler.ExecuteAsync(placeId, HttpContext.RequestAborted);
 
             if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
             {

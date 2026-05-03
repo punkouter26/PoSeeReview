@@ -8,9 +8,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Po.SeeReview.Core.Interfaces;
+using Po.SeeReview.Infrastructure.Comics;
 using Po.SeeReview.Infrastructure.Configuration;
+using Po.SeeReview.Infrastructure.Leaderboard;
 using Po.SeeReview.Infrastructure.Repositories;
-using Po.SeeReview.Infrastructure.Services;
+using Po.SeeReview.Infrastructure.Restaurants;
+using Po.SeeReview.Infrastructure.Storage;
 using Polly;
 using Polly.Retry;
 

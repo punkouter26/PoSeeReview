@@ -1,6 +1,7 @@
 @page "/comic/{PlaceId}"
 @using Po.SeeReview.Shared.Dtos
 @using Po.SeeReview.Client.Services
+@using System.Threading
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject ShareService ShareService
@@ -10,7 +11,7 @@
 <div class="comic-view">
     @if (_isLoading)
     {
-        <LoadingIndicator Message="Reading the weird stuff..." />
+        <LoadingIndicator Message="Reading the weird stuff..." Steps="@_comicSteps" />
     }
     else if (_error != null)
     {
@@ -30,6 +31,12 @@
                 <h1>@_comic.RestaurantName</h1>
                 <div class="strangeness-ring-wrap">
                     <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#7C3AED"/>
+                                <stop offset="100%" stop-color="#f5576c"/>
+                            </linearGradient>
+                        </defs>
                         <circle class="ring-bg" cx="50" cy="50" r="42" />
                         <circle class="ring-fill" cx="50" cy="50" r="42"
                                 style="stroke-dasharray: @((_comic.StrangenessScore / 100.0 * 263.9).ToString("F1")) 263.9" />
@@ -45,21 +52,10 @@
                        RestaurantName="@_comic.RestaurantName" 
                        IsCached="@_comic.IsCached" />
 
+            <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
+
             <div class="action-buttons">
-                <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
-                    &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Back to Home")
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Neutral" @onclick="RegenerateComic" Disabled="@_isRegenerating">
-                    @if (_isRegenerating)
-                    {
-                        <text>Regenerating...</text>
-                    }
-                    else
-                    {
-                        <text>&#8635; Regenerate</text>
-                    }
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Neutral" @onclick="ShareComic" Disabled="@_isSharing">
+                <FluentButton Appearance="Appearance.Accent" @onclick="ShareComic" Disabled="@(_isSharing || _isRegenerating)">
                     @if (_isSharing)
                     {
                         <text>Sharing...</text>
@@ -73,6 +69,19 @@
                         <text>Copy Link</text>
                     }
                 </FluentButton>
+                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack" Disabled="@(_isSharing || _isRegenerating)">
+                    &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Find Another")
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Stealth" @onclick="RegenerateComic" Disabled="@(_isRegenerating || _isSharing)">
+                    @if (_isRegenerating)
+                    {
+                        <text>Regenerating...</text>
+                    }
+                    else
+                    {
+                        <text>Try Another Version</text>
+                    }
+                </FluentButton>
             </div>
             
             @if (_showCopiedMessage)
@@ -82,13 +91,6 @@
                 </FluentMessageBar>
             }
         </FluentCard>
-    }
-
-    @if (_comic != null)
-    {
-        <div class="share-fab" @onclick="ShareComic" title="@(_shareSupported ? "Share Comic" : "Copy Link")">
-            &#128228;
-        </div>
     }
 </div>
 
@@ -110,15 +112,20 @@
     private string _errorTitle = "Oops!";
     private Timer? _copiedMessageTimer;
 
+    private static readonly (string Icon, string Label)[] _comicSteps =
+    [
+        ("🔍", "Finding reviews..."),
+        ("🧠", "Analyzing weirdness..."),
+        ("🎨", "Drawing panels..."),
+        ("✨", "Almost done!"),
+    ];
+
     protected override async Task OnInitializedAsync()
     {
         await LoadComic(forceRegenerate: false);
-
-        // Auto-regenerate if the comic is older than 7 days
-        if (_comic != null && (DateTimeOffset.UtcNow - _comic.GeneratedAt).TotalDays > 7)
-        {
-            await LoadComic(forceRegenerate: true);
-        }
+        // Server enforces cache expiry via ExpiresAt — no client-side staleness check needed.
+        // A double-call with forceRegenerate:true here would incur two sequential AI API
+        // charges (~20 s) for comics that happen to be exactly cache-age on load.
 
         _shareSupported = await ShareService.IsShareSupportedAsync();
     }

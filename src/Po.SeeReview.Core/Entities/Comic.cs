@@ -50,4 +50,9 @@ public class Comic
     /// Timestamp when the comic was generated
     /// </summary>
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>
+    /// Captures the originating user identity so dev bypass users can still be traced in storage.
+    /// </summary>
+    public string RequestedByUserId { get; set; } = string.Empty;
 }

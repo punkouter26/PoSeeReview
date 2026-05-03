@@ -46,6 +46,7 @@ bld/
 
 # Visual Studio Code
 .vscode/
+!.vscode/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
@@ -157,6 +158,12 @@ infra/main.json
 # VS Code extension state
 .potune-state.json
 *.potune-state.json
+
+# AI-generated documentation (local only)
+LLMDOCS/
+
+# C# Dev Kit language service cache
+*.lscache
 
 # Azure Developer CLI local state (environment values passed via GitHub Secrets in CI)
 .azure/

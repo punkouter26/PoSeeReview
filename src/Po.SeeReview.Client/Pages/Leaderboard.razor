@@ -5,7 +5,6 @@
 @inject ILogger<Leaderboard> Logger
 @inject ShareService ShareService
 @inject NavigationManager Navigation
-@implements IDisposable
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
@@ -16,29 +15,31 @@
     </div>
 
     <div class="region-selector">
-        <label for="region">Region:</label>
-        <FluentSelect TOption="string" id="region" @bind-Value="selectedRegion" @bind-Value:after="LoadLeaderboardAsync">
-            <FluentOption TOption="string" Value="US">United States</FluentOption>
-            <FluentOption TOption="string" Value="CA">Canada</FluentOption>
-            <FluentOption TOption="string" Value="GB">United Kingdom</FluentOption>
-            <FluentOption TOption="string" Value="AU">Australia</FluentOption>
-            <FluentOption TOption="string" Value="NZ">New Zealand</FluentOption>
-            <FluentOption TOption="string" Value="IE">Ireland</FluentOption>
-            <FluentOption TOption="string" Value="IN">India</FluentOption>
-            <FluentOption TOption="string" Value="SG">Singapore</FluentOption>
-        </FluentSelect>
+        <div class="region-chips" role="group" aria-label="Select region">
+            @foreach (var (regionCode, flag, label) in _regions)
+            {
+                <button class="region-chip @(selectedRegion == regionCode ? "active" : "")"
+                        @onclick="() => SelectRegionAsync(regionCode)"
+                        title="@label">
+                    <span class="region-flag">@flag</span>
+                    <span class="region-code">@regionCode</span>
+                </button>
+            }
+        </div>
 
-        <label for="limit">Show:</label>
-        <FluentSelect TOption="string" id="limit" @bind-Value="limitStr" @bind-Value:after="OnLimitChangedAsync">
-            <FluentOption TOption="string" Value="10">Top 10</FluentOption>
-            <FluentOption TOption="string" Value="25">Top 25</FluentOption>
-            <FluentOption TOption="string" Value="50">Top 50</FluentOption>
-        </FluentSelect>
+        <div class="region-controls-row">
+            <label for="limit" class="limit-label">Show:</label>
+            <FluentSelect TOption="string" id="limit" @bind-Value="limitStr" @bind-Value:after="OnLimitChangedAsync">
+                <FluentOption TOption="string" Value="10">Top 10</FluentOption>
+                <FluentOption TOption="string" Value="25">Top 25</FluentOption>
+                <FluentOption TOption="string" Value="50">Top 50</FluentOption>
+            </FluentSelect>
 
-        @if (isLoading)
-        {
-            <FluentProgressRing />
-        }
+            @if (isLoading)
+            {
+                <FluentProgressRing />
+            }
+        </div>
     </div>
 
     @if (errorMessage != null)
@@ -64,9 +65,10 @@
     else
     {
         <div class="last-updated">
-            <span class="refresh-ring @(isLoading ? "" : "spinning")" title="Auto-refreshing every 30 seconds"></span>
-            Last updated: @lastUpdated.ToString("g")
-            <span class="refresh-hint">&#8226; Auto-refreshing</span>
+            <span>Updated @lastUpdated.ToString("g")</span>
+            <FluentButton Appearance="Appearance.Lightweight" @onclick="LoadLeaderboardAsync" Disabled="@isLoading">
+                &#8635; Refresh
+            </FluentButton>
         </div>
 
         <div class="leaderboard-list">
@@ -74,22 +76,7 @@
             {
                 <div class="leaderboard-card @GetRankClass(entry.Rank)">
                     <div class="rank-badge">
-                        @if (entry.Rank == 1)
-                        {
-                            <div class="medal medal-gold">&#127881;</div>
-                        }
-                        else if (entry.Rank == 2)
-                        {
-                            <div class="medal medal-silver">&#129352;</div>
-                        }
-                        else if (entry.Rank == 3)
-                        {
-                            <div class="medal medal-bronze">&#129353;</div>
-                        }
-                        else
-                        {
-                            <div class="medal medal-default">#@entry.Rank</div>
-                        }
+                        <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
                     </div>
 
                     <div class="comic-thumbnail">
@@ -100,13 +87,13 @@
                         <h3 class="restaurant-name">@entry.RestaurantName</h3>
                         <p class="address">@entry.Address</p>
                         <div class="score-badge">
-                            <span class="score-label">Strangeness Score:</span>
+                            <span class="score-label">Weird score</span>
                             <span class="score-value">@entry.StrangenessScore.ToString("F0")</span>
                         </div>
                     </div>
 
                     <div class="entry-actions">
-                        <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary">View Comic</a>
+                        <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary">Open Comic</a>
                         <button class="btn btn-share-small" @onclick="() => ShareComicAsync(entry)" title="Share this comic">
                             &#128228;
                         </button>
@@ -118,6 +105,18 @@
 </div>
 
 @code {
+    private static readonly (string Code, string Flag, string Label)[] _regions =
+    [
+        ("US", "🇺🇸", "United States"),
+        ("CA", "🇨🇦", "Canada"),
+        ("GB", "🇬🇧", "United Kingdom"),
+        ("AU", "🇦🇺", "Australia"),
+        ("NZ", "🇳🇿", "New Zealand"),
+        ("IE", "🇮🇪", "Ireland"),
+        ("IN", "🇮🇳", "India"),
+        ("SG", "🇸🇬", "Singapore"),
+    ];
+
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private string selectedRegion = "US";
     private int limit = 10;
@@ -125,27 +124,23 @@
     private DateTimeOffset lastUpdated = DateTimeOffset.MinValue;
     private string? errorMessage;
     private bool isLoading = false;
-    private Timer? refreshTimer;
-
     protected override async Task OnInitializedAsync()
     {
         await LoadLeaderboardAsync();
         
-        // Set up 30-second auto-refresh
-        refreshTimer = new Timer(async _ => 
-        {
-            await InvokeAsync(async () =>
-            {
-                await LoadLeaderboardAsync();
-                StateHasChanged();
-            });
-        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
     }
 
     private async Task OnLimitChangedAsync()
     {
         if (int.TryParse(limitStr, out var parsed))
             limit = parsed;
+        await LoadLeaderboardAsync();
+    }
+
+    private async Task SelectRegionAsync(string code)
+    {
+        if (selectedRegion == code) return;
+        selectedRegion = code;
         await LoadLeaderboardAsync();
     }
 
@@ -182,16 +177,10 @@
         }
     }
 
-    private string GetRankClass(int rank)
-    {
-        return rank switch
-        {
-            1 => "rank-gold",
-            2 => "rank-silver",
-            3 => "rank-bronze",
-            _ => ""
-        };
-    }
+    private static string GetMedal(int rank) => rank switch { 1 => "🎉", 2 => "🥈", 3 => "🥉", _ => $"#{rank}" };
+    private static string GetMedalClass(int rank) => rank switch { 1 => "medal-gold", 2 => "medal-silver", 3 => "medal-bronze", _ => "medal-default" };
+
+    private static string GetRankClass(int rank) => rank switch { 1 => "rank-gold", 2 => "rank-silver", 3 => "rank-bronze", _ => "" };
 
     private string GetRegionName(string region) => region switch
     {
@@ -232,8 +221,4 @@
         }
     }
 
-    public void Dispose()
-    {
-        refreshTimer?.Dispose();
-    }
 }

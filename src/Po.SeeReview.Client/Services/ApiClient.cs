@@ -10,10 +10,12 @@ namespace Po.SeeReview.Client.Services;
 public class ApiClient
 {
     private readonly HttpClient _httpClient;
+    private readonly DevSessionClient _devSessionClient;
 
-    public ApiClient(HttpClient httpClient)
+    public ApiClient(HttpClient httpClient, DevSessionClient devSessionClient)
     {
         _httpClient = httpClient;
+        _devSessionClient = devSessionClient;
     }
 
     /// <summary>
@@ -27,9 +29,12 @@ public class ApiClient
     {
         try
         {
-            var response = await _httpClient.GetFromJsonAsync<NearbyRestaurantsResponse>(
-                $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}",
-                cancellationToken);
+            using var request = await CreateRequestAsync(
+                HttpMethod.Get,
+                $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
+            using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
+            httpResponse.EnsureSuccessStatusCode();
+            var response = await httpResponse.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
 
             return response;
         }
@@ -55,7 +60,8 @@ public class ApiClient
             url += "?forceRegenerate=true";
         }
 
-        var response = await _httpClient.PostAsync(url, null, cancellationToken);
+        using var request = await CreateRequestAsync(HttpMethod.Post, url);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken: cancellationToken);
@@ -71,7 +77,8 @@ public class ApiClient
         CancellationToken cancellationToken = default)
     {
         var url = $"/api/restaurants/search?location={Uri.EscapeDataString(locationQuery)}&limit={limit}";
-        using var response = await _httpClient.GetAsync(url, cancellationToken);
+        using var request = await CreateRequestAsync(HttpMethod.Get, url);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -134,13 +141,39 @@ public class ApiClient
     {
         try
         {
-            return await _httpClient.GetFromJsonAsync<LeaderboardResponse>(
-                $"/api/leaderboard?region={region}&limit={limit}",
-                cancellationToken);
+            using var request = await CreateRequestAsync(
+                HttpMethod.Get,
+                $"/api/leaderboard?region={region}&limit={limit}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<LeaderboardResponse>(cancellationToken: cancellationToken);
         }
         catch (HttpRequestException)
         {
             return null;
         }
+    }
+
+    public async Task<HealthStatusDto?> GetHealthStatusAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Get, "/health");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<HealthStatusDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<DiagnosticsSnapshotDto?> GetDiagnosticsSnapshotAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Get, "/api/diag");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<DiagnosticsSnapshotDto>(cancellationToken: cancellationToken);
+    }
+
+    private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)
+    {
+        var request = new HttpRequestMessage(method, url);
+        await _devSessionClient.AttachStoredHeaderAsync(request);
+        return request;
     }
 }

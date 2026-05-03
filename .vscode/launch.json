@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "F5 API + Edge (5001)",
+      "type": "msedge",
+      "request": "launch",
+      "url": "https://localhost:5001",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "start-api-clean"
+    }
+  ]
+}

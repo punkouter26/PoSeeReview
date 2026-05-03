@@ -1,5 +1,4 @@
 using Azure.Data.Tables;
-using DotNet.Testcontainers.Builders;
 using Testcontainers.Azurite;
 using Xunit;
 
@@ -12,10 +11,11 @@ namespace Po.SeeReview.IntegrationTests.TestFixtures;
 /// </summary>
 public class AzuriteFixture : IAsyncLifetime
 {
+#pragma warning disable CS0618
     private readonly AzuriteContainer _container = new AzuriteBuilder()
         .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(10002))
         .Build();
+#pragma warning restore CS0618
 
     public TableServiceClient TableServiceClient { get; private set; } = null!;
     public string ConnectionString { get; private set; } = string.Empty;

@@ -1,6 +1,10 @@
 @page "/diag"
-@inject HttpClient Http
+@using Po.SeeReview.Client.Services
+@using Po.SeeReview.Shared.Dtos
+@inject ApiClient ApiClient
+@inject DevSessionClient DevSessionClient
 @inject ILogger<Diagnostics> Logger
+@inject IJSRuntime JSRuntime
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
 <PageTitle>Diagnostics - PoSeeReview</PageTitle>
@@ -41,9 +45,42 @@ else
             <div class="status-details">
                 <h2>Overall Status: @healthStatus.Status</h2>
                 <p><strong>Checked:</strong> @healthStatus.Timestamp.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
-                <p><strong>Duration:</strong> @healthStatus.Duration.TotalMilliseconds.ToString("F0") ms</p>
+                <p><strong>Duration:</strong> @healthStatus.DurationMilliseconds.ToString("F0") ms</p>
+                <p><strong>Current User:</strong> @(diagnosticsSnapshot?.CurrentUserId ?? devSession?.UserId ?? "anonymous")</p>
             </div>
         </div>
+
+        @if (devSession != null)
+        {
+            <div class="diagnostics-section">
+                <h3>Development Session</h3>
+                <div class="key-grid">
+                    <div class="key-card @(devSession.UserId?.StartsWith("ANON") == true ? "key-present" : "")">
+                        <div class="key-name">User</div>
+                        <div class="key-value">@devSession.UserId</div>
+                    </div>
+                    <div class="key-card">
+                        <div class="key-name">Anonymous</div>
+                        <div class="key-value">@devSession.IsAnonymous</div>
+                    </div>
+                    <div class="key-card">
+                        <div class="key-name">Dev Bypass</div>
+                        <div class="key-value">@devSession.IsDevelopmentBypass</div>
+                    </div>
+                    <div class="key-card @(_storageKeyPresent ? "key-present" : "key-missing")">
+                        <div class="key-name">localStorage key</div>
+                        <div class="key-value">@(_storageKeyPresent ? "posee_dev_session ✓" : "absent")</div>
+                    </div>
+                    @if (devSession.CreatedAtUtc != default)
+                    {
+                        <div class="key-card">
+                            <div class="key-name">Created</div>
+                            <div class="key-value">@devSession.CreatedAtUtc.ToString("HH:mm:ss UTC")</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
 
         <div class="health-checks">
             <h3>Dependency Health Checks</h3>
@@ -58,7 +95,7 @@ else
                     <div class="check-body">
                         <p class="check-description">@check.Description</p>
                         <div class="check-meta">
-                            <span><strong>Duration:</strong> @check.Duration.TotalMilliseconds.ToString("F0") ms</span>
+                            <span><strong>Duration:</strong> @check.DurationMilliseconds.ToString("F0") ms</span>
                             @if (!string.IsNullOrEmpty(check.Exception))
                             {
                                 <details>
@@ -72,6 +109,45 @@ else
             }
         </div>
 
+        @if (diagnosticsSnapshot != null)
+        {
+            <div class="diagnostics-section">
+                <h3>Runtime Snapshot</h3>
+                <div class="key-grid">
+                    <div class="key-card"><div class="key-name">Environment</div><div class="key-value">@diagnosticsSnapshot.Environment</div></div>
+                    <div class="key-card"><div class="key-name">Machine</div><div class="key-value">@diagnosticsSnapshot.MachineName</div></div>
+                    <div class="key-card"><div class="key-name">.NET</div><div class="key-value">@diagnosticsSnapshot.DotNetVersion</div></div>
+                    <div class="key-card"><div class="key-name">OS</div><div class="key-value">@diagnosticsSnapshot.OsVersion</div></div>
+                </div>
+            </div>
+
+            <div class="diagnostics-section">
+                <h3>Critical Keys</h3>
+                <div class="key-grid">
+                    @foreach (var key in diagnosticsSnapshot.KeyStatus)
+                    {
+                        <div class="key-card @(key.Exists ? "key-present" : "key-missing")">
+                            <div class="key-name">@key.Key</div>
+                            <div class="key-value">@(key.Value ?? "missing")</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="diagnostics-section">
+                <h3>Configuration Values</h3>
+                <div class="config-table">
+                    @foreach (var item in diagnosticsSnapshot.Config)
+                    {
+                        <div class="config-row">
+                            <div class="config-key">@item.Key</div>
+                            <div class="config-value">@item.Value</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         <div class="actions">
             <button class="btn btn-primary" @onclick="LoadHealthStatus">
                 🔄 Refresh Status
@@ -84,7 +160,10 @@ else
 
 @code {
     private bool isLoading = true;
-    private HealthStatusResponse? healthStatus;
+    private HealthStatusDto? healthStatus;
+    private DiagnosticsSnapshotDto? diagnosticsSnapshot;
+    private DevSessionDto? devSession;
+    private bool _storageKeyPresent;
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
@@ -100,8 +179,18 @@ else
 
         try
         {
-            Logger.LogInformation("Fetching health status from /api/health");
-            healthStatus = await Http.GetFromJsonAsync<HealthStatusResponse>("/api/health");
+            Logger.LogInformation("Fetching development diagnostics payloads");
+            var healthTask = ApiClient.GetHealthStatusAsync();
+            var diagnosticsTask = ApiClient.GetDiagnosticsSnapshotAsync();
+            var sessionTask = DevSessionClient.GetCurrentSessionAsync(refreshFromServer: true);
+
+            await Task.WhenAll(healthTask, diagnosticsTask, sessionTask);
+
+            healthStatus = healthTask.Result;
+            diagnosticsSnapshot = diagnosticsTask.Result;
+            devSession = sessionTask.Result;
+            var rawKey = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", "posee_dev_session");
+            _storageKeyPresent = !string.IsNullOrEmpty(rawKey);
             Logger.LogInformation("Health status retrieved: {Status}", healthStatus?.Status);
         }
         catch (HttpRequestException ex)
@@ -144,20 +233,4 @@ else
         .Replace("google maps api", "Google Maps API")
         .Replace("openai", "OpenAI");
 
-    private class HealthStatusResponse
-    {
-        public string Status { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; }
-        public TimeSpan Duration { get; set; }
-        public List<HealthCheckDetail> Checks { get; set; } = new();
-    }
-
-    private class HealthCheckDetail
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;
-        public string? Description { get; set; }
-        public TimeSpan Duration { get; set; }
-        public string? Exception { get; set; }
-    }
 }

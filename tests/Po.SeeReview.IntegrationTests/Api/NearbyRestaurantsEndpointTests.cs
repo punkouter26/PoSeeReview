@@ -299,7 +299,7 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
         try
         {
             var restaurantService = services.GetService<Po.SeeReview.Core.Interfaces.IRestaurantService>();
-            var googleMapsService = services.GetService<Po.SeeReview.Infrastructure.Services.GoogleMapsService>();
+            var googleMapsService = services.GetService<Po.SeeReview.Infrastructure.Restaurants.GoogleMapsService>();
 
             _output.WriteLine($"IRestaurantService: {(restaurantService != null ? "✓ Registered" : "✗ Missing")}");
             _output.WriteLine($"GoogleMapsService: {(googleMapsService != null ? "✓ Registered" : "✗ Missing")}");

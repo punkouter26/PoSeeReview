@@ -25,6 +25,7 @@ public class ComicEntity : ITableEntity
     public int StrangenessScore { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public string RequestedByUserId { get; set; } = string.Empty;
 
     /// <summary>
     /// Converts from domain Comic entity to Table Storage entity
@@ -42,7 +43,8 @@ public class ComicEntity : ITableEntity
             Narrative = comic.Narrative,
             StrangenessScore = comic.StrangenessScore,
             ExpiresAt = comic.ExpiresAt,
-            CreatedAt = comic.CreatedAt
+            CreatedAt = comic.CreatedAt,
+            RequestedByUserId = comic.RequestedByUserId
         };
     }
 
@@ -61,6 +63,7 @@ public class ComicEntity : ITableEntity
             StrangenessScore = StrangenessScore,
             ExpiresAt = ExpiresAt,
             CreatedAt = CreatedAt,
+            RequestedByUserId = RequestedByUserId,
             IsCached = false // Set by service layer
         };
     }

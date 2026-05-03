@@ -54,9 +54,11 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     /// </summary>
     public async Task InitializeAsync()
     {
+#pragma warning disable CS0618
         _azuriteContainer = new AzuriteBuilder()
             .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
             .Build();
+#pragma warning restore CS0618
         await _azuriteContainer.StartAsync();
 
         _azuriteConnectionString = _azuriteContainer.GetConnectionString();

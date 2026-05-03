@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Model · PoSeeReview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #eb6c36; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; padding: 3rem 2rem; }
+    .frame { max-width: 1400px; margin: 0 auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 0.5rem; }
+    .subtitle { font-size: 0.875rem; color: var(--color-muted); margin-bottom: 2rem; max-width: 60ch; }
+    .back { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); text-decoration: none; display: inline-block; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Data Schema · PoSeeReview Docs</p>
+    <h1>Data Model — Entity Relationship Diagram</h1>
+    <p class="subtitle">Azure Table Storage schema with primary/foreign keys, state enums, and allowed status transitions for all five core entities.</p>
+
+    <div class="mermaid">
+erDiagram
+  RESTAURANT ||--o{ COMIC : "contains"
+  COMIC ||--|| LEADERBOARD_ENTRY : "projects_to"
+  RESTAURANT ||--o{ REVIEW_SOURCE : "sourced_from"
+  COMIC ||--o{ TAKEDOWN_REQUEST : "may_have"
+
+  RESTAURANT {
+    string RestaurantId PK
+    string PlaceId "Google Maps Place ID"
+    string Name
+    string Address
+    float Latitude
+    float Longitude
+    string Region "ISO format: US-CA-SF"
+    float AverageRating "0.0 to 5.0"
+    int TotalReviews
+    datetime CachedAt "24h TTL"
+    string CurrentStatusEnum "Active | Stale | Evicted"
+  }
+
+  REVIEW_SOURCE {
+    string ReviewSourceId PK
+    string RestaurantId FK
+    string ReviewerAlias
+    string ReviewText
+    int OriginalRating "1 to 5"
+    int StrangenessScore "0 to 100"
+    datetime CapturedUtc
+    string IngestionStatusEnum "Pending | Analyzed | Rejected"
+  }
+
+  COMIC {
+    string ComicId PK
+    string RestaurantId FK
+    string PlaceId "Partition key"
+    string BlobPath "Azure Blob path"
+    string ImageUrl "8-day SAS URL"
+    string Narrative "GPT-4o generated paragraph"
+    int StrangenessScore "0 to 100"
+    string RequestedByUserId "User audit trail"
+    datetime CreatedUtc
+    datetime ExpiresUtc "24h from creation"
+    bool IsCached "True if served from cache"
+    string GenerationStatusEnum "Pending | Generating | Generated | Expired | Failed | TakenDown"
+  }
+
+  LEADERBOARD_ENTRY {
+    string LeaderboardEntryId PK
+    string ComicId FK
+    string PlaceId
+    string Region "ISO: US, GB, US-CA-SF"
+    string RestaurantName
+    int Rank
+    int StrangenessScore "0 to 100 — inverted RowKey"
+    string ImageUrl "SAS URL"
+    string Narrative
+    datetime PublishedUtc
+    datetime ExpiresUtc
+    string ProjectionStatusEnum "Projected | Updated | Removed"
+  }
+
+  TAKEDOWN_REQUEST {
+    string TakedownRequestId PK
+    string ComicId FK
+    string PlaceId
+    string Region
+    string RequestedBy
+    string ContactEmail
+    string Reason
+    string RequestStatusEnum "Received | Processing | Completed | Failed"
+    datetime RequestedUtc
+    datetime ProcessedUtc
+  }
+    </div>
+
+    <a class="back" href="index.html">← All Diagrams</a>
+  </div>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#0c4a6e',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#67e8f9',
+        lineColor: '#4f5d75',
+        background: '#f5f5f5',
+        mainBkg: '#0c4a6e',
+        attributeBackgroundColorOdd: '#1e293b',
+        attributeBackgroundColorEven: '#0f172a',
+        fontFamily: 'Geist Mono, ui-monospace, monospace',
+        fontSize: '13px'
+      }
+    });
+  </script>
+</body>
+</html>

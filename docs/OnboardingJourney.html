@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Journey · PoSeeReview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --color-paper: #f5f5f5; --color-ink: #2d3142; --color-muted: #4f5d75; --color-accent: #eb6c36; --font-sans: 'Geist', system-ui, sans-serif; --font-serif: 'Instrument Serif', serif; --font-mono: 'Geist Mono', ui-monospace, monospace; }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; padding: 3rem 2rem; }
+    .frame { max-width: 1400px; margin: 0 auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; color: var(--color-ink); margin-bottom: 0.5rem; }
+    .subtitle { font-size: 0.875rem; color: var(--color-muted); margin-bottom: 2rem; max-width: 60ch; }
+    .back { font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-accent); text-decoration: none; display: inline-block; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">User Journey · PoSeeReview Docs</p>
+    <h1>Onboarding Journey</h1>
+    <p class="subtitle">Path of a brand-new user from first visit through the "Aha!" moment — seeing their first AI-generated comic strip from a real restaurant review.</p>
+
+    <div class="mermaid">
+flowchart TD
+  subgraph Entry["Entry Point"]
+    A1["User Opens App\nBlazor WASM loads"]
+    A2{"Auth Required?"}
+    A3["Dev/Anonymous Session\nANON{xxxxxx} issued"]
+    A4["Azure AD Login\nMSAL popup / redirect"]
+  end
+
+  subgraph LocationSetup["Location Setup"]
+    B1["Location Permission Prompt\nBrowser Geolocation API"]
+    B2{"Permission\nGranted?"}
+    B3["Manual Location Search\n'Search by city or address'"]
+    B4["Coordinates Captured\nlat/lon + accuracy"]
+  end
+
+  subgraph Discovery["Restaurant Discovery"]
+    C1["GET /api/restaurants/nearby\n?lat=x&lon=y&limit=20"]
+    C2["Restaurant Grid Rendered\nCards with name, rating, distance"]
+    C3["User Browses Cards\nSorted by proximity"]
+    C4["User Selects Restaurant\nClick RestaurantCard"]
+  end
+
+  subgraph AhaMoment["Aha! Moment — Comic Generation"]
+    D1["Navigate to /comic/{placeId}\nLoading steps shown"]
+    D2["POST /api/comics/{placeId}\n~8–10s generation time"]
+    D3["AI Pipeline Runs\nReviews → Narrative → Image"]
+    D4["Comic Strip Rendered\nFour panels + strangeness score ring"]
+    D5["Share / Leaderboard CTA\n'See how it ranks globally'"]
+  end
+
+  A1 --> A2
+  A2 -->|"Dev environment"| A3
+  A2 -->|"Production"| A4
+  A3 --> B1
+  A4 --> B1
+  B1 --> B2
+  B2 -->|"Granted"| B4
+  B2 -->|"Denied"| B3
+  B3 -->|"Geocoded"| B4
+  B4 --> C1
+  C1 --> C2
+  C2 --> C3
+  C3 --> C4
+  C4 --> D1
+  D1 --> D2
+  D2 --> D3
+  D3 --> D4
+  D4 --> D5
+
+  style A1 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style A2 fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style A3 fill:#14532d,stroke:#4ade80,color:#fff
+  style A4 fill:#1e3a8a,stroke:#93c5fd,color:#fff
+  style B1 fill:#0f172a,stroke:#38bdf8,color:#fff
+  style B2 fill:#3f3f46,stroke:#a1a1aa,color:#fff
+  style B3 fill:#581c87,stroke:#d8b4fe,color:#fff
+  style B4 fill:#14532d,stroke:#4ade80,color:#fff
+  style C1 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C2 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C3 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style C4 fill:#0c4a6e,stroke:#67e8f9,color:#fff
+  style D1 fill:#7c2d12,stroke:#fb923c,color:#fff
+  style D2 fill:#7c2d12,stroke:#fb923c,color:#fff
+  style D3 fill:#4a044e,stroke:#f0abfc,color:#fff
+  style D4 fill:#eb6c36,stroke:#fed7aa,color:#000
+  style D5 fill:#eb6c36,stroke:#fed7aa,color:#000
+    </div>
+
+    <a class="back" href="index.html">← All Diagrams</a>
+  </div>
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'base', themeVariables: { primaryColor: '#0f172a', primaryTextColor: '#ffffff', primaryBorderColor: '#38bdf8', lineColor: '#4f5d75', background: '#f5f5f5', mainBkg: '#0f172a', clusterBkg: '#1e293b', clusterBorder: '#334155', titleColor: '#2d3142', edgeLabelBackground: '#f5f5f5', fontFamily: 'Geist, system-ui, sans-serif', fontSize: '14px' } });
+  </script>
+</body>
+</html>

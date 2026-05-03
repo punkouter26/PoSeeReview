@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
+using Po.SeeReview.Api.Middleware;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Shared.Dtos;
 
@@ -8,10 +9,12 @@ namespace Po.SeeReview.Api.Controllers;
 
 /// <summary>
 /// Handles content takedown requests from restaurant owners and authorized representatives.
+/// Requires a valid X-Api-Key header matching the Takedowns:ApiKey configuration value.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[RequireApiKey(ConfigurationKey = "Takedowns:ApiKey")]
 public class TakedownsController : ControllerBase
 {
     private readonly IComicRepository _comicRepository;
