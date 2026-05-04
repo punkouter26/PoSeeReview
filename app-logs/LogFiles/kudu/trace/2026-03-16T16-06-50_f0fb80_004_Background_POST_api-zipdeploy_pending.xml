@@ -1,0 +1,37 @@
+<step title="BackgroundTrace" date="2026-03-16T16:06:50.144" instance="f0fb80" url="/api/zipdeploy" method="POST" >
+  <step title="Cleanup Xml Logs" date="2026-03-16T16:06:50.171" /><!-- duration: 32ms -->
+  <step title="Creating temporary deployment - FetchDeploymentManager" date="2026-03-16T16:06:52.564" /><!-- duration: 319ms -->
+  <step title="Creating temporary deployment" date="2026-03-16T16:06:52.951" /><!-- duration: 16482ms -->
+  <step title="Performing fetch based deployment" date="2026-03-16T16:07:14.340" >
+    <step title="Cleaning up temp folders from previous zip deployments and extracting pushed zip file /tmp/zipdeploy/e0ba812b-3df7-45d3-9940-3a82b1e86562.zip (30.23 MB) to /tmp/zipdeploy/extracted" date="2026-03-16T16:07:20.973" >
+      <step title="ChmodRecursive Process exited with total time taken in ms: 252" date="2026-03-16T16:11:10.492" /><!-- duration: 2784ms -->
+    </step><!-- duration: 235458ms -->
+    <step title="Deployment timer started" date="2026-03-16T16:11:20.895" >
+      <step title="DeploymentManager.Deploy(id:dd016e21-5419-44b3-a354-8f73c06ad134)" date="2026-03-16T16:11:21.214" >
+        <step title="Collecting changeset information" date="2026-03-16T16:11:21.570" /><!-- duration: 2692ms -->
+        <step title="Updating submodules" date="2026-03-16T16:11:24.765" /><!-- duration: 8767ms -->
+        <step title="Determining deployment builder" date="2026-03-16T16:11:41.828" >
+          <step title="Builder is BasicBuilder" date="2026-03-16T16:11:42.729" /><!-- duration: 461ms -->
+        </step><!-- duration: 2102ms -->
+        <step title="PreDeployment: context.CleanOutputPath False" date="2026-03-16T16:11:47.694" >
+          <step title="PreDeployment: context.OutputPath /home/site/wwwroot" date="2026-03-16T16:11:54.112" >
+            <step title="Building" date="2026-03-16T16:12:30.276" >
+              <step title="Executing external process" date="2026-03-16T16:12:36.121" type="process" path="starter.sh" arguments="/opt/Kudu/Scripts/parallel_rsync.sh /tmp/zipdeploy/extracted /home/site/wwwroot 8 /tmp/ False True  " >
+                <step title="Error occurred" date="2026-03-16T17:01:19.276" type="error" text="Deployment has been stopped due to reaching time limit of 40 mins. Please set SCM_DEPLOYMENT_TIMEOUT_MINS (in minutes) to a higher value if it is an expected behaviour." /><!-- duration: 17393ms -->
+                <step title="Killing external process" date="2026-03-16T17:01:42.772" >
+                  <step title="Error occurred" date="2026-03-16T17:01:48.211" type="error" text="Log() at /tmp/KuduLite/Kudu.Core/Deployment/StructuredTextLogger.cs:70: Could not find a part of the path &apos;/home/site/deployments/dd016e21-5419-44b3-a354-8f73c06ad134/log.log&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String path, OpenFlags flags, Int32 mode, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, Int64 preallocationSize)
+   at System.IO.File.Open(String path, FileMode mode, FileAccess access, FileShare share)
+   at Kudu.Core.Deployment.StructuredTextDocument`1.Write(T value, Int32 depth) in /tmp/KuduLite/Kudu.Core/Deployment/StructuredTextDocument.cs:line 51
+   at Kudu.Core.Deployment.StructuredTextLogger.Log(String value, LogEntryType type) in /tmp/KuduLite/Kudu.Core/Deployment/StructuredTextLogger.cs:line 60" /><!-- duration: 429ms -->
+                  <step title="Error occurred" date="2026-03-16T17:01:57.754" type="error" text="GetParentProcessLinux (999) failed.: Could not find a part of the path &apos;/proc/999/stat&apos;." stackTrace="   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String path, OpenFlags flags, Int32 mode, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64&amp; fileLength, UnixFileMode&amp; filePermissions, Boolean failForSymlink, Boolean&amp; wasSymlink, Func`4 createOpenException)
+   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)
+   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options, Int64 preallocationSize)
+   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Encoding encoding, Int32 bufferSize)
+   at System.IO.File.ReadLines(String path)
+   at Kudu.Core.Infrastructure.ProcessExtensions.GetParentProcessLinux(Process process, ITracer tracer) in /tmp/KuduLite/Kudu.Core/Infrastructure/ProcessExtensions.cs:line 155" /><!-- duration: 51ms -->

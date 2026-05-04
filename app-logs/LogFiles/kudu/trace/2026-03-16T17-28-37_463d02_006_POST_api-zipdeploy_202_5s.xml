@@ -1,0 +1,15 @@
+<step title="Incoming Request" date="2026-03-16T17:28:37.101" instance="463d02" url="/api/zipdeploy?isAsync=true" method="POST" type="request" pid="859,1,35" Accept="*/*" Host="app-poseereview.scm.azurewebsites.net" User-Agent="curl/8.5.0" Authorization="Bas..." Content-Type="application/zip" Content-Length="31683301" X-ARR-LOG-ID="ad376e8f-550c-443b-a2c7-fadfc610380d" CLIENT-IP="52.150.28.39:8192" X-SITE-DEPLOYMENT-ID="app-poseereview" WAS-DEFAULT-HOSTNAME="app-poseereview.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/zipdeploy?isAsync=true" X-Client-IP="52.150.28.39" X-Client-Port="8192" >
+  <step title="Cleanup Xml Logs" date="2026-03-16T17:28:37.170" /><!-- duration: 79ms -->
+  <step title="ZipPushDeploy" date="2026-03-16T17:28:37.582" >
+    <step title="ZipDeploy. Extract zip." date="2026-03-16T17:28:37.587" /><!-- duration: 2ms -->
+    <step title="Starting PushDeployAsync" date="2026-03-16T17:28:37.594" /><!-- duration: 2ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/bf3caa35-3294-4df5-a2df-81d1ae81d45e.zip" date="2026-03-16T17:28:37.609" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/bf3caa35-3294-4df5-a2df-81d1ae81d45e.zip" date="2026-03-16T17:28:37.620" /><!-- duration: 14ms -->
+    </step><!-- duration: 3783ms -->
+    <step title="Start deployment in the background" date="2026-03-16T17:28:41.450" >
+      <step title="Acquiring Deployment Lock" date="2026-03-16T17:28:41.675" /><!-- duration: 3ms -->
+      <step title="Acquired Deployment Lock" date="2026-03-16T17:28:41.791" /><!-- duration: 4ms -->
+    </step><!-- duration: 662ms -->
+  </step><!-- duration: 4568ms -->
+  <step title="Outgoing response" date="2026-03-16T17:28:42.162" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 8ms -->
+</step><!-- duration: 5076ms -->

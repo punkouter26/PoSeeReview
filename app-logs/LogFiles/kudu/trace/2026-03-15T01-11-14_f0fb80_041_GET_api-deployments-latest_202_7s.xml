@@ -1,0 +1,9 @@
+<step title="Incoming Request" date="2026-03-15T01:11:14.461" instance="f0fb80" url="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-03-15_01-01-23Z" method="GET" type="request" pid="865,1,22" Host="app-poseereview.scm.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_8842db0f694a3e98956e1b8020e7b1da82364a913cd77e2e97a4565fa1f8f874_v3.0.7" Authorization="Bea..." Content-Type="application/json; charset=utf-8" Cookie="ARRAffinity=f0fb80a985d99c179271a2bc9181e56cc2dee0d4388c33c63f6a2405a4fa018d; ARRAffinitySameSite=f0fb80a985d99c179271a2bc9181e56cc2dee0d4388c33c63f6a2405a4fa018d" Content-Length="0" X-ARR-LOG-ID="daa6aecf-4cd1-4775-ab66-bef509329212" CLIENT-IP="132.196.32.55:34881" X-SITE-DEPLOYMENT-ID="app-poseereview" WAS-DEFAULT-HOSTNAME="app-poseereview.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/latest?deployer=OneDeploy&amp;time=2026-03-15_01-01-23Z" X-Client-IP="132.196.32.55" X-Client-Port="34881" >
+  <step title="Cleanup Xml Logs" date="2026-03-15T01:11:14.952" /><!-- duration: 699ms -->
+  <step title="DeploymentService.GetResult" date="2026-03-15T01:11:17.260" >
+    <step title="DeploymentService.GetLatestDeployment" date="2026-03-15T01:11:18.335" >
+      <step title="DeploymentManager.GetResults" date="2026-03-15T01:11:18.474" /><!-- duration: 1706ms -->
+    </step><!-- duration: 1916ms -->
+  </step><!-- duration: 3126ms -->
+  <step title="Outgoing response" date="2026-03-15T01:11:20.497" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 193ms -->
+</step><!-- duration: 6641ms -->

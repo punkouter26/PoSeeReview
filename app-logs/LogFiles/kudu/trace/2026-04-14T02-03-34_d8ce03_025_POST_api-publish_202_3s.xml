@@ -1,0 +1,14 @@
+<step title="Incoming Request" date="2026-04-14T02:03:34.150" instance="d8ce03" url="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%22817c9e592cfee9bcec57e61d277fcfce23e0a1ef%22%2C%22repoName%22%3A%22punkouter26%2FPoSeeReview%22%2C%22actor%22%3A%22punkouter26%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22feat%3A%20enhance%20error%20handling%20and%20support%20cancellation%20in%20restaurant%20search%20and%20geocoding%22%7D" method="POST" type="request" pid="855,1,15" Host="app-poseereview.scm.azurewebsites.net" User-Agent="GITHUBACTIONS_DeployWebAppToAzure_8842db0f694a3e98956e1b8020e7b1da82364a913cd77e2e97a4565fa1f8f874_v3.0.8" Authorization="Bea..." Content-Type="application/octet-stream" Cookie="ARRAffinity=d8ce030d10a8488f5af05adb44862a92568cc382a56095090ac9f1a788fb1dff; ARRAffinitySameSite=d8ce030d10a8488f5af05adb44862a92568cc382a56095090ac9f1a788fb1dff" Transfer-Encoding="chunked" X-ARR-LOG-ID="a436d4f7-8776-4fc2-b77c-532582876710" CLIENT-IP="40.116.109.135:41016" X-SITE-DEPLOYMENT-ID="app-poseereview" WAS-DEFAULT-HOSTNAME="app-poseereview.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/publish?async=true&amp;deployer=GITHUB_ONE_DEPLOY&amp;type=zip&amp;message=%7B%22type%22%3A%22deployment%22%2C%22sha%22%3A%22817c9e592cfee9bcec57e61d277fcfce23e0a1ef%22%2C%22repoName%22%3A%22punkouter26%2FPoSeeReview%22%2C%22actor%22%3A%22punkouter26%22%2C%22slotName%22%3A%22production%22%2C%22commitMessage%22%3A%22feat%3A%20enhance%20error%20handling%20and%20support%20cancellation%20in%20restaurant%20search%20and%20geocoding%22%7D" X-Client-IP="40.116.109.135" X-Client-Port="41016" >
+  <step title="Cleanup Xml Logs" date="2026-04-14T02:03:34.152" /><!-- duration: 9ms -->
+  <step title="OneDeploy" date="2026-04-14T02:03:34.248" >
+    <step title="Starting PushDeployAsync" date="2026-04-14T02:03:34.334" /><!-- duration: 10ms -->
+    <step title="Writing artifact to /tmp/zipdeploy/9261ba27-5afe-4be9-8eca-b1fe8e1aab7f.zip" date="2026-04-14T02:03:34.450" >
+      <step title="Writing multipart request body to /tmp/zipdeploy/9261ba27-5afe-4be9-8eca-b1fe8e1aab7f.zip" date="2026-04-14T02:03:34.488" /><!-- duration: 115ms -->
+    </step><!-- duration: 2343ms -->
+    <step title="Start deployment in the background" date="2026-04-14T02:03:36.818" >
+      <step title="Acquiring Deployment Lock" date="2026-04-14T02:03:36.847" /><!-- duration: 2ms -->
+      <step title="Acquired Deployment Lock" date="2026-04-14T02:03:36.881" /><!-- duration: 8ms -->
+    </step><!-- duration: 253ms -->
+  </step><!-- duration: 2869ms -->
+  <step title="Outgoing response" date="2026-04-14T02:03:37.136" type="response" statusCode="202" statusText="Accepted" /><!-- duration: 9ms -->
+</step><!-- duration: 2996ms -->
