@@ -54,7 +54,7 @@ jobs:
           --results-directory ./test-results
 
     - name: Verify formatting
-      run: dotnet format Po.SeeReview.sln --verify-no-changes --verbosity minimal
+      run: dotnet format PoSeeReview.sln --verify-no-changes --verbosity minimal
 
     - name: Upload test results
       if: always()
