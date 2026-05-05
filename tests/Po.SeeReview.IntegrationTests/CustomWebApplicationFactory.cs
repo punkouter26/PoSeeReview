@@ -102,17 +102,17 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             // Provide default test configuration that satisfies all required dependencies
             var testConfig = new Dictionary<string, string?>
             {
-                    // Azure Storage — use the per-factory Testcontainers Azurite instance so each
-                    // factory class gets its own isolated storage process.
-                    ["ConnectionStrings:AzureTableStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
-                    ["ConnectionStrings:AzureBlobStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
+                // Azure Storage — use the per-factory Testcontainers Azurite instance so each
+                // factory class gets its own isolated storage process.
+                ["ConnectionStrings:AzureTableStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
+                ["ConnectionStrings:AzureBlobStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
 
-                    // Isolate table names per factory instance to prevent cross-test-class state
-                    // pollution when multiple IClassFixture<> factories run in parallel.
-                    ["AzureStorage:LeaderboardTableName"] = $"Test{_tablePrefix}Leaderboard",
-                    ["AzureStorage:ComicsTableName"] = $"Test{_tablePrefix}Comics",
-                    ["AzureStorage:RestaurantsTableName"] = $"Test{_tablePrefix}Restaurants",
-                
+                // Isolate table names per factory instance to prevent cross-test-class state
+                // pollution when multiple IClassFixture<> factories run in parallel.
+                ["AzureStorage:LeaderboardTableName"] = $"Test{_tablePrefix}Leaderboard",
+                ["AzureStorage:ComicsTableName"] = $"Test{_tablePrefix}Comics",
+                ["AzureStorage:RestaurantsTableName"] = $"Test{_tablePrefix}Restaurants",
+
                 // Google Maps - use placeholder for tests that don't call real API
                 ["GoogleMaps:ApiKey"] = "test-google-maps-api-key"
             };

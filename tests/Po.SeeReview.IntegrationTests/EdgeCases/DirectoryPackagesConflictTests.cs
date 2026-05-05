@@ -18,7 +18,7 @@ public class DirectoryPackagesConflictTests
         var directoryPackagesPath = Path.Combine(repoRoot, "Directory.Packages.props");
 
         // Act & Assert
-        Assert.True(File.Exists(directoryPackagesPath), 
+        Assert.True(File.Exists(directoryPackagesPath),
             "Directory.Packages.props must exist at repository root");
     }
 
@@ -47,14 +47,14 @@ public class DirectoryPackagesConflictTests
         {
             var content = File.ReadAllText(projectFile);
             var lines = content.Split('\n');
-            
+
             // Check if PackageReference has Version attribute (exclude Sdk Version attributes)
             foreach (var line in lines)
             {
                 // Skip Sdk Version attributes
                 if (line.Trim().StartsWith("<Sdk ") && line.Contains("Version="))
                     continue;
-                    
+
                 if (line.Contains("<PackageReference") && line.Contains("Version="))
                 {
                     projectsWithVersions.Add(Path.GetFileName(projectFile));
@@ -78,7 +78,7 @@ public class DirectoryPackagesConflictTests
         // Act - Extract all PackageVersion Include values
         var packageNames = new List<string>();
         var lines = content.Split('\n');
-        
+
         foreach (var line in lines)
         {
             if (line.Contains("<PackageVersion Include="))
@@ -123,7 +123,7 @@ public class DirectoryPackagesConflictTests
                 var versionStart = line.IndexOf("Version=\"") + 9;
                 var versionEnd = line.IndexOf("\"", versionStart);
 
-                if (packageStart > 8 && packageEnd > packageStart && 
+                if (packageStart > 8 && packageEnd > packageStart &&
                     versionStart > 8 && versionEnd > versionStart)
                 {
                     var packageName = line.Substring(packageStart, packageEnd - packageStart);
@@ -135,19 +135,19 @@ public class DirectoryPackagesConflictTests
 
         // Assert - All Microsoft.Extensions.* packages should use the same major version
         var versions = microsoftExtensionsPackages.Values.Distinct().ToList();
-        
+
         // Allow for minor version differences, but major version should align
         var majorVersions = versions.Select(v => v.Split('.')[0]).Distinct().ToList();
-        Assert.True(majorVersions.Count <= 2, 
+        Assert.True(majorVersions.Count <= 2,
             $"Microsoft.Extensions packages should have consistent major versions. Found: {string.Join(", ", versions)}");
     }
 
     private static string GetRepositoryRoot()
     {
         var currentDir = Directory.GetCurrentDirectory();
-        
+
         // Navigate up to find repository root (contains Directory.Packages.props or .git)
-        while (currentDir != null && 
+        while (currentDir != null &&
                !File.Exists(Path.Combine(currentDir, "Directory.Packages.props")) &&
                !Directory.Exists(Path.Combine(currentDir, ".git")))
         {

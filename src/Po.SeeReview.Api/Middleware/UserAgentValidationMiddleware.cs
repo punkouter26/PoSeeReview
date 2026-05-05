@@ -31,7 +31,7 @@ public sealed class UserAgentValidationMiddleware
     {
         _next = next ?? throw new ArgumentNullException(nameof(next));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        
+
         // Disable validation in test environment
         _isDisabled = Environment.GetEnvironmentVariable("DISABLE_USER_AGENT_VALIDATION") == "true";
     }

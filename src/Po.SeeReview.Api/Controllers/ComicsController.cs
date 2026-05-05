@@ -81,7 +81,7 @@ public class ComicsController : ControllerBase
 
             // Record custom metrics
             var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
-            
+
             var tags = new[]
             {
                 new KeyValuePair<string, object?>("cache_hit", comic.IsCached),

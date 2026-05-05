@@ -3,9 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Po.SeeReview.Core.Interfaces;
-using Po.SeeReview.Infrastructure.Repositories;
 using Po.SeeReview.Infrastructure.Comics;
 using Po.SeeReview.Infrastructure.Leaderboard;
+using Po.SeeReview.Infrastructure.Repositories;
 using Po.SeeReview.Infrastructure.Restaurants;
 using Po.SeeReview.Infrastructure.Storage;
 using Xunit;
@@ -37,8 +37,8 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
         _output = output;
     }
 
-    private bool HasValidApiKey => 
-        _configuration != null && 
+    private bool HasValidApiKey =>
+        _configuration != null &&
         !string.IsNullOrEmpty(_configuration["GoogleMaps:ApiKey"]) &&
         _configuration["GoogleMaps:ApiKey"]!.Length >= 30 &&
         !_configuration["GoogleMaps:ApiKey"]!.Contains("your-");

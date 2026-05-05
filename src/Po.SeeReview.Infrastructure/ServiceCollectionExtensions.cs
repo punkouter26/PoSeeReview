@@ -44,7 +44,7 @@ public static class ServiceCollectionExtensions
         var tableConnectionString = configuration.GetConnectionString("AzureTableStorage")
             ?? configuration["AzureTableStorage"]
             ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
-        
+
         if (string.IsNullOrEmpty(tableConnectionString))
         {
             throw new InvalidOperationException(
@@ -53,13 +53,14 @@ public static class ServiceCollectionExtensions
                 "or AzureTableStorage in Azure App Service Configuration, " +
                 "or AZURE_TABLE_STORAGE_CONNECTION_STRING environment variable.");
         }
+
         services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
 
         // Register Azure Blob Storage client
         var blobConnectionString = configuration.GetConnectionString("AzureBlobStorage")
             ?? configuration["AzureBlobStorage"]
             ?? Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING");
-        
+
         if (string.IsNullOrEmpty(blobConnectionString))
         {
             throw new InvalidOperationException(
@@ -68,6 +69,7 @@ public static class ServiceCollectionExtensions
                 "or AzureBlobStorage in Azure App Service Configuration, " +
                 "or AZURE_BLOB_STORAGE_CONNECTION_STRING environment variable.");
         }
+
         services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
 
         // Register Azure OpenAI client

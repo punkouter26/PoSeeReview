@@ -20,7 +20,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         _client = factory.CreateClient();
         _output = output;
     }
-    
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task PostComic_WithValidPlaceId_Returns200OrCachedOrContentPolicyRejection()
@@ -46,7 +46,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         if (response.StatusCode == HttpStatusCode.InternalServerError)
         {
             _output.WriteLine($"⚠️ Internal Server Error: {responseBody}");
-            
+
             // API key validation errors (Google Maps 400 wrapped in 500)
             if (responseBody.Contains("400 (Bad Request)") ||
                 responseBody.Contains("API key not valid"))
@@ -54,15 +54,15 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine("✓ API call failed due to missing/invalid API keys (expected in test environment)");
                 return; // Test passes - this is expected behavior without real API keys
             }
-            
+
             // Content policy violations are expected and acceptable
-            if (responseBody.Contains("content_policy_violation") || 
+            if (responseBody.Contains("content_policy_violation") ||
                 responseBody.Contains("safety system"))
             {
                 _output.WriteLine("✓ Content policy violation detected (this is expected behavior)");
                 return; // Test passes - content moderation is working
             }
-            
+
             // Blob storage public access errors are also expected in some Azure configurations
             if (responseBody.Contains("PublicAccessNotPermitted") ||
                 responseBody.Contains("Public access is not permitted"))
@@ -70,7 +70,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine("✓ Azure Blob Storage public access error (expected - storage account configuration)");
                 return; // Test passes - this is an infrastructure configuration issue, not a code bug
             }
-            
+
             // If it's not an expected error, fail the test
             Assert.Fail($"Unexpected internal server error: {responseBody}");
         }
@@ -242,7 +242,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         if (!response.IsSuccessStatusCode)
         {
             _output.WriteLine($"📄 Response Body: {responseBody}");
-            
+
             // BadRequest when using placeholder API keys is expected
             if (response.StatusCode == HttpStatusCode.BadRequest &&
                 (responseBody.Contains("API key not valid") || responseBody.Contains("An unexpected error occurred")))
@@ -251,7 +251,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine($"⏱️ Completed at: {DateTime.Now:HH:mm:ss}");
                 return; // Test passes - this is expected behavior without real API keys
             }
-            
+
             // InternalServerError when using placeholder API keys (wrapped 400 error)
             if (response.StatusCode == HttpStatusCode.InternalServerError &&
                 (responseBody.Contains("400 (Bad Request)") || responseBody.Contains("API key not valid")))
@@ -260,7 +260,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine($"⏱️ Completed at: {DateTime.Now:HH:mm:ss}");
                 return; // Test passes - this is expected behavior without real API keys
             }
-            
+
             // Content policy violations are expected and acceptable for this test
             if (response.StatusCode == HttpStatusCode.InternalServerError &&
                 (responseBody.Contains("content_policy_violation") || responseBody.Contains("safety system")))
@@ -269,7 +269,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine($"⏱️ Completed at: {DateTime.Now:HH:mm:ss}");
                 return; // Test passes - this is expected behavior
             }
-            
+
             // Blob storage public access errors are also expected
             if (response.StatusCode == HttpStatusCode.InternalServerError &&
                 (responseBody.Contains("PublicAccessNotPermitted") || responseBody.Contains("Public access is not permitted")))
@@ -278,7 +278,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
                 _output.WriteLine($"⏱️ Completed at: {DateTime.Now:HH:mm:ss}");
                 return; // Test passes - this is an infrastructure configuration issue
             }
-            
+
             // Restaurant not found is expected when the placeholder Google Maps API key
             // cannot resolve a real place — treat it as a passing skip condition.
             if (response.StatusCode == HttpStatusCode.NotFound)

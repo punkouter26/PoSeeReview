@@ -1,7 +1,7 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Po.SeeReview.Shared.Dtos;
-using System.Text.Json;
 
 namespace Po.SeeReview.Api.Health;
 

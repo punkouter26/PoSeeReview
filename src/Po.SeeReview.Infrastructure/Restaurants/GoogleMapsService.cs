@@ -219,19 +219,19 @@ public class GoogleMapsService
         {
             return "US";
         }
-        
+
         // Canada
         if (latitude >= 41.0 && latitude <= 84.0 && longitude >= -141.0 && longitude <= -52.0)
         {
             return "CA";
         }
-        
+
         // United Kingdom (rough bounds)
         if (latitude >= 49.0 && latitude <= 61.0 && longitude >= -8.0 && longitude <= 2.0)
         {
             return "GB";
         }
-        
+
         // Australia
         if (latitude >= -44.0 && latitude <= -10.0 && longitude >= 112.0 && longitude <= 154.0)
         {

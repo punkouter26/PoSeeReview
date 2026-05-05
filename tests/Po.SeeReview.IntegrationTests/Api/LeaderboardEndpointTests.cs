@@ -167,7 +167,7 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        
+
         var result = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
         Assert.NotNull(result);
         Assert.True(result.Entries.Count <= limit, $"Expected max {limit} entries, got {result.Entries.Count}");
@@ -185,11 +185,11 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        
+
         var result = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
         Assert.NotNull(result);
         Assert.Equal("CA", result.Region);
-        
+
         // Verify all entries are from CA region only
         Assert.All(result.Entries, entry => Assert.Equal("CA", entry.Region));
     }

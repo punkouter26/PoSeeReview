@@ -27,6 +27,7 @@ public class DiagController(
         {
             return NotFound(); // Avoid fingerprinting — don't reveal the endpoint exists
         }
+
         var diagnostics = await diagnosticsSnapshotQueryHandler.ExecuteAsync(cancellationToken);
         diagnostics.Environment = environment.EnvironmentName;
         return Ok(diagnostics);

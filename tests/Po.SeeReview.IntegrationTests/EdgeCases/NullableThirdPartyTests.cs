@@ -53,13 +53,13 @@ public class NullableThirdPartyTests
 
         // Act
         var filesWithNullChecks = 0;
-        
+
         foreach (var sourceFile in infrastructureFiles)
         {
             var content = File.ReadAllText(sourceFile);
-            
+
             // Look for defensive null checks: if (...== null), ArgumentNullException, ?.
-            if (content.Contains("== null") || 
+            if (content.Contains("== null") ||
                 content.Contains("is null") ||
                 content.Contains("ArgumentNullException") ||
                 content.Contains("?."))
@@ -70,15 +70,15 @@ public class NullableThirdPartyTests
 
         // Assert
         var percentage = infrastructureFiles.Any() ? (filesWithNullChecks * 100.0 / infrastructureFiles.Count) : 0;
-        Assert.True(percentage > 50, 
+        Assert.True(percentage > 50,
             $"At least 50% of infrastructure files should have null checks for third-party responses. Found: {percentage:F1}%");
     }
 
     private static string GetRepositoryRoot()
     {
         var currentDir = Directory.GetCurrentDirectory();
-        
-        while (currentDir != null && 
+
+        while (currentDir != null &&
                !File.Exists(Path.Combine(currentDir, "Directory.Packages.props")) &&
                !Directory.Exists(Path.Combine(currentDir, ".git")))
         {

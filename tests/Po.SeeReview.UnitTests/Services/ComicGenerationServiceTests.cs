@@ -6,8 +6,8 @@ using Moq;
 using Po.SeeReview.Core;
 using Po.SeeReview.Core.Entities;
 using Po.SeeReview.Core.Interfaces;
-using Po.SeeReview.Infrastructure.Configuration;
 using Po.SeeReview.Infrastructure.Comics;
+using Po.SeeReview.Infrastructure.Configuration;
 using Po.SeeReview.Infrastructure.Leaderboard;
 using Po.SeeReview.Infrastructure.Restaurants;
 using Po.SeeReview.Infrastructure.Storage;
@@ -49,8 +49,8 @@ public class ComicGenerationServiceTests
     {
         // Default setup: text overlay returns input bytes unchanged (passthrough)
         _mockTextOverlayService.Setup(x => x.AddTextOverlayAsync(
-            It.IsAny<byte[]>(), 
-            It.IsAny<string>(), 
+            It.IsAny<byte[]>(),
+            It.IsAny<string>(),
             It.IsAny<int>()))
             .ReturnsAsync((byte[] imageBytes, string narrative, int panelCount) => imageBytes);
 
@@ -336,7 +336,7 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.NotNull(capturedComic);
         // Cache duration is 7 days to reduce AI costs - allow tolerance for test execution time (6-8 days)
-        Assert.True(capturedComic.ExpiresAt > DateTimeOffset.UtcNow.AddDays(6), 
+        Assert.True(capturedComic.ExpiresAt > DateTimeOffset.UtcNow.AddDays(6),
             $"ExpiresAt {capturedComic.ExpiresAt} should be more than 6 days from now");
         Assert.True(capturedComic.ExpiresAt <= DateTimeOffset.UtcNow.AddDays(8),
             $"ExpiresAt {capturedComic.ExpiresAt} should be less than 8 days from now");
@@ -448,7 +448,7 @@ public class ComicGenerationServiceTests
         // Assert
         var firstPositiveIndex = result.FindIndex(r => r.Rating >= 4);
         var lastNegativeIndex = result.FindLastIndex(r => r.Rating <= 3);
-        
+
         // All negative reviews should come before positive reviews
         if (firstPositiveIndex >= 0 && lastNegativeIndex >= 0)
         {
@@ -482,7 +482,7 @@ public class ComicGenerationServiceTests
         Assert.Equal(5, result.Count);
         Assert.Equal(2, result.Count(r => r.Rating <= 3)); // 2 negative
         Assert.Equal(3, result.Count(r => r.Rating >= 4)); // 3 positive (fallback)
-        
+
         // First two should be negative
         Assert.True(result[0].Rating <= 3);
         Assert.True(result[1].Rating <= 3);

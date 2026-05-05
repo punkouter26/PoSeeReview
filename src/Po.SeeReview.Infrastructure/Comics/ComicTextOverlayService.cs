@@ -160,9 +160,9 @@ public class ComicTextOverlayService : IComicTextOverlayService
                 _logger.LogWarning("No system fonts available, text overlay will be skipped");
                 throw new InvalidOperationException("No fonts available");
             }
-            
+
             // Try to use Comic Sans MS, Arial, DejaVu, Liberation, or fall back to first available font
-            var fontFamily = families.FirstOrDefault(f => 
+            var fontFamily = families.FirstOrDefault(f =>
                 f.Name.Contains("Comic", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
                 f.Name.Contains("DejaVu", StringComparison.OrdinalIgnoreCase) ||
