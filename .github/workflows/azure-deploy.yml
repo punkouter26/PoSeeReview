@@ -58,7 +58,7 @@ jobs:
 
     - name: Upload test results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: test-results
         path: "**/*.trx"
@@ -71,7 +71,7 @@ jobs:
           --no-restore
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: published-app
         path: ./publish
