@@ -15,17 +15,17 @@ internal static class HealthEndpointExtensions
 
     internal static void MapHealthEndpoints(this WebApplication app)
     {
-        app.MapHealthChecks("/api/health", new HealthCheckOptions
+        app.MapHealthChecks("/health", new HealthCheckOptions
         {
             ResponseWriter = WriteDetailedResponse
         });
 
-        app.MapHealthChecks("/api/health/live", new HealthCheckOptions
+        app.MapHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = _ => false // Returns 200 if app is running
         });
 
-        app.MapHealthChecks("/api/health/ready", new HealthCheckOptions
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {
             Predicate = check => check.Tags.Contains("ready"),
             ResponseWriter = WriteReadyResponse
