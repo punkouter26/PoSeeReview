@@ -17,12 +17,11 @@ internal static class KeyVaultConfigurationExtensions
         {
             // Key Vault URL from environment variable or configuration
             var keyVaultUrl = builder.Configuration["KeyVault:Uri"]
-                ?? builder.Configuration["KeyVault:Endpoint"]
-                ?? Environment.GetEnvironmentVariable("KeyVault__Endpoint");
+                ?? Environment.GetEnvironmentVariable("KeyVault__Uri");
 
             if (string.IsNullOrEmpty(keyVaultUrl))
             {
-                Log.Warning("KeyVault:Uri not configured. Secrets must be provided via environment variables.");
+                Log.Warning("KeyVault:Endpoint not configured. Secrets must be provided via environment variables.");
                 return;
             }
 

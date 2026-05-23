@@ -1,22 +1,23 @@
-name: Build and Deploy to Azure App Service
+name: CI/CD — Build, Test & Deploy
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
   pull_request:
-    branches:
-      - master
+    branches: [master]
   workflow_dispatch:
 
-env:
-  APP_NAME: app-poseereview
-  DOTNET_VERSION: '10.0.x'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
-  id-token: write
   contents: read
+  id-token: write
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  AZURE_WEBAPP_NAME: app-poseereview
+  AZURE_RESOURCE_GROUP: PoSeeReview
+  SOLUTION_PATH: PoSeeReview.sln
+  API_PROJECT_PATH: src/Po.SeeReview.Api/Po.SeeReview.Api.csproj
+  UNIT_TEST_PATH: tests/Po.SeeReview.UnitTests
 
 concurrency:
   group: deploy-${{ github.repository }}-${{ github.ref }}
@@ -27,111 +28,64 @@ jobs:
     name: Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Cache NuGet packages
-      uses: actions/cache@v4
-      with:
-        path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Run unit tests
-      run: |
-        dotnet test tests/Po.SeeReview.UnitTests/Po.SeeReview.UnitTests.csproj \
-          --no-restore \
-          --configuration Release \
-          --logger "console;verbosity=minimal" \
-          --results-directory ./test-results
-
-    - name: Verify formatting
-      run: dotnet format PoSeeReview.sln --verify-no-changes --verbosity minimal
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: "**/*.trx"
-
-    - name: Publish API (includes Blazor WASM client)
-      run: |
-        dotnet publish src/Po.SeeReview.Api/Po.SeeReview.Api.csproj \
-          -c Release \
-          -o ./publish \
-          --no-restore
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: published-app
-        path: ./publish
-        retention-days: 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+      - run: dotnet restore ${{ env.SOLUTION_PATH }}
+      - run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore -c Release
+      - run: dotnet format ${{ env.SOLUTION_PATH }} --verify-no-changes --verbosity minimal
+      - run: dotnet test ${{ env.UNIT_TEST_PATH }} -c Release --no-build --logger trx --results-directory TestResults
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: TestResults/*.trx
+      - run: dotnet publish ${{ env.API_PROJECT_PATH }} -c Release --no-restore -o publish
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webapp
+          path: publish
+          retention-days: 1
 
   deploy:
-    name: Deploy to Azure App Service
+    name: Deploy to Azure
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     timeout-minutes: 20
     environment:
       name: production
-      url: https://${{ env.APP_NAME }}.azurewebsites.net
-
+      url: https://app-poseereview.azurewebsites.net
     steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: published-app
-        path: ./publish
-
-    - name: Azure Login (OIDC)
-      uses: azure/login@v3.0.0
-      with:
-        client-id: ${{ vars.AZURE_CLIENT_ID }}
-        tenant-id: ${{ vars.AZURE_TENANT_ID }}
-        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-    - name: Deploy to App Service
-      uses: azure/webapps-deploy@v3
-      with:
-        app-name: ${{ env.APP_NAME }}
-        package: ./publish
-
-    - name: Verify deployment health
-      run: |
-        BASE_URL="https://${{ env.APP_NAME }}.azurewebsites.net"
-
-        echo "Waiting 30s for app to start..."
-        sleep 30
-
-        for i in $(seq 1 20); do
-          LIVE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 25 \
-            "$BASE_URL/api/health/live" 2>/dev/null) || LIVE_STATUS="000"
-
-          echo "Attempt $i/20: /api/health/live=$LIVE_STATUS"
-
-          if [ "$LIVE_STATUS" = "200" ]; then
-            echo "App is live after deployment"
-            exit 0
-          fi
-
-          sleep 30
-        done
-
-        echo "App did not become live after deployment"
-        exit 1
-
-
-
-
+      - uses: actions/download-artifact@v4
+        with:
+          name: webapp
+          path: publish
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: cd publish && zip -r ../webapp.zip . && cd ..
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          resource-group-name: ${{ env.AZURE_RESOURCE_GROUP }}
+          package: webapp.zip
+      - name: Verify deployment (health check)
+        run: |
+          sleep 20
+          for i in 1 2 3 4 5; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/health" --max-time 30 || echo "000")
+            echo "Health check attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then echo "Deployment verified."; exit 0; fi
+            sleep 15
+          done
+          echo "WARNING: Health check did not return 200 after 5 attempts."

@@ -78,7 +78,7 @@ public class DiagnosticsSnapshotQueryHandler(
 
         var keyStatus = new[]
         {
-            "KeyVault:Endpoint",
+            "KeyVault:Uri",
             "ApplicationInsights:ConnectionString",
             "GoogleMaps:ApiKey",
             "AzureOpenAI:Endpoint",
