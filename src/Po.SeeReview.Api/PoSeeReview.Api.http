@@ -1,0 +1,22 @@
+@baseUrl = https://localhost:5001
+
+### Health check — overall
+GET {{baseUrl}}/health
+
+### Health check — liveness probe
+GET {{baseUrl}}/health/live
+
+### Health check — readiness probe
+GET {{baseUrl}}/health/ready
+
+### Diagnostics snapshot (Development only)
+GET {{baseUrl}}/api/diag
+
+### Get current dev session
+GET {{baseUrl}}/api/devsession
+
+### Create anonymous guest session
+POST {{baseUrl}}/api/devsession/anon
+
+### Logout / clear dev session
+DELETE {{baseUrl}}/api/devsession

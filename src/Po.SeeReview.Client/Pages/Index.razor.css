@@ -17,6 +17,52 @@
     isolation: isolate;
 }
 
+/* AI Model Selector */
+.ai-model-selector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(0, 0, 0, 0.25);
+    border-radius: 0.5rem;
+    backdrop-filter: blur(4px);
+    max-width: 420px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.ai-model-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.8);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.ai-model-select {
+    font-size: 0.8rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    cursor: pointer;
+    max-width: 220px;
+}
+
+.ai-model-select option {
+    background: #1e1b4b;
+    color: white;
+}
+
+.ai-model-select optgroup {
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+}
+
 /* Halftone dot overlay for comic book texture */
 .app-header::before {
     content: '';

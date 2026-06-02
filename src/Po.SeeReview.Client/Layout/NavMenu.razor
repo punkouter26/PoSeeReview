@@ -18,6 +18,10 @@
             <span>
                 <span class="brand-name">PoSeeReview</span>
                 <span class="brand-tagline">Strange stories, illustrated</span>
+                @if (_isMockData)
+                {
+                    <span class="nav-mock-badge" title="Running with mock data — no real AI or storage connections">USING MOCK DATA</span>
+                }
             </span>
         </a>
 
@@ -30,6 +34,11 @@
             <div class="nav-item">
                 <NavLink class="nav-link" href="leaderboard">
                     <span class="bi bi-trophy-fill" aria-hidden="true"></span> Hall of Fame
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="lobby">
+                    <span aria-hidden="true">🎮</span> Lobby
                 </NavLink>
             </div>
         </nav>
@@ -70,10 +79,15 @@
 
 @code {
     private DevSessionDto? _devSession;
+    private bool _isMockData;
 
     protected override async Task OnInitializedAsync()
     {
-        if (HostEnvironment.Environment == "Development")
+        // Check if mock data is active (Test environment or explicit config flag)
+        _isMockData = HostEnvironment.Environment == "Test"
+            || HostEnvironment.Environment == "Mock";
+
+        if (HostEnvironment.Environment == "Development" || HostEnvironment.Environment == "Test")
         {
             _devSession = await DevSessionClient.GetCurrentSessionAsync();
             SessionState.Set(_devSession);

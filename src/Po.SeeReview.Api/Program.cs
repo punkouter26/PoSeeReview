@@ -4,6 +4,7 @@ using Po.SeeReview.Api;
 using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
 using Po.SeeReview.Api.Identity;
+using Po.SeeReview.Api.Lobby;
 using Po.SeeReview.Api.Middleware;
 using Po.SeeReview.Api.Telemetry;
 using Po.SeeReview.Application;
@@ -121,6 +122,9 @@ try
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddHostedService<ExpiredComicCleanupService>();
 
+    // Register SignalR for real-time multiplayer lobby
+    builder.Services.AddSignalR();
+
     var app = builder.Build();
 
     // Add custom middleware
@@ -160,6 +164,9 @@ try
     app.MapHealthEndpoints();
 
     app.MapControllers();
+
+    // SignalR hub for multiplayer lobby
+    app.MapHub<LobbyHub>("/lobby");
 
     // Fallback to index.html for all non-API routes (Blazor SPA routing)
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), builder =>

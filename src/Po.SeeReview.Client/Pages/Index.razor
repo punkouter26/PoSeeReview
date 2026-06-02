@@ -15,6 +15,25 @@
         <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
         <p class="hero-kicker">Built for quick mobile discovery and instant sharing.</p>
         <a href="/leaderboard" class="leaderboard-hero-link">🏆 Hall of Fame — See the Weirdest Stories</a>
+
+        <div class="ai-model-selector">
+            <label for="ai-model-select" class="ai-model-label">AI Model</label>
+            <select id="ai-model-select" class="ai-model-select" @bind="_selectedModel">
+                <optgroup label="Remote (Azure OpenAI)">
+                    <option value="azure-gpt-4o">GPT-4o (Azure)</option>
+                    <option value="azure-gpt-4o-mini">GPT-4o Mini (Azure)</option>
+                </optgroup>
+                <optgroup label="Browser AI">
+                    <option value="browser-llama">Llama.cpp (WebGPU)</option>
+                    <option value="browser-phi">Phi-3 (WebGPU)</option>
+                </optgroup>
+                <optgroup label="Local (Ollama)">
+                    <option value="ollama-llama3">Llama 3 (Ollama)</option>
+                    <option value="ollama-mistral">Mistral (Ollama)</option>
+                    <option value="ollama-codellama">Code Llama (Ollama)</option>
+                </optgroup>
+            </select>
+        </div>
     </header>
 
     @if (_flowState == LocationFlowState.Idle || _flowState == LocationFlowState.Denied)
@@ -92,8 +111,8 @@
             </div>
             @foreach (var restaurant in _restaurants)
             {
-                <RestaurantCard 
-                    Restaurant="restaurant" 
+                <RestaurantCard
+                    Restaurant="restaurant"
                     IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                     OnRestaurantClick="HandleRestaurantClick" />
             }
@@ -113,22 +132,20 @@
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
+    private string _selectedModel = "azure-gpt-4o-mini";
     protected override async Task OnInitializedAsync()
     {
-        // Restore last-searched location so returning users skip the friction
         var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_last_search");
         if (!string.IsNullOrWhiteSpace(lastLocation))
         {
             _searchPlaceholder = $"Last: {lastLocation}";
         }
 
-        // Check if user previously granted location permission
         var storedValue = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_location_enabled");
         var locationEnabled = storedValue == "true";
-        
+
         if (locationEnabled)
         {
-            // Automatically fetch location and load restaurants
             await RequestLocationAsync();
         }
     }
@@ -159,7 +176,6 @@
                 return;
             }
 
-            // Save user preference that location is enabled
             await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "true");
 
             _loadingMessage = "Finding nearby restaurants...";
@@ -314,7 +330,6 @@
         _activeComicPlaceId = restaurant.PlaceId;
         StateHasChanged();
 
-        // Yield once so the UI can render the disabled button state before navigation.
         await Task.Yield();
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
     }

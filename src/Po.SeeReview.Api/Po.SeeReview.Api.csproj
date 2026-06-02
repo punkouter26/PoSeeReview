@@ -4,6 +4,8 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591;NU1902;NU1903</NoWarn>
     <UserSecretsId>seereview-api-secrets</UserSecretsId>
+    <!-- Git-driven versioning via MinVer -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,6 +22,7 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.ApplicationInsights" />
     <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR" />
   </ItemGroup>
 
   <ItemGroup>

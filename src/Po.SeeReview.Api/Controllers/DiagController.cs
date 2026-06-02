@@ -12,6 +12,7 @@ namespace Po.SeeReview.Api.Controllers;
 [Route("api/[controller]")]
 public class DiagController(
     IWebHostEnvironment environment,
+    IConfiguration configuration,
     DiagnosticsSnapshotQueryHandler diagnosticsSnapshotQueryHandler) : ControllerBase
 {
     /// <summary>
@@ -31,5 +32,20 @@ public class DiagController(
         var diagnostics = await diagnosticsSnapshotQueryHandler.ExecuteAsync(cancellationToken);
         diagnostics.Environment = environment.EnvironmentName;
         return Ok(diagnostics);
+    }
+
+    /// <summary>
+    /// Returns whether mock/fake services are currently active.
+    /// Used by the client to display "USING MOCK DATA" in the nav bar.
+    /// </summary>
+    [HttpGet("mock-status")]
+    [ProducesResponseType(typeof(MockStatusDto), StatusCodes.Status200OK)]
+    public IActionResult GetMockStatus()
+    {
+        // When running in Test environment (WebApplicationFactory), mock services are active.
+        // In Development with real Azure connections, this returns false.
+        var isMock = environment.IsEnvironment("Test")
+            || configuration.GetValue<bool>("UseMockData");
+        return Ok(new MockStatusDto { IsMockActive = isMock });
     }
 }
