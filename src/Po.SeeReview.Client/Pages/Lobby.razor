@@ -1,6 +1,6 @@
 @page "/lobby"
 @using Microsoft.AspNetCore.SignalR.Client
-@using Po.SeeReview.Api.Lobby
+@using Po.SeeReview.Shared.Dtos
 @inject NavigationManager Navigation
 @inject DevSessionClient DevSessionClient
 @implements IAsyncDisposable
@@ -89,7 +89,7 @@
 @code {
     private HubConnection? _hubConnection;
     private HubConnectionState _hubState = HubConnectionState.Disconnected;
-    private List<LobbyPlayer> _players = new();
+    private List<LobbyPlayerDto> _players = new();
     private string? _hostConnectionId;
     private string? _errorMessage;
     private bool _isHost;
@@ -109,7 +109,7 @@
             .WithAutomaticReconnect()
             .Build();
 
-        _hubConnection.On<List<LobbyPlayer>, string?>("LobbyUpdated", (players, hostId) =>
+        _hubConnection.On<List<LobbyPlayerDto>, string?>("LobbyUpdated", (players, hostId) =>
         {
             _players = players;
             _hostConnectionId = hostId;
@@ -126,7 +126,7 @@
             InvokeAsync(StateHasChanged);
         });
 
-        _hubConnection.On<List<LobbyPlayer>>("GameStarting", (players) =>
+        _hubConnection.On<List<LobbyPlayerDto>>("GameStarting", (players) =>
         {
             // Navigate to game page when host starts
             Navigation.NavigateTo("/game");

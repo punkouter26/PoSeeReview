@@ -22,7 +22,6 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.ApplicationInsights" />
     <PackageReference Include="Scalar.AspNetCore" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR" />
   </ItemGroup>
 
   <ItemGroup>
