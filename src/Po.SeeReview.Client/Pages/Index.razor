@@ -19,9 +19,8 @@
         <div class="ai-model-selector">
             <label for="ai-model-select" class="ai-model-label">AI Model</label>
             <select id="ai-model-select" class="ai-model-select" @bind="_selectedModel">
-                <optgroup label="Remote (Azure OpenAI)">
-                    <option value="azure-gpt-4o">GPT-4o (Azure)</option>
-                    <option value="azure-gpt-4o-mini">GPT-4o Mini (Azure)</option>
+                <optgroup label="Remote (Azure AI Foundry)">
+                    <option value="azure-gpt-5.4-nano">GPT-5.4 Nano (Azure)</option>
                 </optgroup>
                 <optgroup label="Browser AI">
                     <option value="browser-llama">Llama.cpp (WebGPU)</option>
@@ -132,7 +131,8 @@
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
-    private string _selectedModel = "azure-gpt-4o-mini";
+    // Sole Azure AI Foundry deployment is gpt-5.4-nano (verified 2026-06-14).
+    private string _selectedModel = "azure-gpt-5.4-nano";
     protected override async Task OnInitializedAsync()
     {
         var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_last_search");
@@ -202,7 +202,24 @@
         {
             var response = await ApiClient.GetNearbyRestaurantsAsync(latitude, longitude);
 
-            if (response == null || response.Restaurants.Count == 0)
+            if (response == null)
+            {
+                _errorMessage = "No restaurants found nearby. Try a different location.";
+                _flowState = LocationFlowState.Error;
+                return;
+            }
+
+            if (response.Stale)
+            {
+                // Dev short-circuit or upstream unavailable — explain the why instead of "no results".
+                _errorMessage = response.StaleReason
+                    ?? "Restaurant search is temporarily unavailable. " +
+                       "Add a real Google Maps API key to appsettings.Development.json to enable nearby search.";
+                _flowState = LocationFlowState.Error;
+                return;
+            }
+
+            if (response.Restaurants.Count == 0)
             {
                 _errorMessage = "No restaurants found nearby. Try a different location.";
                 _flowState = LocationFlowState.Error;

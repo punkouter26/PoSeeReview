@@ -66,7 +66,7 @@ public class ComicGenerationIntegrationTests
             {
                 ["AzureOpenAI:ApiKey"] = "test-stub-api-key",
                 ["AzureOpenAI:Endpoint"] = "https://test-openai.openai.azure.com",
-                ["AzureOpenAI:DeploymentName"] = "gpt-4",
+                ["AzureOpenAI:DeploymentName"] = "gpt-5.4-nano",
             })
             .AddEnvironmentVariables()
             .Build();

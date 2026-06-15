@@ -20,6 +20,9 @@ public class ApiClient
 
     /// <summary>
     /// Gets nearby restaurants based on coordinates.
+    /// On non-success the response body is parsed for an RFC 7807 <c>ProblemDetails</c> payload
+    /// so the user-facing message is actionable instead of a generic 503.
+    /// Returns <c>null</c> only when the body cannot be parsed.
     /// </summary>
     public async Task<NearbyRestaurantsResponse?> GetNearbyRestaurantsAsync(
         double latitude,
@@ -27,27 +30,30 @@ public class ApiClient
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            using var request = await CreateRequestAsync(
-                HttpMethod.Get,
-                $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
-            using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
-            httpResponse.EnsureSuccessStatusCode();
-            var response = await httpResponse.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
+        using var request = await CreateRequestAsync(
+            HttpMethod.Get,
+            $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
+        using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
 
-            return response;
-        }
-        catch (HttpRequestException)
+        if (!httpResponse.IsSuccessStatusCode)
         {
-            // Log error - for now just return null
-            return null;
+            var errorBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
+            var detail = TryExtractProblemDetail(errorBody)
+                ?? $"Nearby restaurant search failed (HTTP {(int)httpResponse.StatusCode}).";
+
+            throw new HttpRequestException(detail, null, httpResponse.StatusCode);
         }
+
+        return await httpResponse.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
     }
 
     /// <summary>
     /// Generates a comic for the given restaurant place ID.
     /// This may take 8-10 seconds for a new comic generation.
+    /// On non-success the response body is parsed for an RFC 7807 <c>ProblemDetails</c> payload
+    /// so the user-facing message is actionable instead of the opaque
+    /// "net_http_message_not_success_statuscode_reason, 500, Internal Server Error" surfaced by
+    /// <c>HttpRequestException</c>.
     /// </summary>
     public async Task<ComicDto> GenerateComicAsync(
         string placeId,
@@ -62,7 +68,15 @@ public class ApiClient
 
         using var request = await CreateRequestAsync(HttpMethod.Post, url);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var message = TryExtractProblemDetail(errorBody)
+                ?? $"Comic generation failed (HTTP {(int)response.StatusCode}). Please try again in a moment.";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
 
         var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken: cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");

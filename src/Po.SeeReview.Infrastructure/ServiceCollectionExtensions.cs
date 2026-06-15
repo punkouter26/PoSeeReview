@@ -104,6 +104,17 @@ public static class ServiceCollectionExtensions
                 options.Retry.MaxRetryAttempts = 3;
                 options.Retry.Delay = TimeSpan.FromSeconds(2);
                 options.Retry.UseJitter = true;
+
+                // Trip the circuit after 5 consecutive failures, keep it open for 30s.
+                // Prevents Maps outages from cascading into comic 5xx storms.
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+                options.CircuitBreaker.FailureRatio = 0.5;
+                options.CircuitBreaker.MinimumThroughput = 5;
+                options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(30);
+
+                // Aggregate per-attempt budget must stay below the 10s user-facing latency target.
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(8);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(20);
             });
         services.AddScoped<IRestaurantService, RestaurantService>();
 

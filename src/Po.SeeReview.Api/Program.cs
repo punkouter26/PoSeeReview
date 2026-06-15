@@ -121,6 +121,8 @@ try
     // Register infrastructure services (Azure clients)
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddHostedService<ExpiredComicCleanupService>();
+    // Fail-fast guard for required AI/Map secrets in Production (PoFunQuiz pattern).
+    builder.Services.AddHostedService<StartupSecretValidator>();
 
     // Register SignalR for real-time multiplayer lobby
     builder.Services.AddSignalR();

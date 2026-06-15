@@ -1,8 +1,9 @@
 namespace Po.SeeReview.Core.Interfaces;
 
 /// <summary>
-/// Service for analyzing restaurant reviews using Azure OpenAI GPT-4o-mini
-/// Calculates strangeness scores and generates narrative summaries
+/// Service for analyzing restaurant reviews using Azure OpenAI <c>gpt-5.4-nano</c>
+/// (the sole deployment in the shared AI Foundry resource, verified 2026-06-14).
+/// Calculates strangeness scores and generates narrative summaries.
 /// </summary>
 public interface IAzureOpenAIService
 {

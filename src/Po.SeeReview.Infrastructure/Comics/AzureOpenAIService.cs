@@ -16,7 +16,9 @@ using Polly.Retry;
 namespace Po.SeeReview.Infrastructure.Comics;
 
 /// <summary>
-/// Azure AI Foundry service for analyzing review strangeness using GPT-4o.
+/// Azure AI Foundry service for analyzing review strangeness using the
+/// <c>gpt-5.4-nano</c> deployment in <c>po-aiservices-shared</c>
+/// (verified 2026-06-14 as the sole deployment in the resource).
 /// Uses the Azure.AI.OpenAI SDK to connect to Azure AI Foundry (Cognitive Services).
 /// Returns strangeness score (0-100) and narrative paragraph for comic generation.
 /// </summary>
@@ -113,7 +115,10 @@ public class AzureOpenAIService : IAzureOpenAIService
             _telemetryClient.GetMetric("AzureOpenAI.Chat.PromptTokens").TrackValue(usage.InputTokenCount);
             _telemetryClient.GetMetric("AzureOpenAI.Chat.CompletionTokens").TrackValue(usage.OutputTokenCount);
 
-            var estimatedCost = usage.TotalTokenCount / 1000.0 * 0.15; // GPT-4o-mini pricing ($0.15 per 1K tokens)
+            // gpt-5.4-nano: ~$0.05 per 1K input tokens, ~$0.40 per 1K output tokens (GlobalStandard).
+            // Use a blended $0.10/1K as a conservative cost-tracking estimate; the controller logs
+            // prompt/completion tokens separately so a more accurate model can be plugged in later.
+            var estimatedCost = usage.TotalTokenCount / 1000.0 * 0.10;
             _telemetryClient.GetMetric("AzureOpenAI.Chat.EstimatedCostUsd").TrackValue(estimatedCost);
 
             _logger.LogInformation(

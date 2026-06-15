@@ -34,8 +34,9 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         // AzureOpenAI options — IConfiguration uses __ as the section separator for env vars
         Environment.SetEnvironmentVariable("AzureOpenAI__Endpoint", "https://test.openai.azure.com/");
         Environment.SetEnvironmentVariable("AzureOpenAI__ApiKey", "test-key-12345678901234567890AB");
-        Environment.SetEnvironmentVariable("AzureOpenAI__DeploymentName", "test-deployment");
-        Environment.SetEnvironmentVariable("AzureOpenAI__DalleDeploymentName", "test-dalle");
+        // Mirror the prod deployment name (verified 2026-06-14 as the sole deployment in po-aiservices-shared).
+        Environment.SetEnvironmentVariable("AzureOpenAI__DeploymentName", "gpt-5.4-nano");
+        Environment.SetEnvironmentVariable("AzureOpenAI__DalleDeploymentName", "");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)

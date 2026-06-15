@@ -19,6 +19,13 @@ public class DevSessionCommandHandler(ICurrentRequestIdentityAccessor currentReq
         return BuildSession($"ANON{suffix}", email: null);
     }
 
+    /// <summary>
+    /// Public, dependency-free factory used by the controller's Production fallback path
+    /// so we never return 404 from /api/devsession in deployed environments.
+    /// </summary>
+    public static DevSessionDto BuildAnonymousSession() =>
+        BuildSession(userId: null, email: null);
+
     private static DevSessionDto BuildSession(string? userId, string? email, TimeProvider? timeProvider = null)
     {
         var normalizedUserId = string.IsNullOrWhiteSpace(userId) ? "anonymous" : userId;

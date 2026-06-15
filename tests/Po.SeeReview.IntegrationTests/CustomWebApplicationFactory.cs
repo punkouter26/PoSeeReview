@@ -39,8 +39,8 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         // Tests that validate real AI/Maps calls are expected to skip via HasValidApiKey guards.
         SetIfEmpty("AzureOpenAI__Endpoint", "https://test-openai.openai.azure.com");
         SetIfEmpty("AzureOpenAI__ApiKey", "test-api-key-00000000000000000000000000000000");
-        SetIfEmpty("AzureOpenAI__DeploymentName", "gpt-4");
-        SetIfEmpty("AzureOpenAI__DalleDeploymentName", "dall-e-3");
+        SetIfEmpty("AzureOpenAI__DeploymentName", "gpt-5.4-nano");
+        SetIfEmpty("AzureOpenAI__DalleDeploymentName", "");
         SetIfEmpty("GoogleMaps__ApiKey", "test-google-maps-api-key");
     }
 
