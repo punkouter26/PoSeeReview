@@ -94,11 +94,13 @@ internal sealed class GlobalExceptionHandler(
             {
                 return ("azure-openai", "strangeness", name);
             }
+
             if (name.StartsWith("Google", StringComparison.Ordinal)
                 || name.Contains("Gemini", StringComparison.Ordinal))
             {
                 return ("gemini", "imagegen", name);
             }
+
             if (name.Contains("Json", StringComparison.Ordinal))
             {
                 return ("schema", "deserialize", name);

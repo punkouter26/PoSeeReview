@@ -89,10 +89,17 @@ public class AzureOpenAIService : IAzureOpenAIService
             new UserChatMessage(prompt)
         };
 
+        // NOTE: do NOT set MaxOutputTokenCount here. The 2.1.0 SDK serializes that property as
+        // `max_tokens` in the wire format, but reasoning models (e.g. gpt-5.4-nano, 2026-03-17)
+        // reject `max_tokens` with HTTP 400 "unsupported_parameter" and require
+        // `max_completion_tokens` instead. The SDK doesn't yet auto-pick the right parameter,
+        // so the safe move is to let the model use its default cap. If a future model needs
+        // an explicit cap, set it via chatOptions.AdditionalProperties["max_completion_tokens"] = N.
+        // 2026-06-15 incident: this parameter mismatch surfaced as 500 on every prod comic
+        // generation after the model was rotated from gpt-4o-mini to gpt-5.4-nano.
         var chatOptions = new ChatCompletionOptions
         {
             Temperature = 0.3f, // Low temperature for consistent scoring
-            MaxOutputTokenCount = 400, // 200 was too low — GPT narrative truncated JSON causing JsonException
             ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
         };
 
@@ -218,10 +225,11 @@ Return JSON in this exact format:
             new UserChatMessage(prompt)
         };
 
+        // Same reasoning as AnalyzeStrangenessAsync: don't set MaxOutputTokenCount. See the
+        // long comment there for why reasoning models (gpt-5.4-nano) reject `max_tokens`.
         var options = new ChatCompletionOptions
         {
             Temperature = 0.6f,
-            MaxOutputTokenCount = 300, // 150 was marginal for multi-panel caption arrays
             ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
         };
 
