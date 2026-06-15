@@ -5,6 +5,10 @@ param keyVaultName string
 @secure()
 param storageConnectionString string
 
+@description('Google Maps API key for the SeeReview app, surfaced as the PoSeeReview--GoogleMaps--ApiKey secret. Mirrors the shared GoogleMaps--ApiKey so PrefixKeyVaultSecretManager (app-specific pass) can win the two-pass load. Empty by default so existing dev/test envs are not forced to provide it.')
+@secure()
+param poSeeReviewGoogleMapsApiKey string = ''
+
 // Reference to existing Key Vault
 resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' existing = {
   name: keyVaultName
@@ -109,6 +113,17 @@ resource googleMapsApiKey 'Microsoft.KeyVault/vaults/secrets@2024-04-01-preview'
   }
 }
 
+// App-prefixed mirror — only created when a real key is provided. PrefixKeyVaultSecretManager
+// loads this on the second pass so it overrides the shared GoogleMaps--ApiKey value.
+resource poSeeReviewGoogleMapsApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2024-04-01-preview' = if (!empty(poSeeReviewGoogleMapsApiKey)) {
+  parent: keyVault
+  name: 'PoSeeReview--GoogleMaps--ApiKey'
+  properties: {
+    value: poSeeReviewGoogleMapsApiKey
+    contentType: 'text/plain'
+  }
+}
+
 // =============================================================================
 // Content Safety Secrets (optional)
 // =============================================================================
@@ -140,3 +155,4 @@ output blobStorageSecretUri string = azureBlobStorageConnectionString.properties
 output azureOpenAIEndpointSecretUri string = azureOpenAIEndpoint.properties.secretUri
 output azureOpenAIKeySecretUri string = azureOpenAIApiKey.properties.secretUri
 output googleMapsKeySecretUri string = googleMapsApiKey.properties.secretUri
+output poSeeReviewGoogleMapsKeySecretUri string = poSeeReviewGoogleMapsApiKeySecret.?properties.secretUri ?? ''

@@ -114,6 +114,12 @@ module keyVaultAccess './modules/keyvaultaccess.bicep' = {
   }
 }
 
+// Optional app-prefixed Google Maps key. Set via `azd env set poSeeReviewGoogleMapsApiKey <key>`
+// then `azd provision` — the secret lands in kv-poshared under PoSeeReview--GoogleMaps--ApiKey.
+// Empty by default so existing dev/test envs are not forced to provide it.
+@secure()
+param poSeeReviewGoogleMapsApiKey string = ''
+
 // Store secrets in Key Vault (placeholders - update via CLI or Portal)
 module secrets './modules/secrets.bicep' = {
   name: 'secrets'
@@ -121,6 +127,7 @@ module secrets './modules/secrets.bicep' = {
   params: {
     keyVaultName: keyVault.outputs.name
     storageConnectionString: storage.outputs.connectionString
+    poSeeReviewGoogleMapsApiKey: poSeeReviewGoogleMapsApiKey
   }
 }
 
