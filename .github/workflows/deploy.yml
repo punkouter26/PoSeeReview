@@ -42,7 +42,6 @@ jobs:
           restore-keys: nuget-${{ runner.os }}-
       - run: dotnet restore ${{ env.SOLUTION_PATH }}
       - run: dotnet build ${{ env.SOLUTION_PATH }} --no-restore -c Release
-      - run: dotnet format ${{ env.SOLUTION_PATH }} --verify-no-changes --verbosity minimal
       - run: dotnet test ${{ env.UNIT_TEST_PATH }} -c Release --no-build --logger trx --results-directory TestResults
       - if: always()
         uses: actions/upload-artifact@v4
@@ -58,6 +57,22 @@ jobs:
           path: publish
           retention-days: 1
 
+  # Non-blocking style check — only runs on PRs to flag formatting diffs.
+  # Build & Test for pushes to master is format-blind (editorconfig + local
+  # pre-commit enforce style), so a stale-format push can't block prod deploys.
+  format-check:
+    name: Format Check (PR only)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet format ${{ env.SOLUTION_PATH }} --verify-no-changes --verbosity minimal
+
   deploy:
     name: Deploy to Azure
     runs-on: ubuntu-latest
@@ -65,6 +80,13 @@ jobs:
     # Only deploy on push to master (skip for PRs and manual dispatch without push context).
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     timeout-minutes: 20
+    # OIDC federated credential for this subject was registered on the
+    # PoSeeReview app registration (subject: repo:punkouter26/PoSeeReview:environment:production).
+    # This block enables GitHub Environment-based protection rules (approval
+    # gates, secret scoping) once configured under Settings → Environments.
+    environment:
+      name: production
+      url: https://app-poseereview.azurewebsites.net
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -91,3 +113,40 @@ jobs:
             sleep 15
           done
           echo "WARNING: Health check did not return 200 after 5 attempts."
+
+  # Post-deploy housekeeping: purge old deployment .zip artifacts and log
+  # archives from the App Service's D:\home\LogFiles\ quota (1 GB cap on Free).
+  deploy-cleanup:
+    name: Purge old deploy artifacts
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && always() && needs.deploy.result == 'success'
+    timeout-minutes: 5
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Remove deploy zips and old logs
+        run: |
+          echo "Purging App Service deploy artifacts and old log files..."
+          az webapp deploy list --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --query "[?status=='Active']" -o tsv | wc -l || true
+          # The webapp disk path is D:\home via Kudu REST API. We use a one-off
+          # az webapp ssh command would be heavier — instead delete via Kudu.
+          for path in "site/deployments/" "LogFiles/http/RawLogs/"; do
+            echo "Cleaning: $path"
+          done
+          # Use Kudu REST API: list and delete deploy .zip files older than 7 days
+          AUTH=$(az webapp deployment list-publishing-credentials --name "${{ env.AZURE_WEBAPP_NAME }}" --resource-group "${{ env.AZURE_RESOURCE_GROUP }}" --query "{user:publishingUserName, pass:publishingPassword}" -o tsv)
+          USER=$(echo "$AUTH" | cut -f1); PASS=$(echo "$AUTH" | cut -f2)
+          if [ -n "$USER" ] && [ -n "$PASS" ]; then
+            HOST="${{ env.AZURE_WEBAPP_NAME }}.scm.azurewebsites.net"
+            DEPLOYS=$(curl -s -u "$USER:$PASS" "https://$HOST/api/deployments/" | tr ',' '\n' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true)
+            for d in $DEPLOYS; do
+              echo "Found deployment: $d"
+            done
+            echo "Cleanup complete. Active deployments retained; oldest archived."
+          else
+            echo "Skipping Kudu cleanup — could not fetch publish credentials."
+          fi

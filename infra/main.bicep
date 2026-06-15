@@ -21,6 +21,21 @@ param budgetContactEmails array = []
 // Service names
 param apiServiceName string = 'api'
 
+// Hosting mode — 'containerapp' (default, current azd path) or 'appservice'
+// (matches the GitHub Actions deploy target in .github/workflows/deploy.yml).
+// Production currently runs on App Service but azd provision would still
+// create a Container App. Set this to 'appservice' to provision the
+// App Service target via the existing appservice.bicep module.
+@allowed([
+  'containerapp'
+  'appservice'
+])
+param hostingMode string = 'appservice'
+
+// App Service Plan SKU when hostingMode == 'appservice'
+@description('App Service Plan SKU (B1 Basic recommended for production)')
+param appServicePlanSku string = 'B1'
+
 // Resource names
 var resourceToken = toLower('${environmentName}-${resourceGroupSuffix}')
 var resourceGroupName = 'rg-${resourceToken}'
@@ -59,8 +74,8 @@ module storage './modules/storage.bicep' = {
   }
 }
 
-// Container Apps Environment
-module containerAppsEnvironment './modules/containerappenv.bicep' = {
+// Container Apps Environment — only when hostingMode == 'containerapp'
+module containerAppsEnvironment './modules/containerappenv.bicep' = if (hostingMode == 'containerapp') {
   name: 'containerAppsEnvironment'
   scope: rg
   params: {
@@ -84,8 +99,8 @@ module keyVault './modules/keyvault.bicep' = {
   }
 }
 
-// API Container App
-module api './modules/containerapp.bicep' = {
+// API hosting — one or the other based on hostingMode
+module apiContainerApp './modules/containerapp.bicep' = if (hostingMode == 'containerapp') {
   name: 'api-containerapp'
   scope: rg
   params: {
@@ -104,13 +119,30 @@ module api './modules/containerapp.bicep' = {
   }
 }
 
+// App Service target — matches the GitHub Actions deploy.yml target.
+module apiAppService './modules/appservice.bicep' = if (hostingMode == 'appservice') {
+  name: 'api-appservice'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    appName: 'app-${resourceToken}'
+    skuName: appServicePlanSku
+    keyVaultEndpoint: keyVault.outputs.endpoint
+    storageTableEndpoint: storage.outputs.tableEndpoint
+    storageBlobEndpoint: storage.outputs.blobEndpoint
+    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
+    aspnetcoreEnvironment: environmentName == 'prod' ? 'Production' : 'Development'
+  }
+}
+
 // Key Vault Access - Grant API managed identity access to Key Vault
 module keyVaultAccess './modules/keyvaultaccess.bicep' = {
   name: 'keyvaultaccess'
   scope: rg
   params: {
     keyVaultName: keyVault.outputs.name
-    principalId: api.outputs.identityPrincipalId
+    principalId: hostingMode == 'appservice' ? apiAppService.outputs.identityPrincipalId : apiContainerApp.outputs.identityPrincipalId
   }
 }
 
@@ -144,13 +176,14 @@ module budget './modules/budget.bicep' = {
 output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_RESOURCE_GROUP string = rg.name
+output HOSTING_MODE string = hostingMode
 
-output API_SERVICE_NAME string = api.outputs.name
-output API_URL string = 'https://${api.outputs.fqdn}'
+output API_SERVICE_NAME string = hostingMode == 'appservice' ? apiAppService.outputs.appName : apiContainerApp.outputs.name
+output API_URL string = hostingMode == 'appservice' ? 'https://${apiAppService.outputs.hostName}' : 'https://${apiContainerApp.outputs.fqdn}'
 
-output AZURE_CONTAINER_REGISTRY_NAME string = api.outputs.acrName
-output AZURE_CONTAINER_REGISTRY_ENDPOINT string = api.outputs.acrLoginServer
-output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = containerAppsEnvironment.outputs.name
+output AZURE_CONTAINER_REGISTRY_NAME string = hostingMode == 'containerapp' ? apiContainerApp.outputs.acrName : ''
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = hostingMode == 'containerapp' ? apiContainerApp.outputs.acrLoginServer : ''
+output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = hostingMode == 'containerapp' ? containerAppsEnvironment.outputs.name : ''
 
 output APPLICATION_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
 output APPLICATION_INSIGHTS_INSTRUMENTATION_KEY string = monitoring.outputs.applicationInsightsInstrumentationKey

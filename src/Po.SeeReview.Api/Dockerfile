@@ -1,5 +1,8 @@
 # Build stage
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Pinned to a specific minor.patch tag. Bare :10.0 drifts unpredictably
+# between rebuilds (a new patch release would be silently picked up). Bump
+# via Dependabot (.github/dependabot.yml → docker ecosystem).
+FROM mcr.microsoft.com/dotnet/sdk:10.0.301-noble AS build
 WORKDIR /src
 
 # Copy solution and project files for better layer caching
@@ -22,7 +25,7 @@ WORKDIR "/src/src/Po.SeeReview.Api"
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.6-noble-chiseled AS runtime
 WORKDIR /app
 
 # Install fonts and fontconfig for comic text overlay (run as root before switching to app user)
