@@ -165,6 +165,9 @@ LLMDOCS/
 # C# Dev Kit language service cache
 *.lscache
 
+# Local app-logs/ directory (runtime artifacts, never tracked)
+app-logs/
+
 # Azure Developer CLI local state (environment values passed via GitHub Secrets in CI)
 .azure/
 
