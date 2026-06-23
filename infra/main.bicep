@@ -12,8 +12,8 @@ param location string
 @description('Azure Developer CLI environment name override')
 param azdEnvironmentName string = environmentName
 
-@description('Unique ID to ensure resource name uniqueness')
-param resourceGroupSuffix string = uniqueString(subscription().id, environmentName)
+@description('Region code used in deterministic resource names')
+param regionCode string = 'wus2'
 
 @description('Email addresses for budget alerts')
 param budgetContactEmails array = []
@@ -37,12 +37,15 @@ param hostingMode string = 'appservice'
 param appServicePlanSku string = 'B1'
 
 // Resource names
-var resourceToken = toLower('${environmentName}-${resourceGroupSuffix}')
+var resourceToken = toLower('poseereview-${environmentName}-${regionCode}')
 var resourceGroupName = 'rg-${resourceToken}'
 var tags = {
   'azd-env-name': azdEnvironmentName
   environment: environmentName
   application: 'SeeReview'
+  app: 'poseereview'
+  region: regionCode
+  namingStandard: 'caf-derived'
 }
 
 // Resource group

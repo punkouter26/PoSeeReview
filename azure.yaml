@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
 
-name: seereview
+name: poseereview
 metadata:
-  template: seereview@0.0.1-beta
+  template: poseereview@0.0.1-beta
 
 services:
   api:

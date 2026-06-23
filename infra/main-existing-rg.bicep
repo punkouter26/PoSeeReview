@@ -11,14 +11,14 @@ param location string = resourceGroup().location
 param environmentName string = 'prod'
 
 // Existing resource names (from PoSeeReview resource group)
-param existingStorageAccountName string = 'poseereviewstorage'
-param existingKeyVaultName string = 'poseereview-kv'
+param existingStorageAccountName string = 'stposeereviewprodwus2'
+param existingKeyVaultName string = 'kv-poseereview-prod-wus2'
 
 // App Service name must match the existing App Service used by CI/CD
-param appServiceName string = 'app-poseereview'
+param appServiceName string = 'app-poseereview-web-prod-wus2-001'
 
 // Resource token for new resources
-var resourceToken = 'poseereview'
+var resourceToken = 'poseereview-prod-wus2'
 var tags = {
   'azd-env-name': environmentName
   environment: environmentName
