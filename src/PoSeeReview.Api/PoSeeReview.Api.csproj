@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="PoSeeReview.UnitTests" />
+    <InternalsVisibleTo Include="PoSeeReview.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -16,15 +16,39 @@ public sealed class PlaywrightFixture : IAsyncLifetime
 
     private IPlaywright _playwright = null!;
 
+    /// <summary>
+    /// Viewport matrix every E2E UI test runs against to guarantee visual parity
+    /// across form factors (NET_RULES / directive #5: mobile-first + desktop landscape).
+    /// Exposed as xUnit theory data (string keys keep it trivially serializable).
+    /// </summary>
+    public static TheoryData<string> Viewports => new() { "mobile", "desktop" };
+
     public async Task InitializeAsync()
     {
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new() { Headless = true });
     }
 
-    public async Task<IPage> NewPageAsync()
+    /// <summary>
+    /// Creates a fresh page in the requested viewport. "mobile" emulates a portrait
+    /// phone (touch); "desktop" uses a landscape desktop viewport.
+    /// </summary>
+    public async Task<IPage> NewPageAsync(string viewport = "desktop")
     {
-        var context = await Browser.NewContextAsync(new() { IgnoreHTTPSErrors = true });
+        var options = new BrowserNewContextOptions { IgnoreHTTPSErrors = true };
+
+        if (string.Equals(viewport, "mobile", StringComparison.OrdinalIgnoreCase))
+        {
+            options.ViewportSize = new ViewportSize { Width = 390, Height = 844 };
+            options.IsMobile = true; // Chromium-only — this suite launches Chromium.
+            options.HasTouch = true;
+        }
+        else
+        {
+            options.ViewportSize = new ViewportSize { Width = 1366, Height = 768 };
+        }
+
+        var context = await Browser.NewContextAsync(options);
         return await context.NewPageAsync();
     }
 

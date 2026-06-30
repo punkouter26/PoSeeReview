@@ -46,15 +46,11 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' = {
   }
 }
 
-// ─── Managed Identity ───────────────────────────────────────────────────────
-
-resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-07-31-preview' = {
-  name: 'id-${appName}'
-  location: location
-  tags: tags
-}
-
 // ─── Web App ─────────────────────────────────────────────────────────────────
+// Identity is System-Assigned (PoShared identity-centralization standard): the
+// platform manages the principal lifecycle with the app, and Key Vault / Storage
+// RBAC is granted to webApp.identity.principalId. No connection strings or
+// AZURE_CLIENT_ID required — DefaultAzureCredential resolves the system identity.
 
 resource webApp 'Microsoft.Web/sites@2024-04-01' = {
   name: appName
@@ -64,10 +60,7 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
   })
   kind: 'app,linux'
   identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${managedIdentity.id}': {}
-    }
+    type: 'SystemAssigned'
   }
   properties: {
     serverFarmId: appServicePlan.id
@@ -105,7 +98,8 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
           value: '~3'
         }
         {
-          name: 'KeyVault__Endpoint'
+          // Config key the app actually reads (KeyVaultConfigurationExtensions → "KeyVault:Uri").
+          name: 'KeyVault__Uri'
           value: keyVaultEndpoint
         }
         {
@@ -115,10 +109,6 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'AzureStorage__BlobEndpoint'
           value: storageBlobEndpoint
-        }
-        {
-          name: 'AZURE_CLIENT_ID'
-          value: managedIdentity.properties.clientId
         }
       ]
     }
@@ -133,8 +123,5 @@ output hostName string = webApp.properties.defaultHostName
 @description('App Service name')
 output appName string = webApp.name
 
-@description('Managed Identity principal ID (for Key Vault / Storage RBAC)')
-output identityPrincipalId string = managedIdentity.properties.principalId
-
-@description('Managed Identity client ID')
-output identityClientId string = managedIdentity.properties.clientId
+@description('System-Assigned Managed Identity principal ID (for Key Vault / Storage RBAC)')
+output identityPrincipalId string = webApp.identity.principalId

@@ -1,0 +1,41 @@
+- generic [ref=f5e7]:
+  - generic [ref=f5e10]:
+    - link "PoSeeReview Strange stories, illustrated" [ref=f5e11] [cursor=pointer]:
+      - /url: ""
+      - img [ref=f5e12]
+      - generic [ref=f5e17]:
+        - text: PoSeeReview
+        - generic [ref=f5e18]: Strange stories, illustrated
+    - navigation "Primary navigation" [ref=f5e19]:
+      - link "Home" [ref=f5e21] [cursor=pointer]:
+        - /url: ""
+        - text: Home
+      - link "Hall of Fame" [ref=f5e24] [cursor=pointer]:
+        - /url: leaderboard
+        - text: Hall of Fame
+    - generic [ref=f5e26]:
+      - generic [ref=f5e29]: Anon
+      - button "Sign out" [ref=f5e30] [cursor=pointer]
+  - main [ref=f5e31]:
+    - article [ref=f5e32]:
+      - generic [ref=f5e34]:
+        - generic:
+          - generic [ref=f5e35]:
+            - heading "The Dearborn" [level=1] [ref=f5e36]
+            - generic [ref=f5e37]:
+              - img [ref=f5e38]
+              - generic [ref=f5e41]:
+                - generic [ref=f5e42]: "18"
+                - generic [ref=f5e43]: Weird
+          - img "Comic strip for The Dearborn" [ref=f5e45]
+          - paragraph [ref=f5e46]: Share the panel, or reopen discovery to find the next strange story.
+          - generic [ref=f5e47]:
+            - button "Share Comic" [ref=f5e49] [cursor=pointer]:
+              - generic:
+                - generic: Share Comic
+            - button "← Find Another" [ref=f5e51] [cursor=pointer]:
+              - generic:
+                - generic: ← Find Another
+            - button "Try Another Version" [ref=f5e53] [cursor=pointer]:
+              - generic:
+                - generic: Try Another Version

@@ -6,7 +6,6 @@ using PoSeeReview.Api.Features;
 using PoSeeReview.Api.Health;
 using PoSeeReview.Api.HostedServices;
 using PoSeeReview.Api.Identity;
-using PoSeeReview.Api.Lobby;
 using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Application;
@@ -60,7 +59,7 @@ try
     builder.Services.AddValidatorsFromAssemblyContaining<PoSeeReview.Shared.Validation.TakedownRequestValidator>();
     builder.Services.AddApplication();
 
-    builder.Services.AddConfiguredTelemetry(builder.Configuration);
+    builder.Services.AddConfiguredTelemetry(builder.Configuration, builder.Environment);
     builder.Services.AddConfiguredRateLimiting(builder.Configuration);
 
     // Configure Health Checks
@@ -90,9 +89,6 @@ try
     // Fail-fast guard for required AI/Map secrets in Production (PoFunQuiz pattern).
     builder.Services.AddHostedService<StartupSecretValidator>();
 
-    // Register SignalR for real-time multiplayer lobby
-    builder.Services.AddSignalR();
-
     var app = builder.Build();
 
     // Add custom middleware
@@ -116,10 +112,14 @@ try
         app.MapScalarApiReference(); // Modern API documentation UI
     }
 
-    // HTTPS redirection — disabled for Test/E2E environments that operate on HTTP only
+    // HTTPS redirection — disabled for Test/E2E environments that operate on HTTP only.
+    // Health endpoints are exempted so platform probes (App Service / load balancers) that
+    // hit them over plain HTTP get a 200 instead of a 307 redirect that reads as "unhealthy".
     if (!app.Environment.IsEnvironment("Test"))
     {
-        app.UseHttpsRedirection();
+        app.UseWhen(
+            ctx => !ctx.Request.Path.StartsWithSegments("/health"),
+            branch => branch.UseHttpsRedirection());
     }
 
     app.UseBlazorFrameworkFiles();
@@ -132,9 +132,6 @@ try
 
     // Feature slices (Minimal API, MapGroup) — NET_RULES 3.3
     app.MapFeatureEndpoints();
-
-    // SignalR hub for multiplayer lobby
-    app.MapHub<LobbyHub>("/lobby");
 
     // Fallback to index.html for all non-API routes (Blazor SPA routing)
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), builder =>

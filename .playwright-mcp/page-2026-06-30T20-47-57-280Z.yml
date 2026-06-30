@@ -1,0 +1,186 @@
+- generic [ref=e7]:
+  - generic [ref=e10]:
+    - link "PoSeeReview Strange stories, illustrated" [ref=e11] [cursor=pointer]:
+      - /url: ""
+      - img [ref=e12]
+      - generic [ref=e17]:
+        - text: PoSeeReview
+        - generic [ref=e18]: Strange stories, illustrated
+    - navigation "Primary navigation" [ref=e19]:
+      - link "Home" [ref=e21] [cursor=pointer]:
+        - /url: ""
+        - text: Home
+      - link "Hall of Fame" [ref=e24] [cursor=pointer]:
+        - /url: leaderboard
+        - text: Hall of Fame
+      - link "Lobby" [ref=e27] [cursor=pointer]:
+        - /url: lobby
+        - generic [ref=e28]: 🎮
+        - text: Lobby
+    - generic [ref=e29]:
+      - generic [ref=e32]: Anon
+      - button "Sign out" [ref=e33] [cursor=pointer]
+  - main [ref=e34]:
+    - article [ref=e35]:
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - heading "PoSeeReview" [level=1] [ref=e38]
+          - paragraph [ref=e39]: Find a place, tap once, and turn its wildest reviews into a comic.
+          - paragraph [ref=e40]: Built for quick mobile discovery and instant sharing.
+          - link "🏆 Hall of Fame — See the Weirdest Stories" [ref=e41] [cursor=pointer]:
+            - /url: /leaderboard
+          - generic [ref=e42]:
+            - generic [ref=e43]: AI Model
+            - combobox "AI Model" [ref=e44] [cursor=pointer]:
+              - option "GPT-5.4 Nano (Azure)" [selected]
+              - option "Llama.cpp (WebGPU)"
+              - option "Phi-3 (WebGPU)"
+              - option "Llama 3 (Ollama)"
+              - option "Mistral (Ollama)"
+              - option "Code Llama (Ollama)"
+        - generic [ref=e61]:
+          - generic [ref=e62]:
+            - generic [ref=e63]:
+              - text: 📍 Chicago
+              - button "×" [ref=e64] [cursor=pointer]
+            - generic [ref=e65]: 10 comic-ready restaurants
+          - generic "Click to generate a comic based on reviews" [ref=e66]:
+            - generic:
+              - generic [ref=e67]:
+                - generic [ref=e68]:
+                  - heading "The Dearborn" [level=3] [ref=e69]
+                  - paragraph [ref=e70]: 285m away
+                - generic "4.7 / 5" [ref=e71]:
+                  - generic [ref=e72]: Rated
+                  - generic [ref=e73]: "4.7"
+              - paragraph [ref=e74]: 145 N Dearborn St, Chicago, IL 60602, USA
+              - generic [ref=e76]: 9567 reviews ready for comic generation
+              - button "Generate Comic" [ref=e79] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e80]:
+            - generic:
+              - generic [ref=e81]:
+                - generic [ref=e82]:
+                  - heading "Pizzeria Portofino" [level=3] [ref=e83]
+                  - paragraph [ref=e84]: 526m away
+                - generic "4.9 / 5" [ref=e85]:
+                  - generic [ref=e86]: Rated
+                  - generic [ref=e87]: "4.9"
+              - paragraph [ref=e88]: 317 N Clark St, Chicago, IL 60654, USA
+              - generic [ref=e90]: 17270 reviews ready for comic generation
+              - button "Generate Comic" [ref=e93] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e94]:
+            - generic:
+              - generic [ref=e95]:
+                - generic [ref=e96]:
+                  - heading "Cindy's Rooftop" [level=3] [ref=e97]
+                  - paragraph [ref=e98]: 646m away
+                - generic "4.4 / 5" [ref=e99]:
+                  - generic [ref=e100]: Rated
+                  - generic [ref=e101]: "4.4"
+              - paragraph [ref=e102]: 12 S Michigan Ave, Chicago, IL 60603, USA
+              - generic [ref=e104]: 5564 reviews ready for comic generation
+              - button "Generate Comic" [ref=e107] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e108]:
+            - generic:
+              - generic [ref=e109]:
+                - generic [ref=e110]:
+                  - heading "The Gage" [level=3] [ref=e111]
+                  - paragraph [ref=e112]: 672m away
+                - generic "4.6 / 5" [ref=e113]:
+                  - generic [ref=e114]: Rated
+                  - generic [ref=e115]: "4.6"
+              - paragraph [ref=e116]: 24 S Michigan Ave, Chicago, IL 60603, USA
+              - generic [ref=e118]: 5127 reviews ready for comic generation
+              - button "Generate Comic" [ref=e121] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e122]:
+            - generic:
+              - generic [ref=e123]:
+                - generic [ref=e124]:
+                  - heading "Nutella Cafe Chicago (TEMPORARILY CLOSED FOR REMODEL)" [level=3] [ref=e125]
+                  - paragraph [ref=e126]: 717m away
+                - generic "4.1 / 5" [ref=e127]:
+                  - generic [ref=e128]: Rated
+                  - generic [ref=e129]: "4.1"
+              - paragraph [ref=e130]: 189 N Michigan Ave, Chicago, IL 60601, USA
+              - generic [ref=e132]: 10347 reviews ready for comic generation
+              - button "Generate Comic" [ref=e135] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e136]:
+            - generic:
+              - generic [ref=e137]:
+                - generic [ref=e138]:
+                  - heading "Giordano's" [level=3] [ref=e139]
+                  - paragraph [ref=e140]: 744m away
+                - generic "4.5 / 5" [ref=e141]:
+                  - generic [ref=e142]: Rated
+                  - generic [ref=e143]: "4.5"
+              - paragraph [ref=e144]: 130 E Randolph St, Chicago, IL 60601, USA
+              - generic [ref=e146]: 25926 reviews ready for comic generation
+              - button "Generate Comic" [ref=e149] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e150]:
+            - generic:
+              - generic [ref=e151]:
+                - generic [ref=e152]:
+                  - heading "Trump International Hotel & Tower® Chicago" [level=3] [ref=e153]
+                  - paragraph [ref=e154]: 798m away
+                - generic "3.9 / 5" [ref=e155]:
+                  - generic [ref=e156]: Rated
+                  - generic [ref=e157]: "3.9"
+              - paragraph [ref=e158]: 401 N Wabash Ave, Chicago, IL 60611, USA
+              - generic [ref=e160]: 3024 reviews ready for comic generation
+              - button "Generate Comic" [ref=e163] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e164]:
+            - generic:
+              - generic [ref=e165]:
+                - generic [ref=e166]:
+                  - heading "Wildberry Pancakes & Cafe" [level=3] [ref=e167]
+                  - paragraph [ref=e168]: 805m away
+                - generic "4.6 / 5" [ref=e169]:
+                  - generic [ref=e170]: Rated
+                  - generic [ref=e171]: "4.6"
+              - paragraph [ref=e172]: 130 E Randolph St, Chicago, IL 60601, USA
+              - generic [ref=e174]: 9819 reviews ready for comic generation
+              - button "Generate Comic" [ref=e177] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e178]:
+            - generic:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - heading "Lou Malnati's Pizzeria" [level=3] [ref=e181]
+                  - paragraph [ref=e182]: 980m away
+                - generic "4.2 / 5" [ref=e183]:
+                  - generic [ref=e184]: Rated
+                  - generic [ref=e185]: "4.2"
+              - paragraph [ref=e186]: 410 N Michigan Ave, Chicago, IL 60611, USA
+              - generic [ref=e188]: 6346 reviews ready for comic generation
+              - button "Generate Comic" [ref=e191] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic
+          - generic "Click to generate a comic based on reviews" [ref=e192]:
+            - generic:
+              - generic [ref=e193]:
+                - generic [ref=e194]:
+                  - heading "Fairmont Chicago, Millennium Park" [level=3] [ref=e195]
+                  - paragraph [ref=e196]: 1.0km away
+                - generic "4.3 / 5" [ref=e197]:
+                  - generic [ref=e198]: Rated
+                  - generic [ref=e199]: "4.3"
+              - paragraph [ref=e200]: 200 N Columbus Dr, Chicago, IL 60601, USA
+              - generic [ref=e202]: 3526 reviews ready for comic generation
+              - button "Generate Comic" [ref=e205] [cursor=pointer]:
+                - generic:
+                  - generic: Generate Comic

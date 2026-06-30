@@ -48,6 +48,45 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   }
 }
 
+// Lifecycle management — comics are ephemeral (24h cache, 8-day SAS). Cool-tier
+// cold blobs after 7 days and hard-delete everything by 30 days so storage cost
+// and stale artifacts stay bounded. (Telemetry budgets & pruning — directive #9.)
+resource lifecyclePolicy 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
+  parent: storage
+  name: 'default'
+  properties: {
+    policy: {
+      rules: [
+        {
+          name: 'expire-ephemeral-blobs'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: ['blockBlob']
+            }
+            actions: {
+              baseBlob: {
+                tierToCool: {
+                  daysAfterModificationGreaterThan: 7
+                }
+                delete: {
+                  daysAfterModificationGreaterThan: 30
+                }
+              }
+              snapshot: {
+                delete: {
+                  daysAfterCreationGreaterThan: 7
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
 output id string = storage.id
 output name string = storage.name
 output primaryEndpoints object = storage.properties.primaryEndpoints

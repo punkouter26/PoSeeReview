@@ -31,20 +31,17 @@ public class AzureOpenAIService : IAzureOpenAIService
     private readonly AsyncRetryPolicy<ClientResult<ChatCompletion>> _chatRetryPolicy;
 
     public AzureOpenAIService(
+        AzureOpenAIClient openAIClient,
         IConfiguration configuration,
         ILogger<AzureOpenAIService> logger,
         TelemetryClient telemetryClient)
     {
-        var endpoint = configuration["AzureOpenAI:Endpoint"]
-            ?? throw new InvalidOperationException("Azure OpenAI endpoint not configured");
-
-        var apiKey = configuration["AzureOpenAI:ApiKey"]
-            ?? throw new InvalidOperationException("Azure OpenAI API key not configured");
-
         _deploymentName = configuration["AzureOpenAI:DeploymentName"]
             ?? throw new InvalidOperationException("Azure OpenAI deployment name not configured");
 
-        _openAIClient = new AzureOpenAIClient(new Uri(endpoint), new AzureKeyCredential(apiKey));
+        // Injected via DI so the underlying transport can be swapped for a mock in
+        // test environments (AddMockedAiBoundaries) — no real Foundry calls / token spend.
+        _openAIClient = openAIClient ?? throw new ArgumentNullException(nameof(openAIClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
 

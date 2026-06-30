@@ -5,6 +5,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsTrimmable>true</IsTrimmable>
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <!-- English-only UI: run invariant so the ~1.5MB ICU payload (icudt_*.dat) is not shipped,
+         cutting first-load size and one extra network round-trip. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
     <!-- IL2110/IL2111 originate in Blazor's own generated App.razor (Router/LayoutView
          reflection) — framework limitations, not app code. Our code stays trim-clean. -->
     <NoWarn>$(NoWarn);IL2110;IL2111</NoWarn>
@@ -15,7 +19,6 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
   </ItemGroup>
 
   <ItemGroup>

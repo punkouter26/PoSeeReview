@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using PoSeeReview.Core;
 using PoSeeReview.Core.Entities;
 using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Infrastructure.Testing;
 
 namespace PoSeeReview.E2EAPI;
 
@@ -41,7 +42,7 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.ConfigureServices(services =>
+        builder.ConfigureServices((context, services) =>
         {
             // Remove Serilog logger if present
             var loggerDescriptor = services.FirstOrDefault(d => d.ServiceType == typeof(ILogger<>));
@@ -53,6 +54,10 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             // Replace real Azure-backed services with in-memory fakes
             services.Replace(ServiceDescriptor.Scoped<IComicGenerationService>(_ => new FakeComicGenerationService()));
             services.Replace(ServiceDescriptor.Scoped<IRestaurantService>(_ => new FakeRestaurantService()));
+
+            // Defense-in-depth: intercept any AI provider HTTP calls so no tokens are
+            // ever spent from the E2E API suite (directive #6).
+            services.AddMockedAiBoundaries(context.Configuration);
         });
 
         // Use simple console logging for tests instead of Serilog

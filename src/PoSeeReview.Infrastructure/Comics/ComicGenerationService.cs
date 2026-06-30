@@ -156,6 +156,17 @@ public class ComicGenerationService : IComicGenerationService
             strangenessScore, panelCount, narrative.Length);
         _telemetryClient.GetMetric("Comics.Generation.AnalysisDurationMs").TrackValue(analysisStopwatch.Elapsed.TotalMilliseconds);
 
+        // Enforce the strangeness threshold BEFORE the expensive image-generation step (PRD: too
+        // ordinary → 422, not a low-quality comic). Checking here also avoids burning an Imagen
+        // call + blob write on a comic we would reject.
+        if (strangenessScore < _options.MinimumStrangenessScore)
+        {
+            _logger.LogInformation("Strangeness {Score} below minimum {Minimum} for placeId {PlaceId} — rejecting as too ordinary",
+                strangenessScore, _options.MinimumStrangenessScore, placeId);
+            _telemetryClient.GetMetric("Comics.RejectedTooOrdinary").TrackValue(1);
+            throw new InsufficientStrangenessException(strangenessScore, _options.MinimumStrangenessScore);
+        }
+
         // Generate comic image (panel count capped at 2)
         var imageStopwatch = Stopwatch.StartNew();
         var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount);

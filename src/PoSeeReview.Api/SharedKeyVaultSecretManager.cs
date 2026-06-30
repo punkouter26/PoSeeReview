@@ -11,8 +11,25 @@ namespace PoSeeReview.Api;
 public sealed class SharedKeyVaultSecretManager : KeyVaultSecretManager
 {
     /// <summary>
-    /// Loads secrets that don't belong to any specific Po-app.
-    /// Skips secrets matching the pattern "PoAppName--..." (reserved for individual apps).
+    /// Allowlist of shared-secret roots (the segment before the first "--") that PoSeeReview
+    /// actually consumes. Least privilege: unrelated shared secrets in kv-poshared
+    /// (AzureFace, AzureSpeech, AzureMaps, AzureAI, GoogleVision, ExternalAuth, AzureAd, …)
+    /// are never loaded into this app's configuration, shrinking the blast radius and keeping
+    /// the diagnostics snapshot to keys this app legitimately uses.
+    /// </summary>
+    private static readonly HashSet<string> AllowedSharedRoots = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AzureOpenAI",
+        "ConnectionStrings",
+        "ApplicationInsights",
+        "GoogleMaps",
+        "Google",
+        "KeyVault",
+    };
+
+    /// <summary>
+    /// Loads a shared secret only when it is NOT a Po-app secret AND its root is on the allowlist.
+    /// App-specific secrets ("PoSeeReview--…") are handled by the higher-priority PrefixKeyVaultSecretManager.
     /// </summary>
     public override bool Load(SecretProperties secret)
     {
@@ -26,7 +43,10 @@ public sealed class SharedKeyVaultSecretManager : KeyVaultSecretManager
                 return false; // belongs to a specific app — skip it
         }
 
-        return true; // shared secret — load it
+        // Only load shared secrets whose root segment is on the allowlist.
+        var separatorIndex = name.IndexOf("--", StringComparison.Ordinal);
+        var root = separatorIndex > 0 ? name[..separatorIndex] : name;
+        return AllowedSharedRoots.Contains(root);
     }
 
     /// <summary>

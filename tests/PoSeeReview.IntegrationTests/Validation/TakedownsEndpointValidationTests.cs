@@ -9,15 +9,17 @@ using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Validation;
 using Xunit;
 
-namespace PoSeeReview.UnitTests.Controllers;
+namespace PoSeeReview.IntegrationTests.Validation;
 
 /// <summary>
-/// Unit tests for the Takedowns slice endpoint — covers the data-deletion path
-/// that removes comic assets from Table Storage and Blob Storage.
+/// Takedown slice endpoint behaviour, exercised through the real
+/// <see cref="TakedownRequestValidator"/>. Lives in the Integration tier because it
+/// wires FluentValidation into the request path (directive #4: all FluentValidation
+/// tests belong in the Integration tier, not the No-I/O Unit tier).
 /// </summary>
-[Trait("Tier", "Unit")]
+[Trait("Tier", "Integration")]
 [Trait("Suite", "CriticalPath")]
-public sealed class TakedownsControllerTests
+public sealed class TakedownsEndpointValidationTests
 {
     private readonly Mock<IComicRepository> _mockComicRepository = new();
     private readonly Mock<IBlobStorageService> _mockBlobStorageService = new();

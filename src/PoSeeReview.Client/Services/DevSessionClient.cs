@@ -16,8 +16,11 @@ public class DevSessionClient(
     ILogger<DevSessionClient> logger)
 {
     private const string DevUserHeader = "X-Dev-User-Id";
+    private const string SessionHeader = "X-Session-ID";
     private const string StorageKey = "posee_dev_session";
+    private const string SessionIdStorageKey = "posee_session_id";
     private DevSessionDto? _cachedSession;
+    private string? _sessionId;
 
     public async Task<DevSessionDto?> GetCurrentSessionAsync(bool refreshFromServer = false, CancellationToken cancellationToken = default)
     {
@@ -136,6 +139,33 @@ public class DevSessionClient(
             request.Headers.Remove(DevUserHeader);
             request.Headers.Add(DevUserHeader, session.UserId);
         }
+
+        // Stable per-browser session id so server-side telemetry can correlate a single user's
+        // journey across requests (the API enriches logs/traces from X-Session-ID).
+        var sessionId = await GetOrCreateSessionIdAsync();
+        request.Headers.Remove(SessionHeader);
+        request.Headers.Add(SessionHeader, sessionId);
+    }
+
+    /// <summary>
+    /// Returns a stable session id, generating and persisting one on first use.
+    /// Survives navigation/reload via localStorage; unique per browser profile.
+    /// </summary>
+    private async Task<string> GetOrCreateSessionIdAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(_sessionId))
+        {
+            return _sessionId;
+        }
+
+        _sessionId = await jsRuntime.InvokeAsync<string?>("localStorage.getItem", SessionIdStorageKey);
+        if (string.IsNullOrWhiteSpace(_sessionId))
+        {
+            _sessionId = Guid.NewGuid().ToString("N");
+            await jsRuntime.InvokeVoidAsync("localStorage.setItem", SessionIdStorageKey, _sessionId);
+        }
+
+        return _sessionId;
     }
 
     private async Task<DevSessionDto?> BuildAuthenticatedSessionAsync()

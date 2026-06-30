@@ -119,6 +119,21 @@ internal static class ComicsEndpoints
                 detail: ex.Message,
                 instance: http.Request.Path);
         }
+        catch (InsufficientStrangenessException ex)
+        {
+            PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]
+            {
+                new KeyValuePair<string, object?>("error_type", "insufficient_strangeness"),
+                new KeyValuePair<string, object?>("place_id", placeId)
+            });
+            logger.LogInformation(ex, "Strangeness below threshold for placeId: {PlaceId}", placeId);
+            return Results.Problem(
+                type: "https://tools.ietf.org/html/rfc4918#section-11.2",
+                title: "Unprocessable Entity",
+                statusCode: StatusCodes.Status422UnprocessableEntity,
+                detail: "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!",
+                instance: http.Request.Path);
+        }
         catch (Exception ex)
         {
             PoSeeReviewTelemetry.ComicGenerationErrors.Add(1, new[]

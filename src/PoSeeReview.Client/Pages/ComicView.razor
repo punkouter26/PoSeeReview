@@ -152,6 +152,18 @@
                 _errorTitle = "This Place is Refreshingly Normal! 😌";
                 _error = "This restaurant doesn't have enough reviews (minimum 5) to generate a comic. The reviews we found were probably too ordinary anyway!";
             }
+            else if (ex.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
+            {
+                _errorTitle = "Too Normal for a Comic! 😌";
+                _error = string.IsNullOrWhiteSpace(ex.Message)
+                    ? "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!"
+                    : ex.Message;
+            }
+            else if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+            {
+                _errorTitle = "Whoa, Slow Down! 🚦";
+                _error = "You're generating comics faster than we can draw them. Please wait about a minute and try again.";
+            }
             else if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 _errorTitle = "Restaurant Not Found";

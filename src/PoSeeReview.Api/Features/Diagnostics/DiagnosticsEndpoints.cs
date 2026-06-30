@@ -5,7 +5,9 @@ namespace PoSeeReview.Api.Features.Diagnostics;
 
 /// <summary>
 /// UI-less diagnostics slice. Maps the top-level <c>/diag</c> route (NET_RULES 3.2):
-/// masked configuration keys and integration statuses, active in Dev and Prod.
+/// masked configuration keys and integration statuses.
+/// Gated to Development only — the snapshot enumerates the full configuration/secret-key
+/// inventory, which must never be reachable in Production. Use <c>/health</c> for prod probes.
 /// </summary>
 internal static class DiagnosticsEndpoints
 {
@@ -18,6 +20,12 @@ internal static class DiagnosticsEndpoints
             DiagnosticsSnapshotQueryHandler handler,
             CancellationToken cancellationToken) =>
         {
+            // Never expose the configuration/secret-key dump outside Development.
+            if (!environment.IsDevelopment())
+            {
+                return Results.NotFound();
+            }
+
             var diagnostics = await handler.ExecuteAsync(cancellationToken);
             diagnostics.Environment = environment.EnvironmentName;
             return Results.Ok(diagnostics);

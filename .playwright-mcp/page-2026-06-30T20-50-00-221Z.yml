@@ -1,0 +1,39 @@
+- generic [ref=f3e7]:
+  - generic [ref=f3e10]:
+    - link "PoSeeReview Strange stories, illustrated" [ref=f3e11] [cursor=pointer]:
+      - /url: ""
+      - img [ref=f3e12]
+      - generic [ref=f3e17]:
+        - text: PoSeeReview
+        - generic [ref=f3e18]: Strange stories, illustrated
+    - navigation "Primary navigation" [ref=f3e19]:
+      - link "Home" [ref=f3e21] [cursor=pointer]:
+        - /url: ""
+        - text: Home
+      - link "Hall of Fame" [ref=f3e24] [cursor=pointer]:
+        - /url: leaderboard
+        - text: Hall of Fame
+      - link "Lobby" [ref=f3e27] [cursor=pointer]:
+        - /url: lobby
+        - generic [ref=f3e28]: 🎮
+        - text: Lobby
+    - generic [ref=f3e29]:
+      - generic [ref=f3e32]: Anon
+      - button "Sign out" [ref=f3e33] [cursor=pointer]
+  - main [ref=f3e34]:
+    - article [ref=f3e35]:
+      - generic [ref=f3e36]:
+        - generic [ref=f3e37]:
+          - heading "🎮 Multiplayer Lobby" [active] [level=1] [ref=f3e38]
+          - paragraph [ref=f3e39]: Waiting for players to get ready...
+        - generic [ref=f3e41]: Connected
+        - generic [ref=f3e42]:
+          - heading "Players (1)" [level=2] [ref=f3e43]
+          - list [ref=f3e44]:
+            - listitem [ref=f3e45]:
+              - generic [ref=f3e46]: 👑
+              - generic [ref=f3e47]: GUEST31079658
+              - generic [ref=f3e48]: Host
+        - generic [ref=f3e49]:
+          - button "🚀 Start Game" [ref=f3e50] [cursor=pointer]
+          - button "Leave Lobby" [ref=f3e51] [cursor=pointer]

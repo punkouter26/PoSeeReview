@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PoSeeReview.Infrastructure.Testing;
 using Testcontainers.Azurite;
 
 namespace PoSeeReview.IntegrationTests;
@@ -69,12 +70,24 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         Environment.SetEnvironmentVariable("ConnectionStrings__AzureBlobStorage", _azuriteConnectionString);
     }
 
-    /// <summary>Disposes the WebApp host, then tears down the Azurite container.</summary>
+    /// <summary>
+    /// Disposes the WebApp host, then guarantees the Azurite container is torn down
+    /// immediately post-run — even if host disposal throws (directive #3 / lifecycle).
+    /// </summary>
     public new async Task DisposeAsync()
     {
-        await base.DisposeAsync();
-        if (_azuriteContainer != null)
-            await _azuriteContainer.DisposeAsync();
+        try
+        {
+            await base.DisposeAsync();
+        }
+        finally
+        {
+            if (_azuriteContainer != null)
+            {
+                await _azuriteContainer.DisposeAsync();
+                _azuriteContainer = null;
+            }
+        }
     }
 
     private static void SetIfEmpty(string key, string value)
@@ -87,6 +100,13 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     {
         builder.UseSetting("ASPNETCORE_URLS", "http://localhost");
         builder.UseEnvironment("Test");
+
+        // Intercept AI provider calls at the HTTP boundary so the real service classes
+        // can be exercised without spending tokens / leaking cost (directive #6).
+        builder.ConfigureServices((context, services) =>
+        {
+            services.AddMockedAiBoundaries(context.Configuration);
+        });
 
         // Use simple console logging for tests
         builder.ConfigureLogging(logging =>

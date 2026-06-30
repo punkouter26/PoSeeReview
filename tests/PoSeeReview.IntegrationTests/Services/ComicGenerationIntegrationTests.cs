@@ -85,7 +85,10 @@ public class ComicGenerationIntegrationTests
 
         var logger = new Mock<ILogger<AzureOpenAIService>>();
         var telemetryClient = new Microsoft.ApplicationInsights.TelemetryClient(new Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration());
-        var azureOpenAIService = new AzureOpenAIService(configuration, logger.Object, telemetryClient);
+        var openAiClient = new Azure.AI.OpenAI.AzureOpenAIClient(
+            new Uri(openAiOptions.Endpoint!),
+            new Azure.AzureKeyCredential(openAiOptions.ApiKey!));
+        var azureOpenAIService = new AzureOpenAIService(openAiClient, configuration, logger.Object, telemetryClient);
 
         _output.WriteLine("📝 Input Reviews:");
         foreach (var review in reviews)

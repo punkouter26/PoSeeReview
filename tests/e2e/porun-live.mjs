@@ -35,16 +35,6 @@ await shot('live-01-home');
 const title = await page.title();
 console.log(`title: ${title}`);
 
-// Check for the AI Model selector
-const aiModel = await page.locator('#ai-model-select').count();
-console.log(`AI Model selector present: ${aiModel > 0}`);
-if (aiModel > 0) {
-  const opts = await page.locator('#ai-model-select option').allTextContents();
-  console.log(`AI Model options: ${JSON.stringify(opts)}`);
-  const selected = await page.locator('#ai-model-select').inputValue();
-  console.log(`Default selected: ${selected}`);
-}
-
 // Check the location prompt + search
 const promptH2 = await page.locator('.prompt-card h2').textContent().catch(() => null);
 console.log(`Prompt h2: ${promptH2}`);

@@ -1,0 +1,42 @@
+- generic [ref=e7]:
+  - generic [ref=e10]:
+    - link "PoSeeReview Strange stories, illustrated" [ref=e11] [cursor=pointer]:
+      - /url: ""
+      - img [ref=e12]
+      - generic [ref=e17]:
+        - text: PoSeeReview
+        - generic [ref=e18]: Strange stories, illustrated
+    - navigation "Primary navigation" [ref=e19]:
+      - link "Home" [ref=e21] [cursor=pointer]:
+        - /url: ""
+        - text: Home
+      - link "Hall of Fame" [ref=e24] [cursor=pointer]:
+        - /url: leaderboard
+        - text: Hall of Fame
+      - link "Lobby" [ref=e27] [cursor=pointer]:
+        - /url: lobby
+        - generic [ref=e28]: 🎮
+        - text: Lobby
+    - generic [ref=e29]:
+      - generic [ref=e32]: Anon
+      - button "Sign out" [ref=e33] [cursor=pointer]
+  - main [ref=e34]:
+    - article [ref=e35]:
+      - generic [ref=e36]:
+        - generic [ref=e37]:
+          - heading "🎮 Multiplayer Lobby" [active] [level=1] [ref=e38]
+          - paragraph [ref=e39]: Waiting for players to get ready...
+        - generic [ref=e41]: Connected
+        - generic [ref=e42]:
+          - heading "Players (2)" [level=2] [ref=e43]
+          - list [ref=e44]:
+            - listitem [ref=e45]:
+              - generic [ref=e46]: 👑
+              - generic [ref=e47]: GUEST31079658
+              - generic [ref=e48]: Host
+            - listitem [ref=e49]:
+              - generic [ref=e50]: 🎮
+              - generic [ref=e51]: GUEST86844491
+        - generic [ref=e52]:
+          - button "Ready Up" [ref=e53] [cursor=pointer]
+          - button "Leave Lobby" [ref=e54] [cursor=pointer]

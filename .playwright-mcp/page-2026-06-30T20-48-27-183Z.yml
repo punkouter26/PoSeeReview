@@ -1,0 +1,29 @@
+- generic [ref=e7]:
+  - generic [ref=e10]:
+    - link "PoSeeReview Strange stories, illustrated" [ref=e11] [cursor=pointer]:
+      - /url: ""
+      - img [ref=e12]
+      - generic [ref=e17]:
+        - text: PoSeeReview
+        - generic [ref=e18]: Strange stories, illustrated
+    - navigation "Primary navigation" [ref=e19]:
+      - link "Home" [ref=e21] [cursor=pointer]:
+        - /url: ""
+        - text: Home
+      - link "Hall of Fame" [ref=e24] [cursor=pointer]:
+        - /url: leaderboard
+        - text: Hall of Fame
+      - link "Lobby" [ref=e27] [cursor=pointer]:
+        - /url: lobby
+        - generic [ref=e28]: 🎮
+        - text: Lobby
+    - generic [ref=e29]:
+      - generic [ref=e32]: Anon
+      - button "Sign out" [ref=e33] [cursor=pointer]
+  - main [ref=e34]:
+    - article [ref=e35]:
+      - generic [ref=e208]:
+        - generic [ref=e209]:
+          - img [ref=e210]
+          - generic [ref=e213]: 🔍
+        - paragraph [ref=e214]: Finding reviews...

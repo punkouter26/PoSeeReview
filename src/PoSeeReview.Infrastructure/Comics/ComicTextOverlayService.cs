@@ -46,13 +46,18 @@ public class ComicTextOverlayService : IComicTextOverlayService
             var dialogues = await _azureOpenAIService.GeneratePanelDialogueAsync(narrative, panelCount);
 
             using var image = Image.Load<Rgba32>(imageBytes);
-            var font = GetComicFont(16);
             var panelBounds = GetPanelBounds(image.Width, image.Height, panelCount);
 
             for (int i = 0; i < Math.Min(dialogues.Count, panelBounds.Count); i++)
             {
-                if (!string.IsNullOrWhiteSpace(dialogues[i]))
-                    DrawPanelCaption(image, dialogues[i], panelBounds[i], font);
+                if (string.IsNullOrWhiteSpace(dialogues[i]))
+                    continue;
+
+                // Scale the caption font to the panel width so text stays legible whether the
+                // image is a small 512px square or a large 4-panel grid — a fixed size rendered
+                // captions nearly invisible on full-resolution output.
+                var fontSize = Math.Clamp((int)(panelBounds[i].Width / 20f), 16, 48);
+                DrawPanelCaption(image, dialogues[i], panelBounds[i], GetComicFont(fontSize));
             }
 
             using var outputStream = new MemoryStream();
