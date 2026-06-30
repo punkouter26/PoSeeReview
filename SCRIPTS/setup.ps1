@@ -164,8 +164,8 @@ if ($script:HasErrors) {
 } else {
     Write-Host "Setup complete! You're ready to run PoSeeReview." -ForegroundColor Green
     Write-Host "`nQuick start:" -ForegroundColor White
-    Write-Host "  1. Start Azurite:  dotnet run --project src/Po.SeeReview.Api (uses docker-compose)" -ForegroundColor Gray
-    Write-Host "  2. Start API:      dotnet run --project src/Po.SeeReview.Api --launch-profile https" -ForegroundColor Gray
+    Write-Host "  1. Start Azurite:  dotnet run --project src/PoSeeReview.Api (uses docker-compose)" -ForegroundColor Gray
+    Write-Host "  2. Start API:      dotnet run --project src/PoSeeReview.Api --launch-profile https" -ForegroundColor Gray
     Write-Host "  3. Open browser:   https://localhost:5001" -ForegroundColor Gray
     exit 0
 }

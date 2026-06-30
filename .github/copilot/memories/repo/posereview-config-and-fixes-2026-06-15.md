@@ -120,7 +120,7 @@ $env:Google__GeminiApiKey        = "dev-placeholder-gemini"
 $env:ASPNETCORE_ENVIRONMENT      = "Development"
 # Deliberately NOT setting $env:GoogleMaps__ApiKey — KV supplies it.
 
-dotnet run --project src/Po.SeeReview.Api --launch-profile https --no-build
+dotnet run --project src/PoSeeReview.Api --launch-profile https --no-build
 ```
 
 `/health/ready` should return all three probes `Healthy`:

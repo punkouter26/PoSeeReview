@@ -13,8 +13,8 @@ env:
   AZURE_WEBAPP_NAME: app-poseereview
   AZURE_RESOURCE_GROUP: PoSeeReview
   SOLUTION_PATH: PoSeeReview.sln
-  API_PROJECT_PATH: src/Po.SeeReview.Api/Po.SeeReview.Api.csproj
-  UNIT_TEST_PATH: tests/Po.SeeReview.UnitTests
+  API_PROJECT_PATH: src/PoSeeReview.Api/PoSeeReview.Api.csproj
+  UNIT_TEST_PATH: tests/PoSeeReview.UnitTests
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
 permissions:

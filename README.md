@@ -172,7 +172,7 @@ All diagrams are self-contained HTML files rendered by Mermaid.js with the cathr
 ```powershell
 dotnet restore
 dotnet build PoSeeReview.sln
-dotnet run --project src/Po.SeeReview.Api --launch-profile https
+dotnet run --project src/PoSeeReview.Api --launch-profile https
 ```
 
 ### Hot Reload (code-only changes)
@@ -180,7 +180,7 @@ dotnet run --project src/Po.SeeReview.Api --launch-profile https
 Configuration changes (appsettings, Key Vault secrets) require a full API restart. For code-only changes use hot reload to avoid the full startup delay:
 
 ```powershell
-dotnet watch --project src/Po.SeeReview.Api --launch-profile https
+dotnet watch --project src/PoSeeReview.Api --launch-profile https
 ```
 
 ## Cloud Smoke Testing

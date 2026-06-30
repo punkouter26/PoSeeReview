@@ -5,7 +5,7 @@ import { test, expect } from '@playwright/test';
  * Tests the full user flow: enable location -> select La'Caj -> verify reviews -> verify comic generation
  * 
  * Prerequisites:
- * - API must be running (dotnet run --project src/Po.SeeReview.Api)
+ * - API must be running (dotnet run --project src/PoSeeReview.Api)
  * - Azurite must be running (azurite)
  * - Google Maps API key must be configured in user secrets
  * - Azure OpenAI API key must be configured for comic generation

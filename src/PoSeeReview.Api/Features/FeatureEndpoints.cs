@@ -1,0 +1,25 @@
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.DevSessions;
+using PoSeeReview.Api.Features.Diagnostics;
+using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Features.Restaurants;
+using PoSeeReview.Api.Features.Takedowns;
+
+namespace PoSeeReview.Api.Features;
+
+/// <summary>
+/// Central registration of every Minimal-API feature slice via MapGroup (NET_RULES 3.3).
+/// </summary>
+internal static class FeatureEndpoints
+{
+    public static IEndpointRouteBuilder MapFeatureEndpoints(this IEndpointRouteBuilder app)
+    {
+        app.MapComicsEndpoints();
+        app.MapRestaurantsEndpoints();
+        app.MapLeaderboardEndpoints();
+        app.MapDevSessionEndpoints();
+        app.MapTakedownEndpoints();
+        app.MapDiagnosticsEndpoints();
+        return app;
+    }
+}

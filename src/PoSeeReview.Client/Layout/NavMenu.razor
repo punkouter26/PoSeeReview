@@ -1,0 +1,114 @@
+﻿@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@implements IDisposable
+@inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
+@inject DevSessionClient DevSessionClient
+@inject DevSessionStateService SessionState
+@inject NavigationManager Navigation
+
+<div class="top-row">
+    <div class="nav-shell">
+        <a class="navbar-brand" href="">
+            <svg class="brand-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+                <rect x="1" y="1" width="11" height="11" rx="2" fill="white" fill-opacity="0.9" stroke="white" stroke-width="0.5"/>
+                <rect x="15" y="1" width="11" height="11" rx="2" fill="white" fill-opacity="0.7" stroke="white" stroke-width="0.5"/>
+                <rect x="1" y="15" width="11" height="11" rx="2" fill="white" fill-opacity="0.7" stroke="white" stroke-width="0.5"/>
+                <rect x="15" y="15" width="11" height="11" rx="2" fill="white" fill-opacity="0.5" stroke="white" stroke-width="0.5"/>
+            </svg>
+            <span>
+                <span class="brand-name">PoSeeReview</span>
+                <span class="brand-tagline">Strange stories, illustrated</span>
+                @if (_isMockData)
+                {
+                    <span class="nav-mock-badge" title="Running with mock data — no real AI or storage connections">USING MOCK DATA</span>
+                }
+            </span>
+        </a>
+
+        <nav class="nav-links" aria-label="Primary navigation">
+            <div class="nav-item">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="leaderboard">
+                    <span class="bi bi-trophy-fill" aria-hidden="true"></span> Hall of Fame
+                </NavLink>
+            </div>
+            <div class="nav-item">
+                <NavLink class="nav-link" href="lobby">
+                    <span aria-hidden="true">🎮</span> Lobby
+                </NavLink>
+            </div>
+        </nav>
+
+        @if (HostEnvironment.Environment == "Development")
+        {
+            <div class="nav-user-zone">
+                @if (_devSession != null)
+                {
+                    <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">
+                        <span class="nav-user-dot" aria-hidden="true"></span>
+                        @if (_devSession.IsAnonymous)
+                        {
+                            <span>Anon</span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_devSession.Email))
+                        {
+                            <span class="nav-user-email" title="@_devSession.Email">@_devSession.Email</span>
+                        }
+                        else
+                        {
+                            <span>@_devSession.UserId</span>
+                        }
+                    </div>
+                    <button class="nav-logout-btn" @onclick="LogoutAnonAsync" title="Sign out">Sign out</button>
+                }
+                else
+                {
+                    <div class="nav-user-badge nav-user-badge--inactive">
+                        <span class="nav-user-dot" aria-hidden="true"></span>
+                        <span>Not signed in</span>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private DevSessionDto? _devSession;
+    private bool _isMockData;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check if mock data is active (Test environment or explicit config flag)
+        _isMockData = HostEnvironment.Environment == "Test"
+            || HostEnvironment.Environment == "Mock";
+
+        if (HostEnvironment.Environment == "Development" || HostEnvironment.Environment == "Test")
+        {
+            _devSession = await DevSessionClient.GetCurrentSessionAsync();
+            SessionState.Set(_devSession);
+            SessionState.OnChanged += OnSessionChanged;
+        }
+    }
+
+    private void OnSessionChanged()
+    {
+        _devSession = SessionState.Current;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        SessionState.OnChanged -= OnSessionChanged;
+    }
+
+    private async Task LogoutAnonAsync()
+    {
+        await DevSessionClient.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+}

@@ -90,7 +90,7 @@ When you update the deployment list, also update:
 
 ## Cross-references
 
-- Validator source: `src/Po.SeeReview.Api/HostedServices/StartupSecretValidator.cs`
+- Validator source: `src/PoSeeReview.Api/HostedServices/StartupSecretValidator.cs`
   → `KnownGoodDeployments` HashSet
 - Bicep module: `infra/modules/secrets.bicep` → `azureOpenAIDeploymentName`
 - Session memory: `.github/copilot/memories/repo/posereview-config-and-fixes-2026-06-15.md`
