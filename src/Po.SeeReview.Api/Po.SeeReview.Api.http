@@ -17,7 +17,7 @@ GET {{Po.SeeReview.Api_HostAddress}}/api/health/ready
 Accept: application/json
 
 ### Diagnostics - Configuration values (secrets masked)
-GET {{Po.SeeReview.Api_HostAddress}}/api/diag
+GET {{Po.SeeReview.Api_HostAddress}}/diag
 Accept: application/json
 
 ### Diagnostics - Root route (Development only)

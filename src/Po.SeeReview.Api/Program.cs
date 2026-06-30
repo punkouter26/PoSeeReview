@@ -2,6 +2,7 @@ using System.Diagnostics;
 using FluentValidation;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Po.SeeReview.Api;
+using Po.SeeReview.Api.Features;
 using Po.SeeReview.Api.Health;
 using Po.SeeReview.Api.HostedServices;
 using Po.SeeReview.Api.Identity;
@@ -51,7 +52,6 @@ try
     }
 
     // Add services to the container.
-    builder.Services.AddControllers();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
@@ -127,10 +127,11 @@ try
 
     app.UseRateLimiter();
 
-    // Health check endpoints (/api/health, /api/health/live, /api/health/ready)
+    // Health check endpoints (/health, /health/live, /health/ready)
     app.MapHealthEndpoints();
 
-    app.MapControllers();
+    // Feature slices (Minimal API, MapGroup) — NET_RULES 3.3
+    app.MapFeatureEndpoints();
 
     // SignalR hub for multiplayer lobby
     app.MapHub<LobbyHub>("/lobby");

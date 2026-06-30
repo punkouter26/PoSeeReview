@@ -178,7 +178,7 @@ public class ApiClient
 
     public async Task<DiagnosticsSnapshotDto?> GetDiagnosticsSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, "/api/diag");
+        using var request = await CreateRequestAsync(HttpMethod.Get, "/diag");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DiagnosticsSnapshotDto, cancellationToken);

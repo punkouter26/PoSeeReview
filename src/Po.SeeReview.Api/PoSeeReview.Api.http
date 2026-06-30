@@ -10,7 +10,7 @@ GET {{baseUrl}}/health/live
 GET {{baseUrl}}/health/ready
 
 ### Diagnostics snapshot (Development only)
-GET {{baseUrl}}/api/diag
+GET {{baseUrl}}/diag
 
 ### Get current dev session
 GET {{baseUrl}}/api/devsession

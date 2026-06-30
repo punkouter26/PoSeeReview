@@ -26,6 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Po.SeeReview.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Po.SeeReview.Application\Po.SeeReview.Application.csproj" />
     <ProjectReference Include="..\Po.SeeReview.Infrastructure\Po.SeeReview.Infrastructure.csproj" />
     <ProjectReference Include="..\Po.SeeReview.Client\Po.SeeReview.Client.csproj" />
