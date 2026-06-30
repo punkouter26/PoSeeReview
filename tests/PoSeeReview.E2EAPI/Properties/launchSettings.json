@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "PoSeeReview.WebTests": {
+    "PoSeeReview.E2EAPI": {
       "commandName": "Project",
       "launchBrowser": true,
       "environmentVariables": {

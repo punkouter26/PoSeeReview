@@ -133,7 +133,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         Assert.False(comic2.IsCached);
     }
 
-    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.WebTests")]
+    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.E2EAPI")]
     public async Task PostComic_WithInvalidPlaceId_Returns404()
     {
         // Arrange
@@ -175,7 +175,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         Assert.True(comic.IsCached);
     }
 
-    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.WebTests")]
+    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.E2EAPI")]
     public async Task GetComic_WithNonExistentComic_Returns404()
     {
         // Arrange

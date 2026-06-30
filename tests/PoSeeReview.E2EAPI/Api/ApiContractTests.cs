@@ -1,7 +1,7 @@
 using System.Net;
 using Xunit;
 
-namespace PoSeeReview.WebTests.Api;
+namespace PoSeeReview.E2EAPI.Api;
 
 /// <summary>
 /// Fast in-memory API contract tests that intentionally avoid real Azure and Google dependencies.

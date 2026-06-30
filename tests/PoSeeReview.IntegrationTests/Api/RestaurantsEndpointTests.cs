@@ -22,7 +22,7 @@ public class RestaurantsEndpointTests : IClassFixture<CustomWebApplicationFactor
         _output = output;
     }
 
-    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.WebTests")]
+    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.E2EAPI")]
     public async Task GetNearbyRestaurants_ValidCoordinates_Returns200()
     {
         // Arrange

@@ -9,7 +9,7 @@ using PoSeeReview.Core;
 using PoSeeReview.Core.Entities;
 using PoSeeReview.Core.Interfaces;
 
-namespace PoSeeReview.WebTests;
+namespace PoSeeReview.E2EAPI;
 
 /// <summary>
 /// Custom WebApplicationFactory that configures logging without Serilog

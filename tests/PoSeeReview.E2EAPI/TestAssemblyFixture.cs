@@ -1,9 +1,9 @@
 using Xunit;
 
 [assembly: CollectionBehavior(DisableTestParallelization = false)]
-[assembly: TestFramework("PoSeeReview.WebTests.TestAssemblyFixture", "PoSeeReview.WebTests")]
+[assembly: TestFramework("PoSeeReview.E2EAPI.TestAssemblyFixture", "PoSeeReview.E2EAPI")]
 
-namespace PoSeeReview.WebTests;
+namespace PoSeeReview.E2EAPI;
 
 public class TestAssemblyFixture : Xunit.Sdk.XunitTestFramework
 {

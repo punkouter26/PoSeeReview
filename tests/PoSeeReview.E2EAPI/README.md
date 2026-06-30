@@ -1,4 +1,4 @@
-# PoSeeReview.WebTests
+# PoSeeReview.E2EAPI
 
 ## Purpose
 
@@ -11,7 +11,7 @@ These are **in-memory API tests** that use a `WebApplicationFactory` with **fake
 
 ## How it differs from `PoSeeReview.IntegrationTests`
 
-| | WebTests (this project) | IntegrationTests |
+| | E2EAPI (this project) | IntegrationTests |
 |---|---|---|
 | Storage | In-memory fakes | Real Azurite emulator |
 | Azure dependencies | None | Docker (Azurite) required |
@@ -27,5 +27,5 @@ These are **in-memory API tests** that use a `WebApplicationFactory` with **fake
 ## Running
 
 ```bash
-dotnet test tests/PoSeeReview.WebTests
+dotnet test tests/PoSeeReview.E2EAPI
 ```
