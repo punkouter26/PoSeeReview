@@ -5,25 +5,25 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Core", "src\Po.SeeReview.Core\Po.SeeReview.Core.csproj", "{F79193A6-A7BA-4936-B5DA-03C9EB03EB1D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Core", "src\PoSeeReview.Core\PoSeeReview.Core.csproj", "{F79193A6-A7BA-4936-B5DA-03C9EB03EB1D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Infrastructure", "src\Po.SeeReview.Infrastructure\Po.SeeReview.Infrastructure.csproj", "{DE63B001-B017-4BE9-9FF5-269E29D4CEFA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Infrastructure", "src\PoSeeReview.Infrastructure\PoSeeReview.Infrastructure.csproj", "{DE63B001-B017-4BE9-9FF5-269E29D4CEFA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Api", "src\Po.SeeReview.Api\Po.SeeReview.Api.csproj", "{F8FC807E-7483-42CC-A6A5-48918B0447D5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Api", "src\PoSeeReview.Api\PoSeeReview.Api.csproj", "{F8FC807E-7483-42CC-A6A5-48918B0447D5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Client", "src\Po.SeeReview.Client\Po.SeeReview.Client.csproj", "{2C2ABBCF-5AB1-4D89-9C3F-8805C4B5DAC3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Client", "src\PoSeeReview.Client\PoSeeReview.Client.csproj", "{2C2ABBCF-5AB1-4D89-9C3F-8805C4B5DAC3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Shared", "src\Po.SeeReview.Shared\Po.SeeReview.Shared.csproj", "{0D8C7488-A51F-45E1-AA49-1EFC87CE60B8}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Shared", "src\PoSeeReview.Shared\PoSeeReview.Shared.csproj", "{0D8C7488-A51F-45E1-AA49-1EFC87CE60B8}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.UnitTests", "tests\Po.SeeReview.UnitTests\Po.SeeReview.UnitTests.csproj", "{7393B226-10B6-415A-945B-14A971FC1E3D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.UnitTests", "tests\PoSeeReview.UnitTests\PoSeeReview.UnitTests.csproj", "{7393B226-10B6-415A-945B-14A971FC1E3D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.IntegrationTests", "tests\Po.SeeReview.IntegrationTests\Po.SeeReview.IntegrationTests.csproj", "{EA6ADEC7-C137-4A96-A7CA-B7E18D39522F}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.IntegrationTests", "tests\PoSeeReview.IntegrationTests\PoSeeReview.IntegrationTests.csproj", "{EA6ADEC7-C137-4A96-A7CA-B7E18D39522F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.WebTests", "tests\Po.SeeReview.WebTests\Po.SeeReview.WebTests.csproj", "{25F39AFF-8E44-4E29-B5BD-9CF3383E5499}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.WebTests", "tests\PoSeeReview.WebTests\PoSeeReview.WebTests.csproj", "{25F39AFF-8E44-4E29-B5BD-9CF3383E5499}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Po.SeeReview.Application", "src\Po.SeeReview.Application\Po.SeeReview.Application.csproj", "{7CC37BC7-0D18-44D9-9381-36EAFB003255}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PoSeeReview.Application", "src\PoSeeReview.Application\PoSeeReview.Application.csproj", "{7CC37BC7-0D18-44D9-9381-36EAFB003255}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

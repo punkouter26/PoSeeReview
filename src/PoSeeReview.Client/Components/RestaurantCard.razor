@@ -1,0 +1,87 @@
+@using PoSeeReview.Shared.Dtos
+
+<FluentCard Class="@($"restaurant-card {GetCardClass()}")" 
+            title="@GetTooltipText()"
+            data-testid="restaurant-card"
+            @onclick="OnClickIfEnabled">
+    <div class="card-header">
+        <div>
+            <h3 class="restaurant-name">@Restaurant.Name</h3>
+            <p class="card-meta">@FormatDistance(Restaurant.Distance)</p>
+        </div>
+        <div class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
+            <span class="rating-chip-label">Rated</span>
+            <span class="rating-chip-value">@Restaurant.AverageRating.ToString("F1")</span>
+        </div>
+    </div>
+    
+    <p class="address">@Restaurant.Address</p>
+    
+    <div class="card-footer">
+        <span class="review-summary">@Restaurant.TotalReviews reviews ready for comic generation</span>
+    </div>
+
+    <div class="card-cta">
+        @if (IsEnabled)
+        {
+            <FluentButton Appearance="Appearance.Accent" class="cta-btn" Disabled="@IsLoading" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
+                @(IsLoading ? "Opening Comic..." : "Generate Comic")
+            </FluentButton>
+        }
+    </div>
+</FluentCard>
+
+@code {
+    [Parameter]
+    public RestaurantDto Restaurant { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<RestaurantDto> OnRestaurantClick { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    private const int MinReviews = 5;
+    private bool IsEnabled => Restaurant.TotalReviews >= MinReviews;
+
+    private string GetCardClass()
+    {
+        if (!IsEnabled) return "disabled";
+        return GetTierClass();
+    }
+
+    private string GetTooltipText()
+    {
+        return IsEnabled 
+            ? (IsLoading ? "Comic generation in progress" : "Click to generate a comic based on reviews")
+            : "This restaurant needs at least 5 reviews to generate a comic";
+    }
+
+    private async Task OnClickIfEnabled()
+    {
+        if (IsEnabled && !IsLoading)
+        {
+            await OnRestaurantClick.InvokeAsync(Restaurant);
+        }
+    }
+
+    private string GetTierClass() => Restaurant.AverageRating switch
+    {
+        >= 4.0 => "tier-high",
+        >= 3.0 => "tier-mid",
+        _      => "tier-low"
+    };
+
+    private string FormatDistance(double kilometers)
+    {
+        if (kilometers < 1.0)
+        {
+            var meters = kilometers * 1000;
+            return $"{Math.Round(meters)}m away";
+        }
+        else
+        {
+            return $"{kilometers:F1}km away";
+        }
+    }
+}

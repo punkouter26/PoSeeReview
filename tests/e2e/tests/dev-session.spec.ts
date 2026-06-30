@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * E2E tests for the ANON login dev session flow.
  *
  * Prerequisites:
- * - App must be running in Development mode (dotnet run --project src/Po.SeeReview.Api)
+ * - App must be running in Development mode (dotnet run --project src/PoSeeReview.Api)
  * - The ANON button section is only visible when the Blazor env is "Development"
  */
 

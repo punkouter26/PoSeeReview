@@ -6,9 +6,9 @@ metadata:
 
 services:
   api:
-    project: ./src/Po.SeeReview.Api
+    project: ./src/PoSeeReview.Api
     language: csharp
     host: containerapp
     docker:
-      path: ./src/Po.SeeReview.Api/Dockerfile
+      path: ./src/PoSeeReview.Api/Dockerfile
       context: .

@@ -33,8 +33,8 @@ flowchart LR
 
   subgraph CIBuild["CI Build — GitHub Actions"]
     Restore["dotnet restore\ndotnet build"]
-    UnitTest["Unit Tests\nPo.SeeReview.UnitTests"]
-    WebTest["Web Tests\nPo.SeeReview.WebTests"]
+    UnitTest["Unit Tests\nPoSeeReview.UnitTests"]
+    WebTest["Web Tests\nPoSeeReview.WebTests"]
     Publish["dotnet publish\nArtifact ZIP"]
     Docker["docker build\nDockerfile"]
   end

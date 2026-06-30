@@ -47,7 +47,7 @@ updates:
   # minor + patch (no auto-bump to a new .NET major) to avoid surprise
   # runtime changes.
   - package-ecosystem: "docker"
-    directory: "/src/Po.SeeReview.Api"
+    directory: "/src/PoSeeReview.Api"
     schedule:
       interval: "weekly"
       day: "monday"

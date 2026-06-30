@@ -32,11 +32,11 @@ export default defineConfig({
   // Build the client before starting, then reuse the existing running API
   webServer: [
     {
-      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet build c:/Users/punko/Downloads/PoSeeReview/src/Po.SeeReview.Client/Po.SeeReview.Client.csproj --configuration Debug --no-restore -v q"',
+      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet build c:/Users/punko/Downloads/PoSeeReview/src/PoSeeReview.Client/PoSeeReview.Client.csproj --configuration Debug --no-restore -v q"',
       reuseExistingServer: true,
     },
     {
-      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet run --project c:/Users/punko/Downloads/PoSeeReview/src/Po.SeeReview.Api/Po.SeeReview.Api.csproj --launch-profile https"',
+      command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet run --project c:/Users/punko/Downloads/PoSeeReview/src/PoSeeReview.Api/PoSeeReview.Api.csproj --launch-profile https"',
       url: 'https://localhost:5001/api/health/live',
       reuseExistingServer: true,
       ignoreHTTPSErrors: true,

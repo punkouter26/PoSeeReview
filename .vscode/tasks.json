@@ -21,7 +21,7 @@
       "args": [
         "run",
         "--project",
-        "src/Po.SeeReview.Api",
+        "src/PoSeeReview.Api",
         "--launch-profile",
         "https"
       ],
@@ -62,7 +62,7 @@
         "watch",
         "run",
         "--project",
-        "src/Po.SeeReview.Api",
+        "src/PoSeeReview.Api",
         "--launch-profile",
         "https"
       ],
