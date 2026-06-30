@@ -44,7 +44,7 @@ public class ApiClient
             throw new HttpRequestException(detail, null, httpResponse.StatusCode);
         }
 
-        return await httpResponse.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
+        return await httpResponse.Content.ReadFromJsonAsync(AppJsonContext.Default.NearbyRestaurantsResponse, cancellationToken);
     }
 
     /// <summary>
@@ -78,7 +78,7 @@ public class ApiClient
             throw new HttpRequestException(message, null, response.StatusCode);
         }
 
-        var comic = await response.Content.ReadFromJsonAsync<ComicDto>(cancellationToken: cancellationToken);
+        var comic = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");
     }
 
@@ -103,7 +103,7 @@ public class ApiClient
             throw new HttpRequestException(message, null, response.StatusCode);
         }
 
-        var payload = await response.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>(cancellationToken: cancellationToken);
+        var payload = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.NearbyRestaurantsResponse, cancellationToken);
         return payload;
     }
 
@@ -160,7 +160,7 @@ public class ApiClient
                 $"/api/leaderboard?region={region}&limit={limit}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             response.EnsureSuccessStatusCode();
-            return await response.Content.ReadFromJsonAsync<LeaderboardResponse>(cancellationToken: cancellationToken);
+            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.LeaderboardResponse, cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -173,7 +173,7 @@ public class ApiClient
         using var request = await CreateRequestAsync(HttpMethod.Get, "/health");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<HealthStatusDto>(cancellationToken: cancellationToken);
+        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HealthStatusDto, cancellationToken);
     }
 
     public async Task<DiagnosticsSnapshotDto?> GetDiagnosticsSnapshotAsync(CancellationToken cancellationToken = default)
@@ -181,7 +181,7 @@ public class ApiClient
         using var request = await CreateRequestAsync(HttpMethod.Get, "/api/diag");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadFromJsonAsync<DiagnosticsSnapshotDto>(cancellationToken: cancellationToken);
+        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DiagnosticsSnapshotDto, cancellationToken);
     }
 
     private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)

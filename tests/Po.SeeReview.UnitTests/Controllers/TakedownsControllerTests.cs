@@ -6,6 +6,7 @@ using Moq;
 using Po.SeeReview.Api.Controllers;
 using Po.SeeReview.Core.Interfaces;
 using Po.SeeReview.Shared.Dtos;
+using Po.SeeReview.Shared.Validation;
 using Xunit;
 
 namespace Po.SeeReview.UnitTests.Controllers;
@@ -37,6 +38,7 @@ public sealed class TakedownsControllerTests
             _mockComicRepository.Object,
             _mockBlobStorageService.Object,
             _mockLeaderboardRepository.Object,
+            new TakedownRequestValidator(),
             _mockLogger.Object,
             _telemetryClient);
     }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FluentValidation;
 using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
 using Po.SeeReview.Api.Middleware;
@@ -20,6 +21,7 @@ public class TakedownsController : ControllerBase
     private readonly IComicRepository _comicRepository;
     private readonly IBlobStorageService _blobStorageService;
     private readonly ILeaderboardRepository _leaderboardRepository;
+    private readonly IValidator<TakedownRequestDto> _validator;
     private readonly ILogger<TakedownsController> _logger;
     private readonly TelemetryClient _telemetryClient;
 
@@ -27,12 +29,14 @@ public class TakedownsController : ControllerBase
         IComicRepository comicRepository,
         IBlobStorageService blobStorageService,
         ILeaderboardRepository leaderboardRepository,
+        IValidator<TakedownRequestDto> validator,
         ILogger<TakedownsController> logger,
         TelemetryClient telemetryClient)
     {
         _comicRepository = comicRepository ?? throw new ArgumentNullException(nameof(comicRepository));
         _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
         _leaderboardRepository = leaderboardRepository ?? throw new ArgumentNullException(nameof(leaderboardRepository));
+        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
     }
@@ -48,8 +52,13 @@ public class TakedownsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> SubmitAsync([FromBody] TakedownRequestDto request, CancellationToken cancellationToken)
     {
-        if (!ModelState.IsValid)
+        var validation = await _validator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
         {
+            foreach (var error in validation.Errors)
+            {
+                ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
+            }
             return ValidationProblem(ModelState);
         }
 

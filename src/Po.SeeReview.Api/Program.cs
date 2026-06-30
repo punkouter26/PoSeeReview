@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using FluentValidation;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Po.SeeReview.Api;
 using Po.SeeReview.Api.Health;
@@ -56,6 +57,7 @@ try
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
     builder.Services.AddScoped<ICurrentRequestIdentityAccessor, HttpContextRequestIdentityAccessor>();
+    builder.Services.AddValidatorsFromAssemblyContaining<Po.SeeReview.Shared.Validation.TakedownRequestValidator>();
     builder.Services.AddApplication();
 
     builder.Services.AddConfiguredTelemetry(builder.Configuration);
@@ -79,44 +81,8 @@ try
     // Configure OpenAPI (built-in .NET 10 support)
     builder.Services.AddOpenApi();
 
-    // Configure CORS — restrict to known origins
-    var allowedOrigins = builder.Configuration
-        .GetSection("Cors:AllowedOrigins")
-        .Get<string[]>() ?? [];
-
-    builder.Services.AddCors(options =>
-    {
-        options.AddDefaultPolicy(policy =>
-        {
-            if (builder.Environment.IsDevelopment())
-            {
-                // Local dev: allow both Blazor WASM ports and the API itself
-                policy.WithOrigins(
-                    "http://localhost:5000",
-                    "https://localhost:5001",
-                    "http://localhost:5245",
-                    "https://localhost:7175")
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials();
-            }
-            else if (allowedOrigins.Length > 0)
-            {
-                policy.WithOrigins(allowedOrigins)
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials();
-            }
-            else
-            {
-                // Production fallback: same-origin only (API serves Blazor WASM)
-                policy.WithOrigins("https://app-poseereview.azurewebsites.net")
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials();
-            }
-        });
-    });
+    // CORS intentionally omitted: the API serves the Blazor WASM client from the
+    // same origin (BFF), so cross-origin policy is unnecessary (NET_RULES 2.2).
 
     // Register infrastructure services (Azure clients)
     builder.Services.AddInfrastructure(builder.Configuration);
@@ -159,7 +125,6 @@ try
     app.UseBlazorFrameworkFiles();
     app.UseStaticFiles();
 
-    app.UseCors();
     app.UseRateLimiter();
 
     // Health check endpoints (/api/health, /api/health/live, /api/health/ready)

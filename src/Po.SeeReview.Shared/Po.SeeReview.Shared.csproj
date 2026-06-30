@@ -1,7 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+  </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Po.SeeReview.Core\Po.SeeReview.Core.csproj" />
+    <PackageReference Include="FluentValidation" />
   </ItemGroup>
 
 </Project>

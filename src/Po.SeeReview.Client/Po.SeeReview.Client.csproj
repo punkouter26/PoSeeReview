@@ -3,6 +3,11 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsTrimmable>true</IsTrimmable>
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <!-- IL2110/IL2111 originate in Blazor's own generated App.razor (Router/LayoutView
+         reflection) — framework limitations, not app code. Our code stays trim-clean. -->
+    <NoWarn>$(NoWarn);IL2110;IL2111</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

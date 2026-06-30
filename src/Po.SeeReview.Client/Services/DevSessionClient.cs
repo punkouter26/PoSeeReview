@@ -63,7 +63,7 @@ public class DevSessionClient(
             return _cachedSession;
         }
 
-        _cachedSession = await response.Content.ReadFromJsonAsync<DevSessionDto>(cancellationToken: cancellationToken);
+        _cachedSession = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DevSessionDto, cancellationToken);
         if (_cachedSession != null)
         {
             await PersistSessionAsync(_cachedSession);
@@ -81,7 +81,7 @@ public class DevSessionClient(
         using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        _cachedSession = await response.Content.ReadFromJsonAsync<DevSessionDto>(cancellationToken: cancellationToken)
+        _cachedSession = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DevSessionDto, cancellationToken)
             ?? throw new InvalidOperationException("Dev session response was null.");
 
         await PersistSessionAsync(_cachedSession);
@@ -195,7 +195,7 @@ public class DevSessionClient(
 
         try
         {
-            return JsonSerializer.Deserialize<DevSessionDto>(raw);
+            return JsonSerializer.Deserialize(raw, AppJsonContext.Default.DevSessionDto);
         }
         catch (JsonException)
         {
@@ -206,7 +206,7 @@ public class DevSessionClient(
 
     private async Task PersistSessionAsync(DevSessionDto session)
     {
-        var raw = JsonSerializer.Serialize(session);
+        var raw = JsonSerializer.Serialize(session, AppJsonContext.Default.DevSessionDto);
         await jsRuntime.InvokeVoidAsync("localStorage.setItem", StorageKey, raw);
     }
 }

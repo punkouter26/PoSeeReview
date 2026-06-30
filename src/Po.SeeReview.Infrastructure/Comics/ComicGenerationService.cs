@@ -72,8 +72,7 @@ public class ComicGenerationService : IComicGenerationService
         if (string.IsNullOrWhiteSpace(placeId))
             throw new ArgumentNullException(nameof(placeId));
 
-        _logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
-            placeId, forceRegenerate);
+        _logger.GeneratingComic(placeId, forceRegenerate);
 
         var overallStopwatch = Stopwatch.StartNew();
 
@@ -83,7 +82,7 @@ public class ComicGenerationService : IComicGenerationService
             var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
             if (cachedComic != null && cachedComic.ExpiresAt > _timeProvider.GetUtcNow())
             {
-                _logger.LogInformation("Returning cached comic for placeId: {PlaceId}", placeId);
+                _logger.ReturningCachedComic(placeId);
 
                 // Refresh SAS token if it is expired or within 2 hours of expiry
                 if (IsSasExpiringSoon(cachedComic.ImageUrl))
@@ -219,7 +218,7 @@ public class ComicGenerationService : IComicGenerationService
             _logger.LogWarning(ex, "Failed to update leaderboard for {PlaceId}", placeId);
         }
 
-        _logger.LogInformation("Comic generation complete for placeId: {PlaceId}", placeId);
+        _logger.ComicGenerationComplete(placeId);
 
         _telemetryClient.TrackEvent("ComicGenerated", new Dictionary<string, string>
         {

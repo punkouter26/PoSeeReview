@@ -1,4 +1,5 @@
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Microsoft.ApplicationInsights.Extensibility;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -9,6 +10,9 @@ internal static class TelemetryServiceCollectionExtensions
 {
     internal static IServiceCollection AddConfiguredTelemetry(this IServiceCollection services, IConfiguration configuration)
     {
+        // Stamp cloud_RoleName from the execution assembly so AI never logs unknown_service:dotnet.
+        services.AddSingleton<ITelemetryInitializer, RoleNameTelemetryInitializer>();
+
         // Always add Application Insights (required by other services for TelemetryClient).
         services.AddApplicationInsightsTelemetry(options =>
         {
