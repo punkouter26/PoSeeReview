@@ -31,21 +31,9 @@
         <a href="." class="reload">Reload</a>
         <span class="dismiss">🗙</span>
     </div>
-    <script>
-        // Login mode helpers — read before Blazor boots so Program.cs can pick up the one-shot preference.
-        window.getMsalLoginMode = function () {
-            var mode = sessionStorage.getItem('msalLoginMode') || 'popup';
-            sessionStorage.removeItem('msalLoginMode');
-            return mode;
-        };
-        window.setMsalLoginMode = function (mode) {
-            sessionStorage.setItem('msalLoginMode', mode);
-        };
-    </script>
     <script src="audio.js"></script>
     <script src="geolocation.js"></script>
     <script src="share-utils.js"></script>
-    <script src="_content/Microsoft.Authentication.WebAssembly.Msal/AuthenticationService.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
 

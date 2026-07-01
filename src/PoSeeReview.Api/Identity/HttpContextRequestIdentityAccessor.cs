@@ -28,7 +28,9 @@ public class HttpContextRequestIdentityAccessor(IHttpContextAccessor httpContext
             return legacyDevUserId.ToString();
         }
 
-        return context.User?.Identity?.Name ?? "anonymous";
+        return context.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.User?.Identity?.Name
+            ?? "anonymous";
     }
 
     public string? GetCurrentUserEmail()

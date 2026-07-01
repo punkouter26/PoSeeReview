@@ -1,7 +1,4 @@
 @page "/login"
-@using PoSeeReview.Client.Services
-@inject ILogger<Login> Logger
-@inject DevSessionClient DevSessionClient
 @inject NavigationManager Navigation
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
@@ -22,34 +19,52 @@
         <p>Sign in to discover strange restaurant stories nearby and turn them into shareable comics.</p>
 
         <div class="login-actions">
-            <button class="login-btn login-btn-microsoft" @onclick="LoginWithMicrosoftAsync">
-                <svg class="login-btn-icon" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-                    <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-                    <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                </svg>
-                Sign in with Microsoft
-            </button>
-            @if (HostEnvironment.Environment == "Development")
+            @if (IsTest)
             {
-                <button class="login-btn login-btn-secondary" @onclick="LoginAsAnonAsync">Continue As Guest</button>
+                @* Test env enforces the guest bypass so automated suites skip interactive auth (NET_RULES 4.4). *@
+                <p>Signing in as guest&hellip;</p>
+            }
+            else
+            {
+                <button class="login-btn login-btn-microsoft" @onclick="LoginWithMicrosoft">
+                    <svg class="login-btn-icon" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                        <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                        <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                    </svg>
+                    Sign in with Microsoft
+                </button>
+                @if (IsDevelopment)
+                {
+                    <button class="login-btn login-btn-secondary" @onclick="LoginAsGuest">Continue As Guest</button>
+                }
             }
         </div>
     </div>
 </div>
 
 @code {
-    private async Task LoginWithMicrosoftAsync()
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+
+    private bool IsDevelopment => HostEnvironment.Environment == "Development";
+    private bool IsTest => HostEnvironment.Environment == "Test";
+
+    private string EscapedReturnUrl => Uri.EscapeDataString(
+        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") ? ReturnUrl : "/");
+
+    protected override void OnInitialized()
     {
-        Logger.LogInformation("Microsoft login button clicked. Preparing session for OAuth flow (popup).");
-        await DevSessionClient.PrepareForMicrosoftLoginAsync();
-        Navigation.NavigateTo("authentication/login?returnUrl=/", forceLoad: false);
+        if (IsTest)
+        {
+            LoginAsGuest();
+        }
     }
 
-    private async Task LoginAsAnonAsync()
-    {
-        await DevSessionClient.CreateRandomAnonymousSessionAsync();
-        Navigation.NavigateTo("/");
-    }
+    private void LoginWithMicrosoft() =>
+        Navigation.NavigateTo($"auth/login/microsoft?returnUrl={EscapedReturnUrl}", forceLoad: true);
+
+    private void LoginAsGuest() =>
+        Navigation.NavigateTo($"auth/login/fake?returnUrl={EscapedReturnUrl}", forceLoad: true);
 }

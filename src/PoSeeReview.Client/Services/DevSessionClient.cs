@@ -92,32 +92,6 @@ public class DevSessionClient(
         return _cachedSession;
     }
 
-    public async Task PrepareForMicrosoftLoginAsync(CancellationToken cancellationToken = default)
-    {
-        var session = await GetCurrentSessionAsync(cancellationToken: cancellationToken);
-        if (session?.IsAnonymous == true)
-        {
-            logger.LogInformation("Clearing stale anonymous dev session {UserId} before Microsoft login", session.UserId);
-            await LogoutAsync();
-        }
-    }
-
-    public async Task<DevSessionDto?> SyncFromMicrosoftIdentityAsync(CancellationToken cancellationToken = default)
-    {
-        var authenticatedSession = await BuildAuthenticatedSessionAsync();
-        if (authenticatedSession == null)
-        {
-            logger.LogWarning("Microsoft identity sync requested but no authenticated identity is present");
-            return null;
-        }
-
-        _cachedSession = authenticatedSession;
-        await PersistSessionAsync(authenticatedSession);
-        sessionState.Set(authenticatedSession);
-        logger.LogInformation("Microsoft identity synchronized to dev session for user {UserId}", authenticatedSession.UserId);
-        return authenticatedSession;
-    }
-
     public async Task<string?> GetCurrentUserIdAsync(CancellationToken cancellationToken = default)
     {
         var session = await GetCurrentSessionAsync(cancellationToken: cancellationToken);
@@ -193,12 +167,14 @@ public class DevSessionClient(
             return null;
         }
 
+        // Guest cookie sessions (auth/login/fake) surface as anonymous dev-bypass identities.
+        var isGuest = user.IsInRole("Guest");
         return new DevSessionDto
         {
             UserId = userId,
             Email = email,
-            IsAnonymous = false,
-            IsDevelopmentBypass = false,
+            IsAnonymous = isGuest,
+            IsDevelopmentBypass = isGuest,
             CreatedAtUtc = DateTime.UtcNow
         };
     }

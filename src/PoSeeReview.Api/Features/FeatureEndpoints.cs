@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Features.Auth;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.DevSessions;
 using PoSeeReview.Api.Features.Diagnostics;
@@ -14,6 +15,7 @@ internal static class FeatureEndpoints
 {
     public static IEndpointRouteBuilder MapFeatureEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapAuthEndpoints();
         app.MapComicsEndpoints();
         app.MapRestaurantsEndpoints();
         app.MapLeaderboardEndpoints();

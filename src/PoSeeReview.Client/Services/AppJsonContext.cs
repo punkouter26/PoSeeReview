@@ -15,4 +15,5 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(DiagnosticsSnapshotDto))]
 [JsonSerializable(typeof(DevSessionDto))]
 [JsonSerializable(typeof(MockStatusDto))]
+[JsonSerializable(typeof(AuthStateDto))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

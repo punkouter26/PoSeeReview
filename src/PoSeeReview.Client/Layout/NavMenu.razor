@@ -113,6 +113,7 @@
     private async Task LogoutAnonAsync()
     {
         await DevSessionClient.LogoutAsync();
-        Navigation.NavigateTo("/login");
+        // Full-page navigation so the server clears the BFF auth cookie (NET_RULES 4.4).
+        Navigation.NavigateTo("auth/logout?returnUrl=%2Flogin", forceLoad: true);
     }
 }

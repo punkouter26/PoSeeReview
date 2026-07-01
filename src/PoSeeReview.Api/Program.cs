@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using PoSeeReview.Api;
 using PoSeeReview.Api.Features;
+using PoSeeReview.Api.Features.Auth;
 using PoSeeReview.Api.Health;
 using PoSeeReview.Api.HostedServices;
 using PoSeeReview.Api.Identity;
@@ -73,6 +74,9 @@ try
     builder.Services.AddConfiguredTelemetry(builder.Configuration, builder.Environment);
     builder.Services.AddConfiguredRateLimiting(builder.Configuration);
 
+    // BFF cookie session + Entra OIDC (/common) + FakeAuth for Dev/Test (NET_RULES 4.x)
+    builder.Services.AddBffAuthentication(builder.Configuration, builder.Environment);
+
     // Configure Health Checks
     builder.Services.AddHealthChecks()
         .AddCheck<AzureTableStorageHealthCheck>(
@@ -136,6 +140,10 @@ try
     app.UseBlazorFrameworkFiles();
     app.UseStaticFiles();
 
+    app.UseRouting();
+    app.UseAuthentication();
+    app.UseAuthorization();
+
     app.UseRateLimiter();
 
     // Health check endpoints (/health, /health/live, /health/ready)
@@ -148,6 +156,8 @@ try
     app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), builder =>
     {
         builder.UseRouting();
+        builder.UseAuthentication();
+        builder.UseAuthorization();
         builder.UseEndpoints(endpoints =>
         {
             endpoints.MapFallbackToFile("index.html");
