@@ -9,8 +9,6 @@ WORKDIR /src
 COPY ["Directory.Packages.props", "./"]
 COPY ["global.json", "./"]
 COPY ["src/PoSeeReview.Api/PoSeeReview.Api.csproj", "src/PoSeeReview.Api/"]
-COPY ["src/PoSeeReview.Core/PoSeeReview.Core.csproj", "src/PoSeeReview.Core/"]
-COPY ["src/PoSeeReview.Infrastructure/PoSeeReview.Infrastructure.csproj", "src/PoSeeReview.Infrastructure/"]
 COPY ["src/PoSeeReview.Client/PoSeeReview.Client.csproj", "src/PoSeeReview.Client/"]
 COPY ["src/PoSeeReview.Shared/PoSeeReview.Shared.csproj", "src/PoSeeReview.Shared/"]
 

@@ -16,7 +16,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\PoSeeReview.Application\PoSeeReview.Application.csproj" />
     <ProjectReference Include="..\..\src\PoSeeReview.Api\PoSeeReview.Api.csproj" />
     <ProjectReference Include="..\..\src\PoSeeReview.Shared\PoSeeReview.Shared.csproj" />
   </ItemGroup>

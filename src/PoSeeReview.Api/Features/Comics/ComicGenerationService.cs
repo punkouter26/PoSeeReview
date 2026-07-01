@@ -64,6 +64,7 @@ public class ComicGenerationService : IComicGenerationService
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
     /// <param name="forceRegenerate">If true, regenerates even if valid cache exists</param>
+    /// <param name="cancellationToken">Cancels the generation pipeline</param>
     /// <returns>Generated or cached Comic entity</returns>
     /// <exception cref="KeyNotFoundException">If restaurant not found</exception>
     /// <exception cref="InsufficientReviewsException">If restaurant has fewer than required reviews</exception>

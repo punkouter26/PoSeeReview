@@ -136,6 +136,7 @@ public class GoogleMapsService
     /// <param name="latitude">Search center latitude</param>
     /// <param name="longitude">Search center longitude</param>
     /// <param name="radiusMeters">Search radius in meters (default 5000m = 5km)</param>
+    /// <param name="cancellationToken">Cancels the upstream Places call</param>
     /// <returns>List of restaurants with basic metadata</returns>
     public async Task<List<Restaurant>> SearchNearbyAsync(
         double latitude,

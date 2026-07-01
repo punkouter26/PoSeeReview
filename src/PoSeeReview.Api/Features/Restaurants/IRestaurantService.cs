@@ -14,6 +14,7 @@ public interface IRestaurantService
     /// <param name="latitude">User latitude (-90 to 90)</param>
     /// <param name="longitude">User longitude (-180 to 180)</param>
     /// <param name="limit">Maximum results to return (default 10)</param>
+    /// <param name="cancellationToken">Cancels the lookup</param>
     /// <returns>List of restaurants with distance from user</returns>
     /// <exception cref="ArgumentException">Invalid coordinates</exception>
     /// <exception cref="HttpRequestException">Google Maps API failure</exception>
