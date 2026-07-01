@@ -25,7 +25,7 @@ WORKDIR "/src/src/PoSeeReview.Api"
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.6-noble-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.9-noble-chiseled AS runtime
 WORKDIR /app
 
 # Install fonts and fontconfig for comic text overlay (run as root before switching to app user)
