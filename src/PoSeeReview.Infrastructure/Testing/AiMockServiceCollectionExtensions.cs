@@ -4,6 +4,7 @@ using Azure.AI.OpenAI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using PoSeeReview.Core.Interfaces;
 using PoSeeReview.Infrastructure.Configuration;
 
 namespace PoSeeReview.Infrastructure.Testing;
@@ -19,6 +20,9 @@ public static class AiMockServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Surface the active mock boundary on /diag/mock-status (NET_RULES 6.5).
+        services.AddSingleton<IMockable, AiMockDelegatingHandler>();
+
         // ── Gemini / Imagen: HttpClientFactory client → message-handler boundary ──
         // The factory chains the InnerHandler automatically for AddHttpMessageHandler.
         services.AddHttpClient("GeminiApi")

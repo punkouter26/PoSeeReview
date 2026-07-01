@@ -1,4 +1,5 @@
 using PoSeeReview.Application.Diagnostics;
+using PoSeeReview.Core.Interfaces;
 using PoSeeReview.Shared.Dtos;
 
 namespace PoSeeReview.Api.Features.Diagnostics;
@@ -24,10 +25,11 @@ internal static class DiagnosticsEndpoints
             return Results.Ok(diagnostics);
         });
 
-        group.MapGet("/mock-status", (IWebHostEnvironment environment, IConfiguration configuration) =>
+        group.MapGet("/mock-status", (IEnumerable<IMockable> mockables, IConfiguration configuration) =>
         {
-            var isMock = environment.IsEnvironment("Test") || configuration.GetValue<bool>("UseMockData");
-            return Results.Ok(new MockStatusDto { IsMockActive = isMock });
+            var activeMocks = mockables.Select(m => m.GetType().Name).Distinct().ToList();
+            var isMock = activeMocks.Count > 0 || configuration.GetValue<bool>("UseMockData");
+            return Results.Ok(new MockStatusDto { IsMockActive = isMock, ActiveMocks = activeMocks });
         });
 
         return app;

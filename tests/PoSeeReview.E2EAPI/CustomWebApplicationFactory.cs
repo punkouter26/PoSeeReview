@@ -82,9 +82,14 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
                 services.Remove(loggerDescriptor);
             }
 
-            // Replace real Azure-backed services with in-memory fakes
-            services.Replace(ServiceDescriptor.Scoped<IComicGenerationService>(_ => new FakeComicGenerationService()));
-            services.Replace(ServiceDescriptor.Scoped<IRestaurantService>(_ => new FakeRestaurantService()));
+            // Replace real Azure-backed services with in-memory fakes, surfaced as
+            // IMockable so /diag/mock-status lights the USING MOCK DATA banner.
+            var fakeComics = new FakeComicGenerationService();
+            var fakeRestaurants = new FakeRestaurantService();
+            services.Replace(ServiceDescriptor.Singleton<IComicGenerationService>(fakeComics));
+            services.Replace(ServiceDescriptor.Singleton<IRestaurantService>(fakeRestaurants));
+            services.AddSingleton<IMockable>(fakeComics);
+            services.AddSingleton<IMockable>(fakeRestaurants);
 
             // Defense-in-depth: intercept any AI provider HTTP calls so no tokens are
             // ever spent from the E2E API suite (directive #6).
@@ -126,7 +131,7 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     /// <summary>
     /// Fake IComicGenerationService: cache always empty, generation always fails with KeyNotFoundException.
     /// </summary>
-    private sealed class FakeComicGenerationService : IComicGenerationService
+    private sealed class FakeComicGenerationService : IComicGenerationService, IMockable
     {
         public Task<Comic> GenerateComicAsync(
             string placeId,
@@ -143,7 +148,7 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     /// <summary>
     /// Fake IRestaurantService: always returns empty lists and null details.
     /// </summary>
-    private sealed class FakeRestaurantService : IRestaurantService
+    private sealed class FakeRestaurantService : IRestaurantService, IMockable
     {
         public Task<List<Restaurant>> GetNearbyRestaurantsAsync(
             double latitude,

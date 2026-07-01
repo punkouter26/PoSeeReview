@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using PoSeeReview.Core.Interfaces;
 
 namespace PoSeeReview.Infrastructure.Testing;
 
@@ -11,7 +12,7 @@ namespace PoSeeReview.Infrastructure.Testing;
 /// leaks outside Production when integration/E2E suites exercise the real service
 /// classes. Non-AI requests fall through to the inner handler unchanged.
 /// </summary>
-public sealed class AiMockDelegatingHandler : DelegatingHandler
+public sealed class AiMockDelegatingHandler : DelegatingHandler, IMockable
 {
     // Superset JSON: satisfies both StrangenessAnalysisResult (score/panel/narrative)
     // and PanelCaptionsResult (captions) — unknown members are ignored by each parser.

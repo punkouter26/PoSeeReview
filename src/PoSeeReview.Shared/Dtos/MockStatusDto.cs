@@ -10,4 +10,9 @@ public sealed class MockStatusDto
     /// True when mock services (in-memory fakes) are active instead of real Azure/AI services.
     /// </summary>
     public bool IsMockActive { get; init; }
+
+    /// <summary>
+    /// Type names of the active IMockable registrations.
+    /// </summary>
+    public IReadOnlyList<string> ActiveMocks { get; init; } = [];
 }
