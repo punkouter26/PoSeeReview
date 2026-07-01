@@ -47,8 +47,11 @@ public class NullableThirdPartyTests
     {
         // Arrange
         var repoRoot = GetRepositoryRoot();
-        var infrastructureFiles = Directory.GetFiles(Path.Combine(repoRoot, "src", "PoSeeReview.Infrastructure"), "*.cs", SearchOption.AllDirectories)
+        // Provider adapters (services/repositories) live in the Api feature slices since
+        // the layer collapse (NET_RULES 2.1); endpoints/DTOs are out of scope for this check.
+        var infrastructureFiles = Directory.GetFiles(Path.Combine(repoRoot, "src", "PoSeeReview.Api"), "*.cs", SearchOption.AllDirectories)
             .Where(f => !f.Contains("\\obj\\") && !f.Contains("\\bin\\"))
+            .Where(f => Path.GetFileName(f).EndsWith("Service.cs") || Path.GetFileName(f).EndsWith("Repository.cs"))
             .ToList();
 
         // Act

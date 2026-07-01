@@ -55,11 +55,11 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     /// </summary>
     public async Task InitializeAsync()
     {
-#pragma warning disable CS0618
-        _azuriteContainer = new AzuriteBuilder()
-            .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+        // --skipApiVersionCheck: the Azure SDK's storage API version can be newer than
+        // the Azurite release; the emulator still supports the operations we use.
+        _azuriteContainer = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+            .WithCommand("--skipApiVersionCheck")
             .Build();
-#pragma warning restore CS0618
         await _azuriteContainer.StartAsync();
 
         _azuriteConnectionString = _azuriteContainer.GetConnectionString();

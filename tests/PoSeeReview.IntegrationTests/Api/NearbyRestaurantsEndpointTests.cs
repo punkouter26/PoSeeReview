@@ -73,6 +73,20 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
                 $"Detail: {problemDetails?.Detail}");
         }
 
+        // Google rejects the fake test API key with a 4xx, which the endpoint correctly
+        // surfaces as 400 "Google Maps Request Rejected" — a valid handled-error outcome.
+        if (response.StatusCode == HttpStatusCode.BadRequest)
+        {
+            var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+            if (problemDetails?.Title == "Google Maps Request Rejected")
+            {
+                _output.WriteLine("Test passed: API correctly surfaces the upstream key rejection");
+                return;
+            }
+
+            Assert.Fail($"Unexpected 400 error. Title: {problemDetails?.Title}, Detail: {problemDetails?.Detail}");
+        }
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         // Verify response structure

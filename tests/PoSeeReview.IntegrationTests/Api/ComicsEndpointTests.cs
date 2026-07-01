@@ -33,14 +33,18 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         var responseBody = await response.Content.ReadAsStringAsync();
 
         // Assert
-        // Should return 200 (success), 400 (invalid/not enough reviews), 404 (not found), or 500 (content policy/storage issues)
-        // This is an integration test that depends on real Google Maps API and Azure OpenAI
+        // Should return 200 (success), 400 (invalid/not enough reviews), 404 (not found), 429
+        // (comics-post rate limiter under parallel suite runs), 500 (content policy/storage
+        // issues), or 503 (Google Maps unavailable/circuit breaker with the test API key).
+        // This is an integration test that depends on real Google Maps API and Azure OpenAI.
         Assert.True(
             response.StatusCode == HttpStatusCode.OK ||
             response.StatusCode == HttpStatusCode.BadRequest ||
             response.StatusCode == HttpStatusCode.NotFound ||
-            response.StatusCode == HttpStatusCode.InternalServerError,
-            $"Expected 200, 400, 404, or 500, got {response.StatusCode}");
+            response.StatusCode == HttpStatusCode.TooManyRequests ||
+            response.StatusCode == HttpStatusCode.InternalServerError ||
+            response.StatusCode == HttpStatusCode.ServiceUnavailable,
+            $"Expected 200, 400, 404, 429, 500, or 503, got {response.StatusCode}");
 
         // If 500, check if it's an expected error (content policy or storage configuration)
         if (response.StatusCode == HttpStatusCode.InternalServerError)

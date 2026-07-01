@@ -11,11 +11,11 @@ namespace PoSeeReview.IntegrationTests.TestFixtures;
 /// </summary>
 public class AzuriteFixture : IAsyncLifetime
 {
-#pragma warning disable CS0618
-    private readonly AzuriteContainer _container = new AzuriteBuilder()
-        .WithImage("mcr.microsoft.com/azure-storage/azurite:latest")
+    // --skipApiVersionCheck: the Azure SDK's storage API version can be newer than
+    // the Azurite release; the emulator still supports the operations we use.
+    private readonly AzuriteContainer _container = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+        .WithCommand("--skipApiVersionCheck")
         .Build();
-#pragma warning restore CS0618
 
     public TableServiceClient TableServiceClient { get; private set; } = null!;
     public string ConnectionString { get; private set; } = string.Empty;

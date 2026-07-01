@@ -46,7 +46,10 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     /// </summary>
     public async Task InitializeAsync()
     {
+        // --skipApiVersionCheck: the Azure SDK's storage API version can be newer than
+        // the Azurite release; the emulator still supports the operations we use.
         _azuriteContainer = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+            .WithCommand("--skipApiVersionCheck")
             .Build();
         await _azuriteContainer.StartAsync();
 

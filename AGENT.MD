@@ -74,8 +74,7 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   `infra/modules/appservice.bicep`). Tests do NOT run in the pipeline.
 - System-assigned Managed Identity: Key Vault Secrets User on `kv-poshared` (PoShared
   RG) + Storage RBAC.
-- First run: `SCRIPTS/setup.ps1` (WinGet/Docker/Azure CLI checks, ecosystem repos
-  gstack / Understand-Anything / graphify, build verification).
+- First run: `SCRIPTS/setup.ps1` (WinGet/Docker/Azure CLI checks, build verification).
 
 ## Conventions
 
