@@ -1,7 +1,7 @@
 services:
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
-    container_name: poseereview
+    container_name: PoSeeReview
     ports:
       - "10000:10000" # Blob service
       - "10001:10001" # Queue service

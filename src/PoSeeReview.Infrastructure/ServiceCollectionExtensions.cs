@@ -2,6 +2,7 @@ using System.Net;
 using Azure;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
+using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,38 +40,37 @@ public static class ServiceCollectionExtensions
         services.Configure<ComicOptions>(
             configuration.GetSection(ComicOptions.SectionName));
 
-        // Register Azure Table Storage client
-        // Try connection string first, then fall back to environment variable for Azure App Service
-        var tableConnectionString = configuration.GetConnectionString("AzureTableStorage")
-            ?? configuration["AzureTableStorage"]
-            ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING");
+        // Storage clients: cloud resolves via System-assigned Managed Identity against the
+        // account endpoints (NET_RULES 5.4); connection strings remain only for local Azurite.
+        var tableEndpoint = configuration["AzureStorage:TableEndpoint"];
+        var blobEndpoint = configuration["AzureStorage:BlobEndpoint"];
 
-        if (string.IsNullOrEmpty(tableConnectionString))
+        if (!string.IsNullOrEmpty(tableEndpoint))
         {
-            throw new InvalidOperationException(
-                "AzureTableStorage connection string is required. " +
-                "Set it via ConnectionStrings:AzureTableStorage in appsettings.json, " +
-                "or AzureTableStorage in Azure App Service Configuration, " +
-                "or AZURE_TABLE_STORAGE_CONNECTION_STRING environment variable.");
+            var credential = new DefaultAzureCredential();
+            services.AddSingleton(_ => new TableServiceClient(new Uri(tableEndpoint), credential));
+            services.AddSingleton(_ => new BlobServiceClient(
+                new Uri(blobEndpoint ?? throw new InvalidOperationException(
+                    "AzureStorage:BlobEndpoint is required when AzureStorage:TableEndpoint is set.")),
+                credential));
         }
-
-        services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
-
-        // Register Azure Blob Storage client
-        var blobConnectionString = configuration.GetConnectionString("AzureBlobStorage")
-            ?? configuration["AzureBlobStorage"]
-            ?? Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING");
-
-        if (string.IsNullOrEmpty(blobConnectionString))
+        else
         {
-            throw new InvalidOperationException(
-                "AzureBlobStorage connection string is required. " +
-                "Set it via ConnectionStrings:AzureBlobStorage in appsettings.json, " +
-                "or AzureBlobStorage in Azure App Service Configuration, " +
-                "or AZURE_BLOB_STORAGE_CONNECTION_STRING environment variable.");
-        }
+            var tableConnectionString = configuration.GetConnectionString("AzureTableStorage")
+                ?? configuration["AzureTableStorage"]
+                ?? Environment.GetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING")
+                ?? throw new InvalidOperationException(
+                    "Set AzureStorage:TableEndpoint (Managed Identity) or ConnectionStrings:AzureTableStorage (Azurite).");
 
-        services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
+            var blobConnectionString = configuration.GetConnectionString("AzureBlobStorage")
+                ?? configuration["AzureBlobStorage"]
+                ?? Environment.GetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING")
+                ?? throw new InvalidOperationException(
+                    "Set AzureStorage:BlobEndpoint (Managed Identity) or ConnectionStrings:AzureBlobStorage (Azurite).");
+
+            services.AddSingleton(_ => new TableServiceClient(tableConnectionString));
+            services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
+        }
 
         // Register Azure OpenAI client
         var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName)

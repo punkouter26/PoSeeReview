@@ -11,7 +11,7 @@ internal static class TelemetryServiceCollectionExtensions
     // Production telemetry budget: cap ingestion at a few items/sec via adaptive
     // sampling, but never sample away Exceptions (they are the highest-signal,
     // lowest-volume type). Traces/requests/dependencies absorb the sampling.
-    private const int MaxTelemetryItemsPerSecond = 5;
+    private const int MaxTelemetryItemsPerSecond = 10;
 
     internal static IServiceCollection AddConfiguredTelemetry(
         this IServiceCollection services,
@@ -33,7 +33,7 @@ internal static class TelemetryServiceCollectionExtensions
             options.EnableHeartbeat = false;
             options.EnableAppServicesHeartbeatTelemetryModule = false;
             options.EnableAzureInstanceMetadataTelemetryModule = false;
-            options.EnableQuickPulseMetricStream = false;
+            options.EnableQuickPulseMetricStream = true; // Live Metrics stays active (NET_RULES 6.3)
             options.EnableAuthenticationTrackingJavaScript = false;
         });
 

@@ -44,10 +44,21 @@ try
     // Replace default logging with Serilog (unless in test mode)
     if (!isTestMode)
     {
-        builder.Host.UseSerilog((context, services, configuration) => configuration
-            .ReadFrom.Configuration(context.Configuration)
-            .ReadFrom.Services(services)
-            .Enrich.FromLogContext());
+        builder.Host.UseSerilog((context, services, configuration) =>
+        {
+            configuration
+                .ReadFrom.Configuration(context.Configuration)
+                .ReadFrom.Services(services)
+                .Enrich.FromLogContext();
+
+            // Route structured logs to Application Insights alongside Console (NET_RULES 6.1).
+            if (!string.IsNullOrEmpty(context.Configuration["ApplicationInsights:ConnectionString"]))
+            {
+                configuration.WriteTo.ApplicationInsights(
+                    services.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>(),
+                    TelemetryConverter.Traces);
+            }
+        });
     }
 
     // Add services to the container.

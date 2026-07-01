@@ -1,4 +1,6 @@
 @baseUrl = https://localhost:5001
+@placeId = ChIJ0zC-8N1qkFQRLC8kcIzkTPY
+@takedownApiKey = dev-takedown-key
 
 ### Health check — overall
 GET {{baseUrl}}/health
@@ -9,8 +11,11 @@ GET {{baseUrl}}/health/live
 ### Health check — readiness probe
 GET {{baseUrl}}/health/ready
 
-### Diagnostics snapshot (Development only)
+### Diagnostics snapshot (masked keys + integration statuses)
 GET {{baseUrl}}/diag
+
+### Mock-data status
+GET {{baseUrl}}/diag/mock-status
 
 ### Get current dev session
 GET {{baseUrl}}/api/devsession
@@ -20,3 +25,31 @@ POST {{baseUrl}}/api/devsession/anon
 
 ### Logout / clear dev session
 DELETE {{baseUrl}}/api/devsession
+
+### Nearby restaurants by coordinates
+GET {{baseUrl}}/api/restaurants/nearby?latitude=47.6062&longitude=-122.3321&limit=10
+
+### Search restaurants by location text
+GET {{baseUrl}}/api/restaurants/search?location=Seattle%2C%20WA&limit=10
+
+### Leaderboard (top N for a region)
+GET {{baseUrl}}/api/leaderboard?region=US&limit=10
+
+### Generate comic for a place
+POST {{baseUrl}}/api/comics/{{placeId}}?forceRegenerate=false
+
+### Get cached comic for a place
+GET {{baseUrl}}/api/comics/{{placeId}}
+
+### Submit takedown request (requires X-Api-Key)
+POST {{baseUrl}}/api/takedowns
+X-Api-Key: {{takedownApiKey}}
+Content-Type: application/json
+
+{
+  "placeId": "{{placeId}}",
+  "requesterName": "Jane Doe",
+  "contactEmail": "jane@example.com",
+  "region": "US",
+  "reason": "Owner request"
+}

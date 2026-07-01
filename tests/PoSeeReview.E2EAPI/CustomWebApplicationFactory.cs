@@ -9,17 +9,22 @@ using PoSeeReview.Core;
 using PoSeeReview.Core.Entities;
 using PoSeeReview.Core.Interfaces;
 using PoSeeReview.Infrastructure.Testing;
+using Testcontainers.Azurite;
 
 namespace PoSeeReview.E2EAPI;
 
 /// <summary>
 /// Custom WebApplicationFactory that configures logging without Serilog
 /// to avoid frozen logger issues with multiple test hosts.
-/// Replaces Azure-backed services with in-memory fakes so the web tests
-/// run without Azurite, Google Maps, or OpenAI connections.
+/// Storage runs against an ephemeral Testcontainers Azurite instance (NET_RULES 6.4);
+/// AI/Maps services stay mocked so no external tokens are spent.
 /// </summary>
-public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram> where TProgram : class
+public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProgram>, IAsyncLifetime
+    where TProgram : class
 {
+    private AzuriteContainer? _azuriteContainer;
+    private string? _azuriteConnectionString;
+
     public CustomWebApplicationFactory()
     {
         // Set environment variables BEFORE Program.cs runs (WebApplicationFactory reads
@@ -27,17 +32,43 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         Environment.SetEnvironmentVariable("DISABLE_SERILOG", "true");
         Environment.SetEnvironmentVariable("DISABLE_USER_AGENT_VALIDATION", "true");
 
-        // Stub connection strings so AddInfrastructure validation passes. The real
-        // Azure-backed services are replaced with fakes in ConfigureServices below.
-        Environment.SetEnvironmentVariable("AZURE_TABLE_STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true");
-        Environment.SetEnvironmentVariable("AZURE_BLOB_STORAGE_CONNECTION_STRING", "UseDevelopmentStorage=true");
-
         // AzureOpenAI options — IConfiguration uses __ as the section separator for env vars
         Environment.SetEnvironmentVariable("AzureOpenAI__Endpoint", "https://test.openai.azure.com/");
         Environment.SetEnvironmentVariable("AzureOpenAI__ApiKey", "test-key-12345678901234567890AB");
         // Mirror the prod deployment name (verified 2026-06-14 as the sole deployment in po-aiservices-shared).
         Environment.SetEnvironmentVariable("AzureOpenAI__DeploymentName", "gpt-5.4-nano");
         Environment.SetEnvironmentVariable("AzureOpenAI__DalleDeploymentName", "");
+    }
+
+    /// <summary>
+    /// Starts the ephemeral Azurite container and publishes its connection string
+    /// before the host is built (xUnit runs this before any test class is created).
+    /// </summary>
+    public async Task InitializeAsync()
+    {
+        _azuriteContainer = new AzuriteBuilder("mcr.microsoft.com/azure-storage/azurite:latest")
+            .Build();
+        await _azuriteContainer.StartAsync();
+
+        _azuriteConnectionString = _azuriteContainer.GetConnectionString();
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureTableStorage", _azuriteConnectionString);
+        Environment.SetEnvironmentVariable("ConnectionStrings__AzureBlobStorage", _azuriteConnectionString);
+    }
+
+    public new async Task DisposeAsync()
+    {
+        try
+        {
+            await base.DisposeAsync();
+        }
+        finally
+        {
+            if (_azuriteContainer != null)
+            {
+                await _azuriteContainer.DisposeAsync();
+                _azuriteContainer = null;
+            }
+        }
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -77,8 +108,8 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             // Add in-memory configuration with test values
             var testConfig = new Dictionary<string, string?>
             {
-                ["ConnectionStrings:AzureTableStorage"] = "UseDevelopmentStorage=true",
-                ["ConnectionStrings:AzureBlobStorage"] = "UseDevelopmentStorage=true",
+                ["ConnectionStrings:AzureTableStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
+                ["ConnectionStrings:AzureBlobStorage"] = _azuriteConnectionString ?? "UseDevelopmentStorage=true",
                 ["AzureOpenAI:Endpoint"] = "https://test.openai.azure.com/",
                 ["AzureOpenAI:ApiKey"] = "test-key-12345",
                 ["AzureOpenAI:DeploymentName"] = "test-deployment",

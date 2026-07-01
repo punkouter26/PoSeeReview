@@ -142,7 +142,24 @@ if (-not $SkipAzureCli) {
     Write-Step "Skipping Azure CLI check (-SkipAzureCli)"
 }
 
-# ── 5. Verify project builds ──────────────────────────────────────────────────
+# ── 5. Ecosystem repositories (NET_RULES 3.4) ─────────────────────────────────
+Write-Step "Checking ecosystem repositories (gstack, Understand-Anything, graphify)..."
+$ecosystemRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+foreach ($repo in 'gstack', 'Understand-Anything', 'graphify') {
+    $target = Join-Path $ecosystemRoot $repo
+    if (Test-Path $target) {
+        Write-Ok "$repo already present at $target"
+        continue
+    }
+    git clone --quiet "https://github.com/punkouter26/$repo" $target 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Ok "$repo cloned to $target"
+    } else {
+        Write-Warn "$repo could not be cloned (repo missing or auth required). Clone it manually next to this repo."
+    }
+}
+
+# ── 6. Verify project builds ──────────────────────────────────────────────────
 Write-Step "Verifying project builds..."
 try {
     $buildOutput = dotnet build "$PSScriptRoot\..\PoSeeReview.sln" --verbosity quiet 2>&1

@@ -11,8 +11,8 @@ param tags object
 @description('App Service name (e.g. app-poseereview)')
 param appName string
 
-@description('App Service Plan SKU')
-param skuName string = 'B1'
+@description('App Service Plan SKU — F1 free tier per NET_RULES 5.2')
+param skuName string = 'F1'
 
 @description('Key Vault URI for Managed Identity secret loading')
 param keyVaultEndpoint string
