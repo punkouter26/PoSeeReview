@@ -25,6 +25,20 @@
             </FluentButton>
         </FluentCard>
     }
+    else if (_needsGeneration)
+    {
+        <FluentCard class="error-container">
+            <div class="error-icon">🎨</div>
+            <h2>No Comic Here Yet</h2>
+            <p class="error-message">This place doesn't have an active comic — it may have expired. Generating a fresh one takes about 10 seconds.</p>
+            <FluentButton Appearance="Appearance.Accent" @onclick="GenerateFromPromptAsync">
+                Generate Comic
+            </FluentButton>
+            <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
+                &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Back to Restaurants")
+            </FluentButton>
+        </FluentCard>
+    }
     else if (_comic != null)
     {
         <FluentCard class="comic-container">
@@ -54,6 +68,7 @@
                        IsCached="@_comic.IsCached" />
 
             <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
+            <p class="comic-source-note">Drawn from a small sample of recent public Google reviews — not the restaurant's full history.</p>
 
             <div class="action-buttons">
                 <FluentButton Appearance="Appearance.Accent" @onclick="ShareComic" Disabled="@(_isSharing || _isRegenerating)">
@@ -103,7 +118,12 @@
     [SupplyParameterFromQuery(Name = "from")]
     public string? From { get; set; }
 
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "generate")]
+    public bool Generate { get; set; }
+
     private ComicDto? _comic;
+    private bool _needsGeneration;
     private bool _isLoading = true;
     private bool _isSharing = false;
     private bool _isRegenerating = false;
@@ -123,12 +143,42 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadComic(forceRegenerate: false);
-        // Server enforces cache expiry via ExpiresAt — no client-side staleness check needed.
-        // A double-call with forceRegenerate:true here would incur two sequential AI API
-        // charges (~20 s) for comics that happen to be exactly cache-age on load.
+        // Viewing is read-only: try the cached comic first (GET, free). Generation (POST,
+        // paid AI pipeline) only runs when the user explicitly asked for it — the search
+        // flow navigates with ?generate=true; Hall of Fame / shared links never auto-spend.
+        try
+        {
+            _comic = await ApiClient.GetCachedComicAsync(PlaceId);
+        }
+        catch (Exception)
+        {
+            // Fall through: treat lookup failure like a cache miss.
+        }
+
+        if (_comic == null)
+        {
+            if (Generate)
+            {
+                await LoadComic(forceRegenerate: false);
+            }
+            else
+            {
+                _needsGeneration = true;
+                _isLoading = false;
+            }
+        }
+        else
+        {
+            _isLoading = false;
+        }
 
         _shareSupported = await ShareService.IsShareSupportedAsync();
+    }
+
+    private async Task GenerateFromPromptAsync()
+    {
+        _needsGeneration = false;
+        await LoadComic(forceRegenerate: false);
     }
 
     public void Dispose()

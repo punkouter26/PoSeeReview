@@ -202,12 +202,14 @@ public sealed class GeminiComicService : IImageGenerationService
             _ => "1. Setup the restaurant and characters.\n2. Introduce the strange twist.\n3. Spotlight the climax.\n4. Show the aftermath."
         };
 
+        // Imagen has no negative-prompt channel: forbidden concepts named in the prompt
+        // ("NO SPEECH BUBBLES") tend to get PAINTED INTO the artwork as literal lettering.
+        // Describe only what we want — wordless, pantomime, blank surfaces — and never
+        // mention text, bubbles, or writing. Captions are added later by the overlay service.
         return $"""
-NO TEXT. NO SPEECH BUBBLES. NO WORD BALLOONS. NO LETTERS. NO WRITING. SILENT VISUAL COMIC ONLY.
+Create a vibrant {panelCount}-panel wordless pantomime comic strip in a clean, modern cartoon illustration style, told purely through pictures, in the tradition of silent-film slapstick.
 
-Create a vibrant {panelCount}-panel comic strip in a clean, modern cartoon illustration style.
-
-Story context:
+Visual story to depict (through action and expression only):
 "{narrative}"
 
 Layout: {panelLayout}
@@ -218,13 +220,11 @@ Panel breakdown:
 {panelBreakdown}
 
 Visual style:
-- Bold outlines, vivid colors, exaggerated facial expressions
+- Bold outlines, vivid colors, exaggerated facial expressions and body language
 - Modern cartoon illustration (NOT manga, NOT realistic)
-- Story told entirely through actions, expressions, and body language
-- All walls, signs, menus, and surfaces must be completely blank — no text anywhere
-- Characters may emote but there are NO speech bubbles, NO thought bubbles, NO dialogue text
-
-ABSOLUTE NEGATIVE CONSTRAINTS (do not generate any of these): text, letters, words, speech bubbles, thought bubbles, word balloons, captions, signs with writing, labels, handwriting, printed text, or any written symbols.
+- Pure visual storytelling: every emotion carried by faces, gestures, and posture alone
+- Every wall, sign, menu, and surface rendered as plain solid color or simple decoration
+- Wordless, silent, pantomime scenes throughout
 """;
     }
 
@@ -239,9 +239,7 @@ ABSOLUTE NEGATIVE CONSTRAINTS (do not generate any of these): text, letters, wor
         };
 
         return $"""
-ABSOLUTE RULE: NO TEXT. NO SPEECH BUBBLES. NO WORD BALLOONS. NO CAPTIONS. NO LETTERS. NO WRITING OF ANY KIND.
-
-Create a vibrant {panelCount}-panel comic strip in a clean, modern cartoon illustration style.
+Create a vibrant {panelCount}-panel wordless pantomime comic strip in a clean, modern cartoon illustration style, told purely through pictures, in the tradition of silent-film slapstick.
 
 Scene: A cheerful, brightly lit restaurant. A happy customer sits at a table. A friendly waiter
 brings an unusually large or creative dish. The customer reacts with wide-eyed surprise and delight.
@@ -249,8 +247,9 @@ brings an unusually large or creative dish. The customer reacts with wide-eyed s
 Layout: {panelLayout}
 - Bold outlines, vivid colors, exaggerated happy facial expressions
 - Modern cartoon illustration style, family-friendly
-- ZERO text, ZERO speech bubbles, ZERO word balloons, ZERO labels, ZERO writing anywhere
-- Characters communicate ONLY through facial expressions and body language
+- Pure visual storytelling: every emotion carried by faces, gestures, and posture alone
+- Every wall, sign, menu, and surface rendered as plain solid color or simple decoration
+- Wordless, silent, pantomime scenes throughout
 
 REMINDER: This image must contain absolutely NO text, letters, words, speech bubbles, or word balloons.
 """;

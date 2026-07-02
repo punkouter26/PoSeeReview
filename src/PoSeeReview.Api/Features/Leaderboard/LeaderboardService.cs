@@ -145,6 +145,22 @@ public class LeaderboardService : ILeaderboardService
 
         try
         {
+            // Hall of Fame tracks the PEAK score ever recorded for a place. A regeneration that
+            // scores lower must not demote or evict the entry — keep the higher score and only
+            // refresh the artwork so the card keeps rendering after old blobs are cleaned up.
+            var existing = await _repository.GetByPlaceIdAsync(entry.PlaceId, entry.Region);
+            if (existing != null && existing.StrangenessScore > entry.StrangenessScore)
+            {
+                existing.ComicBlobUrl = entry.ComicBlobUrl;
+                existing.LastUpdated = _timeProvider.GetUtcNow();
+                await _repository.UpsertAsync(existing);
+
+                _logger.LogInformation(
+                    "Kept peak score {ExistingScore} for {PlaceId} (new comic scored {NewScore}); refreshed artwork only",
+                    existing.StrangenessScore, entry.PlaceId, entry.StrangenessScore);
+                return;
+            }
+
             // Set LastUpdated timestamp
             entry.LastUpdated = _timeProvider.GetUtcNow();
 

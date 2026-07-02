@@ -330,7 +330,7 @@
         StateHasChanged();
 
         await Task.Yield();
-        Navigation.NavigateTo($"/comic/{restaurant.PlaceId}");
+        Navigation.NavigateTo($"/comic/{restaurant.PlaceId}?generate=true");
     }
 
     private void ClearSearch()

@@ -11,9 +11,10 @@ public interface IAzureOpenAIService
     /// Analyzes a list of restaurant reviews to determine strangeness and create a narrative
     /// </summary>
     /// <param name="reviews">List of review texts to analyze</param>
+    /// <param name="cancellationToken">Cancels the (potentially slow) model call when the caller abandons the request</param>
     /// <returns>Tuple of (strangeness score 0-100, panel count 1-4, narrative paragraph)</returns>
     /// <exception cref="ArgumentException">If reviews list is empty</exception>
-    Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(List<string> reviews);
+    Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Generates concise English captions for each panel of a comic strip.

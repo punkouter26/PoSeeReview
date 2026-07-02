@@ -83,6 +83,34 @@ public class ApiClient
     }
 
     /// <summary>
+    /// Fetches the cached comic for a place without triggering (paid) generation.
+    /// Returns <c>null</c> when no valid cached comic exists (HTTP 404).
+    /// </summary>
+    public async Task<ComicDto?> GetCachedComicAsync(
+        string placeId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var message = TryExtractProblemDetail(errorBody)
+                ?? $"Comic lookup failed (HTTP {(int)response.StatusCode}).";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+
+        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
+    }
+
+    /// <summary>
     /// Searches for restaurants by location query (city name or ZIP code).
     /// </summary>
     public async Task<NearbyRestaurantsResponse?> SearchRestaurantsByLocationAsync(

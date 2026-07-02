@@ -66,7 +66,7 @@
     else
     {
         <div class="last-updated">
-            <span>Updated @lastUpdated.ToString("g")</span>
+            <span>Standings refreshed @lastUpdated.ToLocalTime().ToString("g")</span>
             <FluentButton Appearance="Appearance.Lightweight" @onclick="LoadLeaderboardAsync" Disabled="@isLoading">
                 &#8635; Refresh
             </FluentButton>
@@ -81,7 +81,17 @@
                     </div>
 
                     <div class="comic-thumbnail">
-                        <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
+                        @if (!string.IsNullOrWhiteSpace(entry.ComicBlobUrl))
+                        {
+                            <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
+                        }
+                        else
+                        {
+                            <div class="comic-thumbnail-placeholder" role="img" aria-label="Comic expired — open to regenerate">
+                                <span class="placeholder-icon">🎨</span>
+                                <span class="placeholder-text">Comic expired</span>
+                            </div>
+                        }
                     </div>
 
                     <div class="entry-details">
@@ -91,6 +101,7 @@
                             <span class="score-label">Weird score</span>
                             <span class="score-value">@entry.StrangenessScore.ToString("F0")</span>
                         </div>
+                        <p class="entry-recorded">Recorded @entry.LastUpdated.ToLocalTime().ToString("MMM d, yyyy")</p>
                     </div>
 
                     <div class="entry-actions">

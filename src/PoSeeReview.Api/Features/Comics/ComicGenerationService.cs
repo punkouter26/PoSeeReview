@@ -150,7 +150,7 @@ public class ComicGenerationService : IComicGenerationService
 
         // Analyze strangeness and generate narrative with panel count
         var analysisStopwatch = Stopwatch.StartNew();
-        var (strangenessScore, panelCount, narrative) = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis);
+        var (strangenessScore, panelCount, narrative) = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
         analysisStopwatch.Stop();
 
         _logger.LogInformation("Strangeness score: {Score}, Panel count: {PanelCount}, Narrative length: {Length}",

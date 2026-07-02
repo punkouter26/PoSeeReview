@@ -1,0 +1,28 @@
+{
+  "name": "poseereview",
+  "version": "1.0.0",
+  "description": "PoSeeReview turns unusual restaurant reviews into AI-generated four-panel comic strips and publishes ranked results to a global Hall of Fame leaderboard. The solution runs as a Blazor WebAssembly frontend and .NET 10 API in a single Azure App Service, backed by Azure Table and Blob Storage, Azure OpenAI, and Google Gemini for narrative and image generation.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/punkouter26/PoSeeReview.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/punkouter26/PoSeeReview/issues"
+  },
+  "homepage": "https://github.com/punkouter26/PoSeeReview#readme",
+  "dependencies": {
+    "playwright": "^1.61.1"
+  }
+}

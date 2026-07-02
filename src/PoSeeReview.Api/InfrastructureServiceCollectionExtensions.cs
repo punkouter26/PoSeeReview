@@ -45,7 +45,22 @@ public static class ServiceCollectionExtensions
         var tableEndpoint = configuration["AzureStorage:TableEndpoint"];
         var blobEndpoint = configuration["AzureStorage:BlobEndpoint"];
 
-        if (!string.IsNullOrEmpty(tableEndpoint))
+        // Storage:UseAzurite short-circuits Key Vault connection strings so local dev can run
+        // against the emulator (docker-compose) instead of the real storage account. Without
+        // this, Key Vault secrets always win and every local run mutates production data.
+        if (configuration.GetValue<bool>("Storage:UseAzurite"))
+        {
+            const string azurite =
+                "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;" +
+                "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;" +
+                "TableEndpoint=http://127.0.0.1:10002/devstoreaccount1;" +
+                "BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;" +
+                "QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;";
+
+            services.AddSingleton(_ => new TableServiceClient(azurite));
+            services.AddSingleton(_ => new BlobServiceClient(azurite));
+        }
+        else if (!string.IsNullOrEmpty(tableEndpoint))
         {
             var credential = new DefaultAzureCredential();
             services.AddSingleton(_ => new TableServiceClient(new Uri(tableEndpoint), credential));

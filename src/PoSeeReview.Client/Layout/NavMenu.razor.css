@@ -176,11 +176,12 @@
 }
 
 .nav-logout-btn {
-    padding: 0.3rem 0.75rem;
+    min-height: 2.75rem;
+    padding: 0.3rem 0.9rem;
     border-radius: 999px;
-    border: 1px solid rgba(248,113,113,0.35);
-    background: rgba(153,27,27,0.25);
-    color: rgba(255,255,255,0.8);
+    border: 1px solid rgba(248,113,113,0.5);
+    background: rgba(153,27,27,0.35);
+    color: rgba(255,255,255,0.95);
     font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
@@ -196,9 +197,51 @@
 }
 
 @media (max-width: 640px) {
+    /* Everything must fit a 320px viewport: icon-only nav links, no tagline,
+       and shrinkable flex children so the bar never overflows the screen. */
     .nav-shell {
         padding: 0 0.75rem;
         height: 3.25rem;
+        min-width: 0;
+    }
+
+    .navbar-brand {
+        min-width: 0;
+        flex-shrink: 1;
+    }
+
+    .brand-tagline {
+        display: none;
+    }
+
+    .brand-name {
+        font-size: 1.2rem;
+    }
+
+    .nav-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .nav-links {
+        margin-left: 0.25rem;
+        min-width: 0;
+    }
+
+    .nav-item ::deep a {
+        padding: 0.75rem;
+    }
+
+    .bi {
+        margin-right: 0;
+    }
+
+    .nav-logout-btn {
+        padding: 0.3rem 0.6rem;
     }
 
     .nav-user-email {

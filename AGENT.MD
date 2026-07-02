@@ -41,7 +41,11 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   `PrefixKeyVaultSecretManager`; `DefaultAzureCredential` everywhere.
 - Storage: `AzureStorage:TableEndpoint`/`BlobEndpoint` set → Managed Identity clients
   (Prod); otherwise connection strings (Azurite in Docker, container name `PoSeeReview`
-  via docker-compose).
+  via docker-compose). `Storage:UseAzurite=true` (appsettings.Development.json)
+  short-circuits Key Vault connection strings and pins both clients to the local
+  Azurite emulator — without it local dev hits the real storage account.
+- `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset); Development uses the
+  placeholder `local-dev-takedown-key` from appsettings.Development.json.
 
 ## Authentication (BFF cookie proxy)
 

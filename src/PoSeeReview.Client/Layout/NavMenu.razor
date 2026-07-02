@@ -30,46 +30,51 @@
         <nav class="nav-links" aria-label="Primary navigation">
             <div class="nav-item">
                 <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                    <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+                    <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span><span class="nav-label"> Home</span>
                 </NavLink>
             </div>
             <div class="nav-item">
                 <NavLink class="nav-link" href="leaderboard">
-                    <span class="bi bi-trophy-fill" aria-hidden="true"></span> Hall of Fame
+                    <span class="bi bi-trophy-fill" aria-hidden="true"></span><span class="nav-label"> Hall of Fame</span>
                 </NavLink>
             </div>
         </nav>
 
         @if (HostEnvironment.Environment == "Development")
         {
-            <div class="nav-user-zone">
-                @if (_devSession != null)
-                {
-                    <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">
-                        <span class="nav-user-dot" aria-hidden="true"></span>
-                        @if (_devSession.IsAnonymous)
+            <AuthorizeView>
+                <Authorized>
+                    <div class="nav-user-zone">
+                        @if (_devSession != null)
                         {
-                            <span>Anon</span>
+                            <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">
+                                <span class="nav-user-dot" aria-hidden="true"></span>
+                                @if (_devSession.IsAnonymous)
+                                {
+                                    <span>Anon</span>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(_devSession.Email))
+                                {
+                                    <span class="nav-user-email" title="@_devSession.Email">@_devSession.Email</span>
+                                }
+                                else
+                                {
+                                    <span>@_devSession.UserId</span>
+                                }
+                            </div>
                         }
-                        else if (!string.IsNullOrWhiteSpace(_devSession.Email))
-                        {
-                            <span class="nav-user-email" title="@_devSession.Email">@_devSession.Email</span>
-                        }
-                        else
-                        {
-                            <span>@_devSession.UserId</span>
-                        }
+                        <button class="nav-logout-btn" @onclick="LogoutAnonAsync" title="Sign out">Sign out</button>
                     </div>
-                    <button class="nav-logout-btn" @onclick="LogoutAnonAsync" title="Sign out">Sign out</button>
-                }
-                else
-                {
-                    <div class="nav-user-badge nav-user-badge--inactive">
-                        <span class="nav-user-dot" aria-hidden="true"></span>
-                        <span>Not signed in</span>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="nav-user-zone">
+                        <div class="nav-user-badge nav-user-badge--inactive">
+                            <span class="nav-user-dot" aria-hidden="true"></span>
+                            <span>Not signed in</span>
+                        </div>
                     </div>
-                }
-            </div>
+                </NotAuthorized>
+            </AuthorizeView>
         }
     </div>
 </div>

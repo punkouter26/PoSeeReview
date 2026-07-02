@@ -63,9 +63,10 @@ public class AzureOpenAIService : IAzureOpenAIService
     /// Analyzes restaurant reviews for strangeness and generates a narrative paragraph.
     /// </summary>
     /// <param name="reviews">List of review texts (5-10 reviews recommended)</param>
+    /// <param name="cancellationToken">Cancels the (potentially slow) model call when the caller abandons the request</param>
     /// <returns>Tuple of (StrangenessScore 0-100, PanelCount 1-4, Narrative paragraph)</returns>
     /// <exception cref="ArgumentException">If reviews list is null or empty</exception>
-    public async Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(List<string> reviews)
+    public async Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default)
     {
         if (reviews == null || reviews.Count == 0)
             throw new ArgumentException("Reviews list cannot be empty", nameof(reviews));
@@ -100,7 +101,11 @@ public class AzureOpenAIService : IAzureOpenAIService
             ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
         };
 
-        var response = await _chatRetryPolicy.ExecuteAsync(() => chatClient.CompleteChatAsync(chatMessages, chatOptions));
+        // Propagate the caller's token: this call can take 40+ seconds on reasoning models, and
+        // an abandoned browser request should stop the pipeline instead of completing a paid call.
+        var response = await _chatRetryPolicy.ExecuteAsync(
+            ct => chatClient.CompleteChatAsync(chatMessages, chatOptions, ct),
+            cancellationToken);
 
         _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
 

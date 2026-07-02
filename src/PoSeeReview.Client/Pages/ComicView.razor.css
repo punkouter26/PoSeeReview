@@ -79,6 +79,13 @@
     font-size: 0.95rem;
 }
 
+.comic-source-note {
+    margin: 0.35rem 0 0;
+    text-align: center;
+    color: #9ca3af;
+    font-size: 0.8rem;
+}
+
 .action-buttons {
     display: grid;
     grid-template-columns: 1.3fr 1fr auto;
