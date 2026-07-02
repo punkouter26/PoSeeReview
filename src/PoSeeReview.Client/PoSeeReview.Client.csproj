@@ -3,7 +3,10 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <IsTrimmable>true</IsTrimmable>
+    <!-- Do NOT set IsTrimmable on this assembly: the Router/LayoutView instantiate
+         components via reflection (typeof(MainLayout) in App.razor), so member-level
+         trimming strips their constructors and the published app dies at runtime with
+         CtorNotLocated. Blazor's default partial trim mode still trims the framework. -->
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <!-- English-only UI: run invariant so the ~1.5MB ICU payload (icudt_*.dat) is not shipped,
          cutting first-load size and one extra network round-trip. -->
