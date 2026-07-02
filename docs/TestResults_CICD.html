@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PoSeeReview — Test Results &amp; CI/CD Report</title>
+<style>
+    :root {
+        --bg: #f6f5fb; --surface: #ffffff; --ink: #1e1e2e; --muted: #6b7280;
+        --accent: #7c3aed; --accent2: #f5576c; --ok: #16a34a; --warn: #d97706; --bad: #dc2626;
+        --border: #e5e7eb; --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.55; }
+    header { background: linear-gradient(135deg, #2d1b69, #7c3aed 60%, #a12d5c); color: #fff; padding: 2.2rem 1.5rem 1.8rem; }
+    header h1 { margin: 0 0 0.3rem; font-size: 1.7rem; letter-spacing: 0.02em; }
+    header p { margin: 0.15rem 0; opacity: 0.85; font-size: 0.92rem; }
+    main { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+    section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.4rem 1.5rem; margin-top: 1.4rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    h2 { margin: 0 0 0.8rem; font-size: 1.2rem; color: var(--accent); }
+    h3 { margin: 1.1rem 0 0.4rem; font-size: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin: 0.6rem 0; }
+    th { text-align: left; background: #f3f0fb; padding: 0.5rem 0.7rem; border-bottom: 2px solid var(--border); font-weight: 600; }
+    td { padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; padding: 0.12rem 0.6rem; border-radius: 999px; font-size: 0.76rem; font-weight: 700; letter-spacing: 0.03em; }
+    .pass { background: #dcfce7; color: var(--ok); }
+    .warn { background: #fef3c7; color: var(--warn); }
+    .fail { background: #fee2e2; color: var(--bad); }
+    .info { background: #e0e7ff; color: #4338ca; }
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.8rem; margin: 0.4rem 0 0.6rem; }
+    .stat { border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 1rem; text-align: center; }
+    .stat .n { font-size: 1.7rem; font-weight: 700; color: var(--accent); }
+    .stat .n.ok { color: var(--ok); }
+    .stat .l { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    code, .mono { font-family: var(--mono); font-size: 0.85em; background: #f3f4f6; padding: 0.08rem 0.35rem; border-radius: 4px; }
+    pre { background: #17131f; color: #e5e0f0; padding: 0.9rem 1.1rem; border-radius: 8px; overflow-x: auto; font-size: 0.8rem; line-height: 1.5; }
+    ul { margin: 0.4rem 0; padding-left: 1.3rem; }
+    li { margin: 0.25rem 0; }
+    .footnote { color: var(--muted); font-size: 0.82rem; margin-top: 0.6rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+    <h1>PoSeeReview — Test Results &amp; CI/CD Report</h1>
+    <p>Generated 2026-07-01 · branch <span class="mono">master</span> @ <span class="mono">e3e13ec</span> · .NET 10.0.301 · Windows 11 (local run machine: MSI)</p>
+    <p>Scope: full tiered test execution + <span class="mono">.github/workflows/deploy.yml</span> analysis + standards compliance audit</p>
+</header>
+<main>
+
+<section>
+    <h2>1 · Test Execution Summary — all four tiers GREEN</h2>
+    <div class="stat-row">
+        <div class="stat"><div class="n ok">233</div><div class="l">Total executed</div></div>
+        <div class="stat"><div class="n ok">230</div><div class="l">Passed</div></div>
+        <div class="stat"><div class="n">3</div><div class="l">Skipped (documented)</div></div>
+        <div class="stat"><div class="n ok">0</div><div class="l">Failed</div></div>
+    </div>
+    <table>
+        <tr><th>Tier</th><th>Project</th><th>Result</th><th>Executed (passed/skipped)</th><th>Duration</th><th>Isolation model</th></tr>
+        <tr>
+            <td><strong>Unit</strong></td><td class="mono">PoSeeReview.UnitTests</td>
+            <td><span class="pill pass">PASSED</span></td><td>133 (133 / 0)</td><td>0.2 s</td>
+            <td>Pure No-I/O (Moq only — verified: no HttpClient / file / storage-client / WebApplicationFactory references)</td>
+        </tr>
+        <tr>
+            <td><strong>Integration</strong></td><td class="mono">PoSeeReview.IntegrationTests</td>
+            <td><span class="pill pass">PASSED</span></td><td>84 (81 / 3)</td><td>9 s</td>
+            <td>Testcontainers Azurite per <span class="mono">CustomWebApplicationFactory</span> (IAsyncLifetime; container disposed in <span class="mono">DisposeAsync</span>)</td>
+        </tr>
+        <tr>
+            <td><strong>E2E API</strong></td><td class="mono">PoSeeReview.E2EAPI</td>
+            <td><span class="pill pass">PASSED</span></td><td>10 (10 / 0)</td><td>0.9 s</td>
+            <td>In-memory host + Testcontainers Azurite, AI boundary mocked via <span class="mono">AiMockDelegatingHandler</span></td>
+        </tr>
+        <tr>
+            <td><strong>E2E UI</strong></td><td class="mono">PoSeeReview.E2EUI</td>
+            <td><span class="pill pass">PASSED</span></td><td>6 (6 / 0)</td><td>19 s</td>
+            <td>Playwright (.NET) vs live app at <span class="mono">E2E_BASE_URL=http://localhost:5000</span>; every test theory runs on BOTH mobile portrait (390×844, touch) and desktop landscape (1440×900) viewports</td>
+        </tr>
+    </table>
+    <p class="footnote">Skipped ×3: <span class="mono">"Serilog frozen logger conflict with WebApplicationFactory — moved to PoSeeReview.E2EAPI"</span> — intentional, coverage relocated, not lost. Note: the E2E UI browser build (<span class="mono">chromium_headless_shell v1148</span>) had to be installed via <span class="mono">playwright.ps1 install chromium</span> before the suite could run — a fresh machine will hit the same wall.</p>
+</section>
+
+<section>
+    <h2>2 · Tiered Ratio Compliance (target 100 / 50 / 25 / 25)</h2>
+    <table>
+        <tr><th>Tier</th><th>Target (authored tests)</th><th>Actual authored [Fact/Theory]</th><th>Status</th><th>Notes</th></tr>
+        <tr><td>Unit</td><td>100</td><td>101</td><td><span class="pill pass">ON TARGET</span></td><td>No-I/O rule holds across the tier</td></tr>
+        <tr><td>Integration</td><td>50</td><td>67</td><td><span class="pill warn">OVER (134%)</span></td><td>Includes FluentValidation tests (<span class="mono">Validation/TakedownRequestValidatorTests</span>, <span class="mono">TakedownsEndpointValidationTests</span>) — correctly placed per directive</td></tr>
+        <tr><td>E2E API</td><td>25</td><td>8</td><td><span class="pill fail">UNDER (32%)</span></td><td>Comics, Restaurants, Leaderboard slices lack endpoint-level E2E coverage</td></tr>
+        <tr><td>E2E UI</td><td>25</td><td>3</td><td><span class="pill fail">UNDER (12%)</span></td><td>Only the Auth slice is covered; no browser tests for search→comic loop, Hall of Fame, diagnostics</td></tr>
+    </table>
+</section>
+
+<section>
+    <h2>3 · CI/CD — <span class="mono">.github/workflows/deploy.yml</span> ("Build &amp; Deploy")</h2>
+    <h3>What the pipeline does</h3>
+    <table>
+        <tr><th>Stage</th><th>What it does</th><th>Verified how</th><th>Status</th></tr>
+        <tr>
+            <td><strong>Trigger</strong></td>
+            <td>Push to <span class="mono">master</span> or manual <span class="mono">workflow_dispatch</span>; concurrency group cancels superseded runs</td>
+            <td>Definition review</td><td><span class="pill pass">COMPLIANT</span></td>
+        </tr>
+        <tr>
+            <td><strong>Build job</strong></td>
+            <td>checkout → setup .NET 10 → NuGet cache → <span class="mono">dotnet publish src/PoSeeReview.Api -c Release</span> → upload artifact (1-day retention)</td>
+            <td><strong>Re-executed locally 2026-07-01:</strong> publish succeeded; trimmed Blazor WASM client packaged into <span class="mono">wwwroot/_framework</span> with .br/.gz precompression</td>
+            <td><span class="pill pass">WORKED</span></td>
+        </tr>
+        <tr>
+            <td><strong>Deploy job</strong></td>
+            <td>OIDC federated <span class="mono">azure/login@v2</span> (no publish-profile secret) → <span class="mono">azure/webapps-deploy@v3</span> to App Service <span class="mono">app-poseereview</span> (RG <span class="mono">PoSeeReview</span>, F1); gated to master pushes; GitHub environment <span class="mono">production</span></td>
+            <td>Definition review; live site smoke not run from this machine</td>
+            <td><span class="pill info">NOT VERIFIABLE LOCALLY</span></td>
+        </tr>
+        <tr>
+            <td><strong>Post-deploy smoke</strong></td>
+            <td>①  <span class="mono">/health</span> must return 200 (6 retries × 20 s) · ② index.html must reference <span class="mono">blazor.webassembly.js</span> (render-tree bootstrap) · ③ <span class="mono">/diag</span> must NOT leak unmasked secrets (regex for private keys / AccountKey)</td>
+            <td>Definition review + equivalent checks passed against the local instance (health 200 · Blazor boot OK · /diag values masked, e.g. <span class="mono">AIz***UVY</span>)</td>
+            <td><span class="pill warn">PARTIAL</span></td>
+        </tr>
+        <tr>
+            <td><strong>Test execution in YAML</strong></td>
+            <td>None — by design (“no test execution steps live within the YAML definition”)</td>
+            <td>Definition review</td><td><span class="pill pass">COMPLIANT</span></td>
+        </tr>
+    </table>
+    <h3>What worked / what did not</h3>
+    <ul>
+        <li><span class="pill pass">WORKED</span> The build stage is reproducible: the exact CI publish command completed cleanly on this machine against commit <span class="mono">e3e13ec</span>.</li>
+        <li><span class="pill pass">WORKED</span> Smoke checks ① and ② and ③ pass against the running app locally (health JSON healthy, WASM boot script referenced, secrets masked in /diag).</li>
+        <li><span class="pill warn">GAP</span> Smoke validation is <strong>curl-based, not browser-based</strong>: it confirms index.html references the boot script but never executes the WASM render tree. A repo script that does exactly this already exists (<span class="mono">SCRIPTS/webapp-smoke.js</span>, Playwright) but is not invoked post-deploy.</li>
+        <li><span class="pill fail">UNAVAILABLE</span> Cloud run history could not be retrieved from this machine: <span class="mono">gh</span> CLI is unauthenticated and the repo (<span class="mono">punkouter26/PoSeeReview</span>) is private to anonymous API calls. Run <span class="mono">gh auth login</span> then <span class="mono">gh run list --workflow deploy.yml</span> to append actual run outcomes.</li>
+    </ul>
+</section>
+
+<section>
+    <h2>4 · Standards Compliance Matrix</h2>
+    <table>
+        <tr><th>#</th><th>Directive</th><th>Status</th><th>Evidence</th></tr>
+        <tr><td>1</td><td>Tiered 100/50/25/25, Unit = No-I/O, validation tests in Integration</td>
+            <td><span class="pill warn">PARTIAL</span></td>
+            <td>Unit purity ✔, validator placement ✔, ratios ✘ (E2E tiers at 32% / 12% of target)</td></tr>
+        <tr><td>2</td><td>Lightweight CI/CD, build+deploy only, no tests in YAML</td>
+            <td><span class="pill pass">MET</span></td>
+            <td>Single 2-job workflow + smoke step; header comment codifies the trim-first policy</td></tr>
+        <tr><td>3</td><td>Lifecycle-managed Testcontainers Azurite with explicit teardown</td>
+            <td><span class="pill pass">MET</span></td>
+            <td><span class="mono">CustomWebApplicationFactory</span>: IAsyncLifetime, per-factory container, <span class="mono">DisposeAsync</span> → <span class="mono">_azuriteContainer.DisposeAsync()</span></td></tr>
+        <tr><td>4</td><td>Mock AI boundary via DelegatingHandler in test environments</td>
+            <td><span class="pill pass">MET</span></td>
+            <td><span class="mono">AiMockDelegatingHandler : DelegatingHandler, IMockable</span> wired by <span class="mono">AiMockServiceCollectionExtensions</span>; never registered in Production; drives the client "USING MOCK DATA" banner</td></tr>
+        <tr><td>5</td><td>Playwright E2E UI on mobile + desktop viewports</td>
+            <td><span class="pill pass">MET</span></td>
+            <td>Every E2EUI theory parameterized <span class="mono">("mobile")/("desktop")</span>; 390×844 touch + desktop landscape — but only 3 test scenarios exist (see #1)</td></tr>
+        <tr><td>6</td><td>Po{Solution} naming, Managed Identity + KV Secrets User, PoShared AI Hub</td>
+            <td><span class="pill warn">PARTIAL</span></td>
+            <td>Bicep: SystemAssigned identity, role <span class="mono">4633458b…</span> (KV Secrets User), storage RBAC, <span class="mono">AzureStorage__TableEndpoint/BlobEndpoint</span> app settings (no conn strings in prod); AI centralized on <span class="mono">po-aiservices-shared</span>. ✘ Key Vault still ships <span class="mono">ConnectionStrings:AzureTableStorage/AzureBlobStorage</span> secrets that local dev consumes — connection strings not yet eliminated end-to-end</td></tr>
+        <tr><td>7</td><td>Automated ARG governance (orphans, naming, idle &lt;5% CPU)</td>
+            <td><span class="pill warn">PARTIAL</span></td>
+            <td><span class="mono">SCRIPTS/audit-governance.ps1</span> implements all three audits + opt-in <span class="mono">-Shutdown</span> (prod never touched) — but nothing schedules it; it is manual-run only</td></tr>
+        <tr><td>8</td><td>Telemetry budgets (adaptive sampling, keep exceptions) + 30-day storage lifecycle</td>
+            <td><span class="pill pass">MET</span></td>
+            <td><span class="mono">TelemetryServiceCollectionExtensions</span>: prod-only adaptive sampling, Exceptions excluded from sampling, full fidelity elsewhere. <span class="mono">infra/modules/storage.bicep</span>: cool tier @ 7 d, delete @ 30 d, snapshots @ 7 d</td></tr>
+        <tr><td>9</td><td>Post-deployment smoke: render tree, /health JSON, masked /diag</td>
+            <td><span class="pill warn">PARTIAL</span></td>
+            <td>All three checks exist in deploy.yml but via curl; render tree is inferred (script tag present) rather than executed in a browser</td></tr>
+    </table>
+</section>
+
+<section>
+    <h2>5 · Supplementary — browser audit of the live app (this session)</h2>
+    <p>A 15-point Playwright verification ran against <span class="mono">http://localhost:5000</span> after the NET_RUN_10 fixes: <strong>15/15 passed</strong> — no horizontal overflow at 390 px/320 px, auth-gated header, zero broken leaderboard images, read-only comic views (0 generation POSTs from Hall of Fame), scores stable across views, self-hosted fonts (0 Google Fonts requests), takedowns endpoint 400/401 (not 503) with the dev API key.</p>
+    <pre>Unit          133/133 passed        0.2 s
+Integration    81/84 passed (3 skip) 9 s
+E2E API        10/10 passed          0.9 s
+E2E UI          6/6 passed           19 s   (mobile + desktop, live app)
+CI build step  dotnet publish -c Release → OK (trimmed WASM packaged)
+Browser audit  15/15 checks passed</pre>
+</section>
+
+<footer style="text-align:center; color:var(--muted); font-size:0.8rem; padding:1.2rem;">
+    PoSeeReview · generated by automated audit · 2026-07-01
+</footer>
+</main>
+</body>
+</html>
