@@ -68,11 +68,15 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
     clientAffinityEnabled: false
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
+      // Explicit startup command: the publish output ships BOTH PoSeeReview.Api.runtimeconfig.json
+      // and PoSeeReview.Client.runtimeconfig.json (hosted Blazor WASM), which breaks Linux App
+      // Service auto-detection — the container then serves the hostingstart parking page.
+      appCommandLine: 'dotnet PoSeeReview.Api.dll'
       alwaysOn: false          // allow scale-to-zero on free/B1
       http20Enabled: true
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
-      healthCheckPath: '/api/health/live'
+      healthCheckPath: '/health/live'
 
       // ── App settings ──────────────────────────────────────────────────────
       // NOTE: WEBSITES_CONTAINER_START_TIME_LIMIT is critical.
