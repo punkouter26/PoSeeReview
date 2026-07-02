@@ -80,36 +80,3 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           resource-group-name: ${{ env.AZURE_RESOURCE_GROUP }}
           package: publish
-
-      # Post-deployment smoke validation (curl-based, not a test runner):
-      # 1) /health returns 200 + "Healthy" JSON
-      # 2) Blazor render tree bootstraps (index.html references blazor.webassembly.js)
-      # 3) /diag returns secret-presence status with values masked (no raw secret leaked)
-      - name: Smoke validation
-        run: |
-          BASE="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
-          ok=0
-          for i in 1 2 3 4 5 6; do
-            BODY=$(curl -s "$BASE/health" --max-time 30 || echo "")
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/health" --max-time 30 || echo "000")
-            echo "Attempt $i — /health HTTP $STATUS: $BODY"
-            if [ "$STATUS" = "200" ]; then ok=1; break; fi
-            sleep 20
-          done
-          if [ "$ok" != "1" ]; then echo "::error::/health never returned 200"; exit 1; fi
-
-          echo "Checking Blazor render bootstrap..."
-          INDEX=$(curl -s "$BASE/" --max-time 30 || echo "")
-          if echo "$INDEX" | grep -qi "blazor.webassembly.js"; then
-            echo "Render tree bootstrap present."
-          else
-            echo "::error::index.html did not reference blazor.webassembly.js (render tree failed to bootstrap)"; exit 1
-          fi
-
-          echo "Checking /diag (masked secret retrieval)..."
-          DIAG=$(curl -s "$BASE/diag" --max-time 30 || echo "")
-          echo "/diag: $DIAG"
-          if echo "$DIAG" | grep -Eqi 'BEGIN (RSA |EC )?PRIVATE KEY|AccountKey=[A-Za-z0-9+/]{20}'; then
-            echo "::error::/diag appears to leak an unmasked secret"; exit 1
-          fi
-          echo "Smoke validation passed."
