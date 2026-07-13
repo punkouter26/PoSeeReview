@@ -39,6 +39,13 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(AzureOpenAIOptions.SectionName));
         services.Configure<ComicOptions>(
             configuration.GetSection(ComicOptions.SectionName));
+        services.Configure<HuggingFaceOptions>(
+            configuration.GetSection(HuggingFaceOptions.SectionName));
+
+        // Master switch: when on, HuggingFace replaces BOTH AI providers — chat (Azure OpenAI
+        // → Qwen) and image generation (Google Imagen → FLUX). Off by default; Google Maps
+        // (restaurant data) is unaffected either way. See the AI-provider blocks below.
+        var useHuggingFace = configuration.GetValue<bool>("UseHuggingFace");
 
         // Storage clients: cloud resolves via System-assigned Managed Identity against the
         // account endpoints (NET_RULES 5.4); connection strings remain only for local Azurite.
@@ -87,19 +94,24 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
         }
 
-        // Register Azure OpenAI client
-        var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName)
-            .Get<AzureOpenAIOptions>()
-            ?? throw new InvalidOperationException("AzureOpenAI configuration is required");
-
-        if (string.IsNullOrEmpty(openAiOptions.Endpoint) || string.IsNullOrEmpty(openAiOptions.ApiKey))
+        // Register Azure OpenAI client — only when Azure is the active chat provider. When
+        // UseHuggingFace is on, the chat path is Qwen (below) and Azure config may be absent,
+        // so we must not fail-fast on missing AzureOpenAI settings.
+        if (!useHuggingFace)
         {
-            throw new InvalidOperationException("AzureOpenAI Endpoint and ApiKey must be configured");
-        }
+            var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName)
+                .Get<AzureOpenAIOptions>()
+                ?? throw new InvalidOperationException("AzureOpenAI configuration is required");
 
-        services.AddSingleton(_ => new AzureOpenAIClient(
-            new Uri(openAiOptions.Endpoint),
-            new AzureKeyCredential(openAiOptions.ApiKey)));
+            if (string.IsNullOrEmpty(openAiOptions.Endpoint) || string.IsNullOrEmpty(openAiOptions.ApiKey))
+            {
+                throw new InvalidOperationException("AzureOpenAI Endpoint and ApiKey must be configured");
+            }
+
+            services.AddSingleton(_ => new AzureOpenAIClient(
+                new Uri(openAiOptions.Endpoint),
+                new AzureKeyCredential(openAiOptions.ApiKey)));
+        }
 
         // Provision tables + blob container once at startup (fail-fast) instead of per-request.
         services.AddHostedService<TableStorageInitializer>();
@@ -137,12 +149,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRestaurantService, RestaurantService>();
 
         services.AddScoped<IBlobStorageService, BlobStorageService>();
-        services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
 
-        // Named HttpClient used by GeminiComicService — generous timeout for image generation.
-        // Standard resilience handler provides retry/timeout/circuit-breaker on 5xx/429/timeouts,
-        // replacing the hand-rolled Polly retry that previously lived in GeminiComicService.
-        services.AddHttpClient("GeminiApi")
+        // Chat provider (strangeness analysis + panel captions): Azure OpenAI, or Qwen via HF.
+        if (useHuggingFace)
+            services.AddScoped<IAzureOpenAIService, HuggingFaceChatService>();
+        else
+            services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
+
+        // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
+        // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.
+        // Both use a named HttpClient with generous timeouts (image gen is slow) and the standard
+        // resilience handler for retry/timeout/circuit-breaker on 5xx/429/timeouts.
+        var imageClientName = useHuggingFace ? "HuggingFaceApi" : "GeminiApi";
+        services.AddHttpClient(imageClientName)
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
             .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90))
             .AddStandardResilienceHandler(options =>
@@ -157,12 +176,15 @@ public static class ServiceCollectionExtensions
                 options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(90);
             });
 
-        services.AddScoped<IImageGenerationService>(sp =>
-            new GeminiComicService(
-                sp.GetRequiredService<IHttpClientFactory>(),
-                sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
-                sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
+        if (useHuggingFace)
+            services.AddScoped<IImageGenerationService, HuggingFaceComicService>();
+        else
+            services.AddScoped<IImageGenerationService>(sp =>
+                new GeminiComicService(
+                    sp.GetRequiredService<IHttpClientFactory>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
+                    sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();

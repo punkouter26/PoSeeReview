@@ -176,3 +176,6 @@ TESTRESULTS/
 
 # Playwright test artifacts
 tests/e2e/playwright-last.json
+
+# Personal Claude Code permission overrides
+.claude/settings.local.json
