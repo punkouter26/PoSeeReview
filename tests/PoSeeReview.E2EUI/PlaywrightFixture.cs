@@ -26,7 +26,9 @@ public sealed class PlaywrightFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _playwright = await Playwright.CreateAsync();
-        Browser = await _playwright.Chromium.LaunchAsync(new() { Headless = true });
+        // Headless by default (CI); set HEADED=1 to watch the run in a real Chrome window.
+        var headed = string.Equals(Environment.GetEnvironmentVariable("HEADED"), "1", StringComparison.OrdinalIgnoreCase);
+        Browser = await _playwright.Chromium.LaunchAsync(new() { Headless = !headed });
     }
 
     /// <summary>
