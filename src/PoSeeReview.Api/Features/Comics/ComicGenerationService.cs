@@ -359,17 +359,28 @@ public class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
-    /// Returns true when a SAS URL's `se` (signed expiry) is already past or within 2 hours.
-    /// Triggers a proactive refresh so callers never receive an expired URL.
+    /// Returns true when a comic URL needs its read SAS refreshed: either the SAS `se`
+    /// (signed expiry) is already past or within 2 hours, or the URL points at a private
+    /// Azure Blob endpoint with no SAS token at all. The latter self-heals URLs that were
+    /// persisted unsigned — e.g. a transient User Delegation SAS failure at write time left
+    /// a bare "https://{account}.blob.core.windows.net/..." URL that a private container
+    /// rejects (broken image). Azurite/local emulator URLs are signed with an account key
+    /// and never hit that branch, so they are left alone.
     /// </summary>
     private static bool IsSasExpiringSoon(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return false;
         try
         {
-            var query = new Uri(url).Query;
+            var uri = new Uri(url);
+            var query = uri.Query;
             var seIdx = query.IndexOf("se=", StringComparison.OrdinalIgnoreCase);
-            if (seIdx < 0) return false;
+            if (seIdx < 0)
+            {
+                // No SAS token. Refresh only for real Azure Blob URLs (private container needs
+                // a SAS to be readable); skip Azurite/other hosts which sign a different way.
+                return uri.Host.EndsWith(".blob.core.windows.net", StringComparison.OrdinalIgnoreCase);
+            }
 
             var seStart = seIdx + 3;
             var seEnd = query.IndexOf('&', seStart);
@@ -379,7 +390,7 @@ public class ComicGenerationService : IComicGenerationService
         }
         catch
         {
-            return false; // If URL has no SAS token (e.g. Azurite fallback), skip refresh
+            return false; // Malformed URL: leave it to the caller rather than churn refreshes
         }
     }
 
