@@ -19,8 +19,12 @@ public class BlobStorageService : IBlobStorageService
     private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<BlobStorageService> _logger;
     private readonly string _containerName;
-    // 8 days > 7-day comic cache: SAS token always outlives the cached comic record
+    // 8 days > 7-day comic cache: SAS token always outlives the cached comic record.
+    // Used for account-key SAS (local/Azurite).
     private static readonly TimeSpan SasTokenDuration = TimeSpan.FromDays(8);
+    // User Delegation SAS is capped by Azure at a 7-day key lifetime, so stay just under it.
+    // Reads refresh the SAS on demand (IsSasExpiringSoon), so this comfortably covers a comic.
+    private static readonly TimeSpan UserDelegationSasDuration = TimeSpan.FromDays(7) - TimeSpan.FromHours(1);
 
     public BlobStorageService(
         BlobServiceClient blobServiceClient,
@@ -72,8 +76,8 @@ public class BlobStorageService : IBlobStorageService
             }
         );
 
-        // Return SAS URL for read access (valid for 25 hours, matching comic 24h expiry + buffer)
-        return GenerateSasUrl(blobClient);
+        // Return a read-only SAS URL so the browser can load the image from a private container.
+        return await GenerateReadSasUrlAsync(blobClient);
     }
 
     /// <summary>
@@ -161,29 +165,69 @@ public class BlobStorageService : IBlobStorageService
 
         var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
         var blobClient = containerClient.GetBlobClient(blobName);
-        return Task.FromResult(GenerateSasUrl(blobClient));
+        return GenerateReadSasUrlAsync(blobClient);
     }
 
     /// <summary>
-    /// Generates a SAS URL with read-only access for the specified blob.
-    /// Falls back to the plain blob URI if SAS generation is not supported (e.g., Azurite without shared key).
+    /// Generates a read-only SAS URL for the blob so a browser can load it from the private
+    /// 'comics' container. Two signing paths:
+    ///   1. Account-key credential (local / Azurite): the client signs the SAS itself.
+    ///   2. Managed Identity / any token credential (production): there is no account key, so
+    ///      sign with a User Delegation Key obtained via the token credential. This is the only
+    ///      correct way to mint a SAS under Managed Identity — without it the caller previously
+    ///      got a bare, unsigned URL that a private container rejects (broken images in prod).
+    /// Only if both paths are unavailable does it fall back to the unsigned URI.
     /// </summary>
-    private string GenerateSasUrl(BlobClient blobClient)
+    private async Task<string> GenerateReadSasUrlAsync(BlobClient blobClient)
     {
+        // Path 1 — account key present (local dev / Azurite): sign locally, keep the 8-day window.
         if (blobClient.CanGenerateSasUri)
         {
-            var sasBuilder = new BlobSasBuilder
+            var keyedSas = new BlobSasBuilder
             {
                 BlobContainerName = blobClient.BlobContainerName,
                 BlobName = blobClient.Name,
                 Resource = "b",
                 ExpiresOn = DateTimeOffset.UtcNow.Add(SasTokenDuration)
             };
-            sasBuilder.SetPermissions(BlobSasPermissions.Read);
-            return blobClient.GenerateSasUri(sasBuilder).ToString();
+            keyedSas.SetPermissions(BlobSasPermissions.Read);
+            return blobClient.GenerateSasUri(keyedSas).ToString();
         }
 
-        // Fallback for Azurite or Managed Identity (no account key available)
-        return blobClient.Uri.ToString();
+        // Path 2 — Managed Identity: sign with a User Delegation Key (capped under the 7-day limit).
+        try
+        {
+            var startsOn = DateTimeOffset.UtcNow.AddMinutes(-15); // clock-skew buffer
+            var expiresOn = DateTimeOffset.UtcNow.Add(UserDelegationSasDuration);
+
+            var userDelegationKey = await _blobServiceClient.GetUserDelegationKeyAsync(startsOn, expiresOn);
+
+            var sasBuilder = new BlobSasBuilder
+            {
+                BlobContainerName = blobClient.BlobContainerName,
+                BlobName = blobClient.Name,
+                Resource = "b",
+                StartsOn = startsOn,
+                ExpiresOn = expiresOn
+            };
+            sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+            var blobUriBuilder = new BlobUriBuilder(blobClient.Uri)
+            {
+                Sas = sasBuilder.ToSasQueryParameters(userDelegationKey.Value, _blobServiceClient.AccountName)
+            };
+            return blobUriBuilder.ToUri().ToString();
+        }
+        catch (Exception ex)
+        {
+            // Last resort (e.g., the identity lacks the Storage Blob Data role that grants
+            // generateUserDelegationKey). Return the bare URL and surface the cause loudly —
+            // the image will fail to load, but the log points straight at the RBAC gap.
+            _logger.LogError(ex,
+                "Failed to generate User Delegation SAS for blob {BlobName}; returning unsigned URL. " +
+                "Ensure the managed identity holds a Storage Blob Data role on the account.",
+                blobClient.Name);
+            return blobClient.Uri.ToString();
+        }
     }
 }
