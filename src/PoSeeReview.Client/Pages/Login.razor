@@ -1,4 +1,5 @@
 @page "/login"
+@using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager Navigation
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
@@ -48,14 +49,30 @@
     [SupplyParameterFromQuery]
     public string? ReturnUrl { get; set; }
 
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthStateTask { get; set; }
+
     private bool IsDevelopment => HostEnvironment.Environment == "Development";
     private bool IsTest => HostEnvironment.Environment == "Test";
 
-    private string EscapedReturnUrl => Uri.EscapeDataString(
-        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") ? ReturnUrl : "/");
+    private string SafeReturnUrl =>
+        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//") ? ReturnUrl : "/";
 
-    protected override void OnInitialized()
+    private string EscapedReturnUrl => Uri.EscapeDataString(SafeReturnUrl);
+
+    protected override async Task OnInitializedAsync()
     {
+        // Already signed in? Don't show the login screen — send them where they were headed.
+        if (AuthStateTask is not null)
+        {
+            var authState = await AuthStateTask;
+            if (authState.User.Identity?.IsAuthenticated == true)
+            {
+                Navigation.NavigateTo(SafeReturnUrl, replace: true);
+                return;
+            }
+        }
+
         if (IsTest)
         {
             LoginAsGuest();

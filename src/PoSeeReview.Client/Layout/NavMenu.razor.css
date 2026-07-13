@@ -244,7 +244,9 @@
         padding: 0.3rem 0.6rem;
     }
 
-    .nav-user-email {
+    /* Collapse to a dot-only circle: hide every textual label, not just the email,
+       so a long "Anon"/userId can't overflow the 28px badge and clip to "And…". */
+    .nav-user-label {
         display: none;
     }
 

@@ -51,15 +51,15 @@
                                 <span class="nav-user-dot" aria-hidden="true"></span>
                                 @if (_devSession.IsAnonymous)
                                 {
-                                    <span>Anon</span>
+                                    <span class="nav-user-label">Anon</span>
                                 }
                                 else if (!string.IsNullOrWhiteSpace(_devSession.Email))
                                 {
-                                    <span class="nav-user-email" title="@_devSession.Email">@_devSession.Email</span>
+                                    <span class="nav-user-email nav-user-label" title="@_devSession.Email">@_devSession.Email</span>
                                 }
                                 else
                                 {
-                                    <span>@_devSession.UserId</span>
+                                    <span class="nav-user-label">@_devSession.UserId</span>
                                 }
                             </div>
                         }

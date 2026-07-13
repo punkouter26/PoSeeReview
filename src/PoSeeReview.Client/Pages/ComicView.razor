@@ -90,7 +90,7 @@
                 <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack" Disabled="@(_isSharing || _isRegenerating)">
                     &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Find Another")
                 </FluentButton>
-                <FluentButton Appearance="Appearance.Stealth" @onclick="RegenerateComic" Disabled="@(_isRegenerating || _isSharing)">
+                <FluentButton Appearance="Appearance.Outline" @onclick="RegenerateComic" Disabled="@(_isRegenerating || _isSharing)">
                     @if (_isRegenerating)
                     {
                         <text>Regenerating...</text>

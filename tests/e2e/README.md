@@ -16,7 +16,7 @@ cd tests\e2e
 npm test
 ```
 
-Playwright starts the API on `https://localhost:5001`, waits for `/api/health/live`, runs tests, and shuts down when complete.
+Playwright starts the API on `https://localhost:5001`, waits for `/health/live`, runs tests, and shuts down when complete.
 
 ## Commands
 

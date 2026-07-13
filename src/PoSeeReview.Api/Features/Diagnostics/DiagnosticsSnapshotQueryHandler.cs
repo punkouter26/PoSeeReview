@@ -48,24 +48,33 @@ public class DiagnosticsSnapshotQueryHandler(
 
     public async Task<DiagnosticsSnapshotDto> ExecuteAsync(CancellationToken cancellationToken)
     {
+        // /diag is anonymous so platform probes can reach it, but the full configuration
+        // surface (endpoint URLs, ClientId/tenant GUIDs, masked-but-partial secret prefixes)
+        // must never leak in Production. Outside Development we return dependency health and
+        // key *existence* only — no values, no config dump.
+        var exposeConfigDetail = environment.IsDevelopment();
+
         var configEntries = new List<ConfigurationValueDto>();
-        foreach (var section in configuration.AsEnumerable())
+        if (exposeConfigDetail)
         {
-            if (ShouldExcludeKey(section.Key) || !ShouldIncludeKey(section.Key))
+            foreach (var section in configuration.AsEnumerable())
             {
-                continue;
-            }
+                if (ShouldExcludeKey(section.Key) || !ShouldIncludeKey(section.Key))
+                {
+                    continue;
+                }
 
-            if (string.IsNullOrWhiteSpace(section.Value))
-            {
-                continue;
-            }
+                if (string.IsNullOrWhiteSpace(section.Value))
+                {
+                    continue;
+                }
 
-            configEntries.Add(new ConfigurationValueDto
-            {
-                Key = section.Key,
-                Value = MaskValue(section.Key, section.Value)
-            });
+                configEntries.Add(new ConfigurationValueDto
+                {
+                    Key = section.Key,
+                    Value = MaskValue(section.Key, section.Value)
+                });
+            }
         }
 
         HealthReport? dependencyReport = null;
@@ -93,7 +102,8 @@ public class DiagnosticsSnapshotQueryHandler(
         {
             Key = key,
             Exists = !string.IsNullOrWhiteSpace(configuration[key]),
-            Value = MaskValue(key, configuration[key])
+            // Masked value (partial prefix/suffix) is still identifying — Development only.
+            Value = exposeConfigDetail ? MaskValue(key, configuration[key]) : null
         })
         .ToList();
 

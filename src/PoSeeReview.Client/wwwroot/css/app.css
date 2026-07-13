@@ -119,6 +119,21 @@ code {
     color: #c02d76;
 }
 
+/* Primary "Use My Location" CTA. Global (not scoped) because FluentButton's rendered
+   <fluent-button> root does not carry Index.razor's scoped-CSS attribute, so a scoped
+   width:100% never applied — leaving a small, left-aligned button. Stretch the host and
+   its shadow-DOM control, and enforce a >=44px touch target. */
+.location-btn {
+    width: 100%;
+}
+
+.location-btn::part(control) {
+    width: 100%;
+    min-height: 2.75rem;
+    justify-content: center;
+    font-weight: 600;
+}
+
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
     color: var(--bs-secondary-color);
     text-align: end;

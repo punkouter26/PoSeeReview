@@ -144,9 +144,9 @@
     line-height: 1.6;
 }
 
-.location-btn {
-    width: 100%;
-}
+/* .location-btn sizing lives in global app.css: FluentButton renders a child-component
+   <fluent-button> whose root never receives this component's scoped-CSS attribute, so a
+   scoped rule here silently does nothing. See app.css ".location-btn". */
 
 .divider-or {
     display: flex;

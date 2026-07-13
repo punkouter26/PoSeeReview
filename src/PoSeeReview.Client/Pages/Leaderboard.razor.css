@@ -40,11 +40,10 @@
 
 .region-chips {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 0.5rem;
-    overflow-x: auto;
     padding-bottom: 0.25rem;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
     max-width: 100%;
 }
 

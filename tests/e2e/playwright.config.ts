@@ -37,7 +37,7 @@ export default defineConfig({
     },
     {
       command: 'pwsh -NoProfile -Command "Set-Location C:\\; dotnet run --project c:/Users/punko/Downloads/PoSeeReview/src/PoSeeReview.Api/PoSeeReview.Api.csproj --launch-profile https"',
-      url: 'https://localhost:5001/api/health/live',
+      url: 'https://localhost:5001/health/live',
       reuseExistingServer: true,
       ignoreHTTPSErrors: true,
       timeout: 120 * 1000,
