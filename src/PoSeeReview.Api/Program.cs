@@ -165,18 +165,18 @@ try
     // Feature slices (Minimal API, MapGroup) — NET_RULES 3.3
     app.MapFeatureEndpoints();
 
-    // Fallback to index.html for all non-API routes (Blazor SPA routing)
-    app.MapWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), builder =>
-    {
-        builder.UseRouting();
-        builder.UseAuthentication();
-        builder.UseAuthorization();
-        builder.UseEndpoints(endpoints =>
-        {
-            // The SPA shell must load for unauthenticated users so the client can drive login.
-            endpoints.MapFallbackToFile("index.html").AllowAnonymous();
-        });
-    });
+    // Unknown /api/* routes must 404 as an API rather than fall through to the SPA shell.
+    // Registered as a low-priority catch-all: real feature endpoints are more specific and
+    // still win; only unmatched /api paths reach this.
+    app.MapFallback("/api/{**segments}", () => Results.NotFound()).AllowAnonymous();
+
+    // SPA fallback: serve index.html for every other unmatched (non-file) route so an
+    // unauthenticated user can load the Blazor client and reach the login flow. This MUST be a
+    // real endpoint in the main pipeline — not a MapWhen branch after UseAuthorization — so its
+    // AllowAnonymous metadata is honored and the deny-by-default fallback policy
+    // (RequireAuthenticatedUser) no longer 401s "/" and client-side routes. In a published app
+    // "/" is not served by static files, so without this the SPA shell never loads.
+    app.MapFallbackToFile("index.html").AllowAnonymous();
 
     if (!isTestMode)
     {
