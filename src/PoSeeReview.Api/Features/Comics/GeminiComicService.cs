@@ -5,8 +5,6 @@ using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using PoSeeReview.Core.Interfaces;
-using Polly;
-using Polly.Retry;
 
 namespace PoSeeReview.Infrastructure.Comics;
 
@@ -26,7 +24,6 @@ public sealed class GeminiComicService : IImageGenerationService
     private readonly TelemetryClient _telemetryClient;
     private readonly string _apiKey;
     private readonly string _model;
-    private readonly AsyncRetryPolicy<byte[]> _retryPolicy;
 
     public GeminiComicService(
         IHttpClientFactory httpClientFactory,
@@ -46,22 +43,10 @@ public sealed class GeminiComicService : IImageGenerationService
         _model = configuration["Google:GeminiModel"] ?? DefaultModel;
 
         _logger.LogInformation("GeminiComicService initialised. Model: {Model} (using Imagen :predict endpoint)", _model);
-
-        // Retry on transient HTTP failures (429 rate-limit, 503 overload) with exponential back-off
-        _retryPolicy = Policy<byte[]>
-            .Handle<HttpRequestException>()
-            .Or<InvalidOperationException>(ex => ex.Message.Contains("503") || ex.Message.Contains("429") || ex.Message.Contains("RESOURCE_EXHAUSTED"))
-            .WaitAndRetryAsync(
-                retryCount: 3,
-                sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                onRetry: (outcome, delay, attempt, _) =>
-                    _logger.LogWarning(
-                        "Gemini image generation retry {Attempt} after {Delay}s. Reason: {Reason}",
-                        attempt, delay.TotalSeconds, outcome.Exception?.Message ?? "unknown"));
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount)
+    public async Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(narrative))
             throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
@@ -72,19 +57,19 @@ public sealed class GeminiComicService : IImageGenerationService
         var stopwatch = Stopwatch.StartNew();
         var prompt = BuildComicPrompt(SanitizeNarrative(narrative), panelCount);
 
+        // Transient failures (429/503/timeouts) are handled by the standard resilience handler
+        // configured on the "GeminiApi" HttpClient, so no hand-rolled retry is needed here.
         byte[] imageBytes;
         try
         {
-            imageBytes = await _retryPolicy.ExecuteAsync(
-                ct => GenerateAsync(prompt, ct), CancellationToken.None);
+            imageBytes = await GenerateAsync(prompt, cancellationToken);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("safety", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("declined", StringComparison.OrdinalIgnoreCase)
             || ex.Message.Contains("blocked", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogWarning("Gemini blocked content, falling back to generic comic prompt");
-            imageBytes = await _retryPolicy.ExecuteAsync(
-                ct => GenerateAsync(BuildFallbackComicPrompt(panelCount), ct), CancellationToken.None);
+            imageBytes = await GenerateAsync(BuildFallbackComicPrompt(panelCount), cancellationToken);
         }
 
         stopwatch.Stop();

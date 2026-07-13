@@ -13,7 +13,14 @@ public sealed class BffAuthenticationStateProvider(HttpClient http) : Authentica
 {
     private static readonly AuthenticationState Anonymous = new(new ClaimsPrincipal(new ClaimsIdentity()));
 
-    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+    // /auth/me is hit on every outgoing API request; cache the resolved state so we make at most
+    // one round-trip per auth change. Invalidated by NotifyStateChanged() after login/logout.
+    private Task<AuthenticationState>? _cachedState;
+
+    public override Task<AuthenticationState> GetAuthenticationStateAsync()
+        => _cachedState ??= FetchAuthenticationStateAsync();
+
+    private async Task<AuthenticationState> FetchAuthenticationStateAsync()
     {
         AuthStateDto? state;
         try
@@ -46,5 +53,9 @@ public sealed class BffAuthenticationStateProvider(HttpClient http) : Authentica
     }
 
     /// <summary>Re-queries /auth/me after a login/logout navigation completes.</summary>
-    public void NotifyStateChanged() => NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    public void NotifyStateChanged()
+    {
+        _cachedState = null;
+        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
 }

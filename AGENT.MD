@@ -44,8 +44,15 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   via docker-compose). `Storage:UseAzurite=true` (appsettings.Development.json)
   short-circuits Key Vault connection strings and pins both clients to the local
   Azurite emulator — without it local dev hits the real storage account.
-- `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset); Development uses the
-  placeholder `local-dev-takedown-key` from appsettings.Development.json.
+- Tables and the comics blob container are provisioned once at startup by
+  `TableStorageInitializer` (`IHostedService`) — repositories no longer call
+  `CreateIfNotExists` per request; startup fails fast if storage is unreachable (§5.6).
+- `UseForwardedHeaders` (X-Forwarded-For/Proto, App Service proxy trusted) runs first in
+  the pipeline so rate-limiting and request logging see the real client IP.
+- Typed HttpClients (`GoogleMaps`, `GeminiApi`) use `AddStandardResilienceHandler`;
+  external AI/Maps calls propagate the request `CancellationToken` end to end.
+- `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset, timing-safe compare);
+  Development uses the placeholder `local-dev-takedown-key` from appsettings.Development.json.
 
 ## Authentication (BFF cookie proxy)
 
@@ -57,10 +64,24 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   issuer validator against `AzureAd:AllowedTenants`. Callback `/auth/callback/microsoft`
   must be registered in the App Registration web redirect list.
 - `FakeAuthHandler` maps `X-Fake-User`/`X-Fake-Roles` headers to a ClaimsPrincipal
-  (Dev/Test only; its constructor throws in Production).
-- Client: `BffAuthenticationStateProvider` polls `/auth/me`; every page except
-  `/login` carries `[Authorize]` behind `AuthorizeRouteView`. Login views: Prod =
-  Microsoft only; Dev = Microsoft + guest; Test = forced guest bypass.
+  (Dev/Test only; its constructor throws in Production). Integration/E2EAPI test clients
+  authenticate by sending `X-Fake-User` (set in their `CustomWebApplicationFactory` /
+  test ctor) so they satisfy the fallback policy below.
+- Server-side authz is DENY BY DEFAULT (NET_RULES 4.5): a `FallbackPolicy` of
+  `RequireAuthenticatedUser` is set in `AddBffAuthentication`. Public endpoints opt out
+  with `.AllowAnonymous()`: `/auth`, `/health*`, `/diag`, `/api/devsession`,
+  `/api/takedowns` (own X-Api-Key filter), OpenAPI/Scalar, and the SPA `index.html`
+  fallback. Business slices (comics/restaurants/leaderboard) require an authenticated
+  session. Client `[Authorize]` is UI-only.
+- Identity: `HttpContextRequestIdentityAccessor` derives the user id from the cookie
+  principal. The `X-Dev-User-Id`/`X-Dev-UserId` header override is honored ONLY outside
+  Production (client stamps it only in Dev/Test too) — never trust client headers for
+  identity in Prod.
+- Client: `BffAuthenticationStateProvider` polls `/auth/me` (memoized; invalidated on
+  `NotifyStateChanged`); every page except `/login` carries `[Authorize]` behind
+  `AuthorizeRouteView`. Login views: Prod = Microsoft only; Dev = Microsoft + guest;
+  Test = forced guest bypass. Client stamps `X-Session-ID` + a per-request
+  `X-Correlation-ID` on every API call.
 
 ## Observability
 

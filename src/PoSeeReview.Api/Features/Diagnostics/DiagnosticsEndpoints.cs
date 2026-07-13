@@ -13,7 +13,9 @@ internal static class DiagnosticsEndpoints
 {
     public static IEndpointRouteBuilder MapDiagnosticsEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/diag").WithTags("Diagnostics");
+        // UI-less ops diagnostics, active in Dev+Prod (NET_RULES 3.2). Values are masked and
+        // exception detail is environment-gated, so the route stays anonymous for platform probes.
+        var group = app.MapGroup("/diag").WithTags("Diagnostics").AllowAnonymous();
 
         group.MapGet("", async (
             IWebHostEnvironment environment,

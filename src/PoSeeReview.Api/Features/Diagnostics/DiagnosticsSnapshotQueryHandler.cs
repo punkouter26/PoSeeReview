@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PoSeeReview.Application.Abstractions;
 using PoSeeReview.Shared.Dtos;
@@ -10,6 +11,7 @@ public class DiagnosticsSnapshotQueryHandler(
     IConfiguration configuration,
     HealthCheckService healthCheckService,
     ICurrentRequestIdentityAccessor currentRequestIdentityAccessor,
+    IHostEnvironment environment,
     ILogger<DiagnosticsSnapshotQueryHandler> logger)
 {
     private static readonly string[] SensitivePatterns =
@@ -115,7 +117,8 @@ public class DiagnosticsSnapshotQueryHandler(
                         Status = entry.Value.Status.ToString(),
                         Description = entry.Value.Description,
                         DurationMilliseconds = entry.Value.Duration.TotalMilliseconds,
-                        Error = entry.Value.Exception?.ToString()
+                        // Full exception detail (types, stack) only outside Production — /diag is anonymous.
+                        Error = environment.IsDevelopment() ? entry.Value.Exception?.ToString() : null
                     }).ToList()
                 },
             KeyStatus = keyStatus,

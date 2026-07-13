@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FluentValidation;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using PoSeeReview.Api;
 using PoSeeReview.Api.Features;
@@ -62,6 +63,15 @@ try
         });
     }
 
+    // Trust Azure App Service's front-end proxy so RemoteIpAddress (rate-limiter partitioning,
+    // request logging) reflects the real client IP from X-Forwarded-For rather than the proxy.
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+
     // Add services to the container.
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddSingleton(TimeProvider.System);
@@ -106,6 +116,9 @@ try
 
     var app = builder.Build();
 
+    // Must run before anything that reads the client IP/scheme (rate limiter, logging, redirects).
+    app.UseForwardedHeaders();
+
     // Add custom middleware
     // Removed RequestLoggingMiddleware - using Serilog's UseSerilogRequestLogging instead
     app.UseExceptionHandler();
@@ -122,9 +135,9 @@ try
     // Configure the HTTP request pipeline.
     if (app.Environment.IsDevelopment())
     {
-        app.MapOpenApi();
+        app.MapOpenApi().AllowAnonymous();
         app.UseWebAssemblyDebugging();
-        app.MapScalarApiReference(); // Modern API documentation UI
+        app.MapScalarApiReference().AllowAnonymous(); // Modern API documentation UI
     }
 
     // HTTPS redirection — disabled for Test/E2E environments that operate on HTTP only.
@@ -160,7 +173,8 @@ try
         builder.UseAuthorization();
         builder.UseEndpoints(endpoints =>
         {
-            endpoints.MapFallbackToFile("index.html");
+            // The SPA shell must load for unauthenticated users so the client can drive login.
+            endpoints.MapFallbackToFile("index.html").AllowAnonymous();
         });
     });
 

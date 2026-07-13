@@ -57,7 +57,8 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
     public async Task<List<Restaurant>> GetByRegionAsync(string region)
     {
         var partitionKey = RestaurantEntity.CreatePartitionKey(region);
-        var filter = $"PartitionKey eq '{partitionKey}'";
+        var filter = TableClient.CreateQueryFilter<RestaurantEntity>(
+            e => e.PartitionKey == partitionKey);
 
         var entities = await QueryAsync(filter);
 

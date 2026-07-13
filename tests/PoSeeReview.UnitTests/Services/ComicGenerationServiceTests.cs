@@ -1,3 +1,4 @@
+using System.Threading;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.Extensions.Logging;
@@ -51,8 +52,9 @@ public class ComicGenerationServiceTests
         _mockTextOverlayService.Setup(x => x.AddTextOverlayAsync(
             It.IsAny<byte[]>(),
             It.IsAny<string>(),
-            It.IsAny<int>()))
-            .ReturnsAsync((byte[] imageBytes, string narrative, int panelCount) => imageBytes);
+            It.IsAny<int>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync((byte[] imageBytes, string narrative, int panelCount, CancellationToken ct) => imageBytes);
 
         return new ComicGenerationService(
             _mockRestaurantService.Object,
@@ -96,7 +98,7 @@ public class ComicGenerationServiceTests
         Assert.Equal(placeId, result.PlaceId);
         Assert.Equal(cachedComic.ImageUrl, result.ImageUrl);
         Assert.True(result.IsCached);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Never);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -131,7 +133,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((75, 3, "A restaurant where waiters dress as dinosaurs and food is served in shoes."));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -142,7 +144,7 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.False(result.IsCached);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Once);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockComicRepository.Verify(x => x.UpsertAsync(It.IsAny<Comic>()), Times.Once);
     }
 
@@ -178,7 +180,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((75, 3, "Test narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -189,7 +191,7 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.False(result.IsCached);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()), Times.Once);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -244,7 +246,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((50, 2, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -285,7 +287,7 @@ public class ComicGenerationServiceTests
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .Callback<List<string>, CancellationToken>((reviews, _) => capturedReviews = reviews)
             .ReturnsAsync((60, 2, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -322,7 +324,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((70, 3, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -382,7 +384,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((80, 4, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");

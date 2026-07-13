@@ -61,14 +61,13 @@ internal sealed class GlobalExceptionHandler(
                 : "An unexpected error occurred. Please try again later."
         };
 
-        // Surface the classification in the response body so Blazor's TryExtractProblemDetail
-        // can include it in the user-facing toast (hypothesis #10).
-        problemDetails.Extensions["errorType"] = errorType;
-        problemDetails.Extensions["provider"] = provider;
-        problemDetails.Extensions["phase"] = phase;
-
+        // Only surface internal classification (exception type names, provider/phase) and stack
+        // traces in Development — in Production these disclose internal SDK/type detail to callers.
         if (environment.IsDevelopment())
         {
+            problemDetails.Extensions["errorType"] = errorType;
+            problemDetails.Extensions["provider"] = provider;
+            problemDetails.Extensions["phase"] = phase;
             problemDetails.Extensions["stackTrace"] = exception.StackTrace;
             problemDetails.Extensions["innerException"] = exception.InnerException?.Message;
         }

@@ -170,7 +170,7 @@ public class ComicGenerationService : IComicGenerationService
 
         // Generate comic image (panel count capped at 2)
         var imageStopwatch = Stopwatch.StartNew();
-        var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount);
+        var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount, cancellationToken);
         imageStopwatch.Stop();
 
         _logger.LogInformation("Generated {PanelCount}-panel comic image: {Size} bytes", panelCount, imageBytes.Length);
@@ -178,7 +178,7 @@ public class ComicGenerationService : IComicGenerationService
 
         // Add readable text caption overlays to each panel (replaces garbled AI-rendered text)
         var overlayStopwatch = Stopwatch.StartNew();
-        imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, narrative, panelCount);
+        imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, narrative, panelCount, cancellationToken);
         overlayStopwatch.Stop();
 
         _logger.LogInformation("Added text overlay to comic: {Size} bytes", imageBytes.Length);

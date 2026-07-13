@@ -289,7 +289,7 @@ public class GoogleMapsService
     /// <summary>
     /// Gets detailed place information including reviews
     /// </summary>
-    public async Task<Restaurant?> GetPlaceDetailsAsync(string placeId)
+    public async Task<Restaurant?> GetPlaceDetailsAsync(string placeId, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Fetching place details for {PlaceId}", placeId);
 
@@ -297,11 +297,11 @@ public class GoogleMapsService
         request.Headers.Add("X-Goog-Api-Key", _apiKey);
         request.Headers.Add("X-Goog-FieldMask", "id,displayName,formattedAddress,location,rating,userRatingCount,reviews");
 
-        var response = await _httpClient.SendAsync(request);
+        var response = await _httpClient.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            var errorContent = await response.Content.ReadAsStringAsync();
+            var errorContent = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Google Places API error fetching details for {PlaceId}: {StatusCode} - {ErrorContent}",
                 placeId, response.StatusCode, errorContent);
 
@@ -319,7 +319,7 @@ public class GoogleMapsService
                 statusCode: response.StatusCode);
         }
 
-        var result = await response.Content.ReadFromJsonAsync<PlaceDetailsResponse>();
+        var result = await response.Content.ReadFromJsonAsync<PlaceDetailsResponse>(cancellationToken: cancellationToken);
 
         if (result == null)
         {

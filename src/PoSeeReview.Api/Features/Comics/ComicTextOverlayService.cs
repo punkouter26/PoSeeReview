@@ -30,7 +30,7 @@ public class ComicTextOverlayService : IComicTextOverlayService
     /// Adds per-panel English caption overlays using GPT-generated text.
     /// Each panel gets its own caption box at the top, covering any garbled AI-rendered text.
     /// </summary>
-    public async Task<byte[]> AddTextOverlayAsync(byte[] imageBytes, string narrative, int panelCount)
+    public async Task<byte[]> AddTextOverlayAsync(byte[] imageBytes, string narrative, int panelCount, CancellationToken cancellationToken = default)
     {
         if (imageBytes == null || imageBytes.Length == 0)
             throw new ArgumentException("Image bytes cannot be empty", nameof(imageBytes));
@@ -43,7 +43,7 @@ public class ComicTextOverlayService : IComicTextOverlayService
         try
         {
             // Use GPT to generate unique, naturally flowing English for each panel
-            var dialogues = await _azureOpenAIService.GeneratePanelDialogueAsync(narrative, panelCount);
+            var dialogues = await _azureOpenAIService.GeneratePanelDialogueAsync(narrative, panelCount, cancellationToken);
 
             using var image = Image.Load<Rgba32>(imageBytes);
             var panelBounds = GetPanelBounds(image.Width, image.Height, panelCount);

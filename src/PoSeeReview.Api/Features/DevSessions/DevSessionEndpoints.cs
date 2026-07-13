@@ -11,7 +11,8 @@ internal static class DevSessionEndpoints
 {
     public static IEndpointRouteBuilder MapDevSessionEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/devsession").WithTags("DevSession");
+        // The WASM client probes this before/while establishing a session, so it must be anonymous.
+        var group = app.MapGroup("/api/devsession").WithTags("DevSession").AllowAnonymous();
 
         group.MapGet("", (DevSessionCommandHandler handler, IWebHostEnvironment env) =>
             Results.Ok(IsEnabled(env) ? handler.GetCurrentSession() : DevSessionCommandHandler.BuildAnonymousSession()));

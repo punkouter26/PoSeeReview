@@ -146,7 +146,7 @@ internal static class ComicsEndpoints
                 type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
                 title: "Internal Server Error",
                 statusCode: StatusCodes.Status500InternalServerError,
-                detail: $"Comic generation failed: {ex.Message}",
+                detail: "Comic generation failed. Please try again later.",
                 instance: http.Request.Path);
         }
     }

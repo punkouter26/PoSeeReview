@@ -2,6 +2,7 @@ using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Azure.Storage.Sas;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PoSeeReview.Core.Interfaces;
 using PoSeeReview.Infrastructure.Configuration;
@@ -16,15 +17,18 @@ namespace PoSeeReview.Infrastructure.Storage;
 public class BlobStorageService : IBlobStorageService
 {
     private readonly BlobServiceClient _blobServiceClient;
+    private readonly ILogger<BlobStorageService> _logger;
     private readonly string _containerName;
     // 8 days > 7-day comic cache: SAS token always outlives the cached comic record
     private static readonly TimeSpan SasTokenDuration = TimeSpan.FromDays(8);
 
     public BlobStorageService(
         BlobServiceClient blobServiceClient,
-        IOptions<AzureStorageOptions> options)
+        IOptions<AzureStorageOptions> options,
+        ILogger<BlobStorageService> logger)
     {
         _blobServiceClient = blobServiceClient;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _containerName = options.Value.ComicsContainerName ?? "comics";
     }
 
@@ -44,9 +48,9 @@ public class BlobStorageService : IBlobStorageService
         if (imageBytes == null || imageBytes.Length == 0)
             throw new ArgumentNullException(nameof(imageBytes));
 
-        // Ensure container exists (no public access — SAS URLs are used instead)
+        // Container creation is handled once at startup by TableStorageInitializer; the upload
+        // hot path must not incur a blocking existence check on every request.
         var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        await containerClient.CreateIfNotExistsAsync(PublicAccessType.None);
 
         // Blob name format: {comicId}.png
         var blobName = $"{comicId}.png";
@@ -112,10 +116,10 @@ public class BlobStorageService : IBlobStorageService
                 await blobClientFromUrl.DeleteIfExistsAsync();
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Log but don't throw - deletion is best-effort for takedown
-            // Actual logging would be done through ILogger if injected
+            _logger.LogWarning(ex, "Failed to delete blob for takedown: {BlobUrl}", blobUrl);
         }
     }
 

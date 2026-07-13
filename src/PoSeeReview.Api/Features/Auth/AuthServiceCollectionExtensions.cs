@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
@@ -88,7 +89,13 @@ internal static class AuthServiceCollectionExtensions
             authBuilder.AddScheme<AuthenticationSchemeOptions, FakeAuthHandler>(FakeAuthHandler.SchemeName, null);
         }
 
-        services.AddAuthorization();
+        // Deny by default (NET_RULES 4.1/4.5): every endpoint requires an authenticated
+        // session unless it explicitly opts out with AllowAnonymous (auth, health, diag,
+        // devsession, takedowns, SPA fallback). Client [Authorize] is UI-only.
+        services.AddAuthorizationBuilder()
+            .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build());
         return services;
     }
 

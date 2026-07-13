@@ -15,24 +15,30 @@ internal static class HealthEndpointExtensions
 
     internal static void MapHealthEndpoints(this WebApplication app)
     {
+        // Full exception detail (types, stack traces) is exposed only in Development or when the
+        // operator explicitly opts in via HealthChecks:DetailedErrors — /health is anonymous, so
+        // it must not leak internals to unauthenticated callers in Production.
+        var includeDetails = app.Environment.IsDevelopment()
+            || app.Configuration.GetValue<bool>("HealthChecks:DetailedErrors");
+
         app.MapHealthChecks("/health", new HealthCheckOptions
         {
-            ResponseWriter = WriteDetailedResponse
-        });
+            ResponseWriter = (context, report) => WriteDetailedResponse(context, report, includeDetails)
+        }).AllowAnonymous();
 
         app.MapHealthChecks("/health/live", new HealthCheckOptions
         {
             Predicate = _ => false // Returns 200 if app is running
-        });
+        }).AllowAnonymous();
 
         app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {
             Predicate = check => check.Tags.Contains("ready"),
             ResponseWriter = WriteReadyResponse
-        });
+        }).AllowAnonymous();
     }
 
-    private static Task WriteDetailedResponse(HttpContext context, HealthReport report)
+    private static Task WriteDetailedResponse(HttpContext context, HealthReport report, bool includeDetails)
     {
         context.Response.ContentType = "application/json";
 
@@ -47,7 +53,7 @@ internal static class HealthEndpointExtensions
                 Status = e.Value.Status.ToString(),
                 Description = e.Value.Description,
                 DurationMilliseconds = e.Value.Duration.TotalMilliseconds,
-                Exception = e.Value.Exception?.ToString()
+                Exception = includeDetails ? e.Value.Exception?.ToString() : null
             }).ToList()
         };
 

@@ -14,7 +14,10 @@ internal static class TakedownsEndpoints
 {
     public static IEndpointRouteBuilder MapTakedownEndpoints(this IEndpointRouteBuilder app)
     {
+        // Guarded by its own X-Api-Key filter rather than a user session, so it opts out of
+        // the cookie-based fallback policy.
         var group = app.MapGroup("/api/takedowns").WithTags("Takedowns")
+            .AllowAnonymous()
             .AddEndpointFilter(new ApiKeyEndpointFilter(
                 app.ServiceProvider.GetRequiredService<IConfiguration>(),
                 app.ServiceProvider.GetRequiredService<ILogger<ApiKeyEndpointFilter>>())
@@ -41,13 +44,12 @@ internal static class TakedownsEndpoints
             return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        logger.LogInformation("Received takedown request for {PlaceId} from {Requester}", request.PlaceId, request.RequesterName);
+        // Do not log/telemeter requester name or contact email — they are PII (NET_RULES 5.1/6.1).
+        logger.LogInformation("Received takedown request for {PlaceId} in {Region}", request.PlaceId, request.Region);
 
         telemetryClient.TrackEvent("TakedownRequestReceived", new Dictionary<string, string>
         {
             ["PlaceId"] = request.PlaceId,
-            ["Requester"] = request.RequesterName,
-            ["Email"] = request.ContactEmail,
             ["Region"] = request.Region
         });
 

@@ -206,7 +206,7 @@ Return JSON in this exact format:
     /// Generates concise per-panel captions from a comic narrative using GPT.
     /// Uses low token budget to keep cost minimal.
     /// </summary>
-    public async Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount)
+    public async Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(narrative))
             return FallbackDialogue(narrative ?? string.Empty, panelCount);
@@ -238,7 +238,8 @@ Return JSON in this exact format:
         try
         {
             var response = await _chatRetryPolicy.ExecuteAsync(
-                () => chatClient.CompleteChatAsync(messages, options));
+                ct => chatClient.CompleteChatAsync(messages, options, ct),
+                cancellationToken);
 
             _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
 

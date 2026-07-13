@@ -27,7 +27,6 @@ public class ComicRepository : IComicRepository
     {
         var tableName = options.Value.ComicsTableName ?? "PoSeeReviewComics";
         _tableClient = tableServiceClient.GetTableClient(tableName);
-        _tableClient.CreateIfNotExists();
 
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -108,12 +107,13 @@ public class ComicRepository : IComicRepository
             throw new ArgumentException("PlaceId cannot be null or empty", nameof(placeId));
         }
 
-        var partitionKey = $"{PartitionKeyPrefix}_{placeId}";
-        var rowKey = generatedAt.ToString("yyyyMMddHHmmss");
-
         try
         {
-            await _tableClient.DeleteEntityAsync(partitionKey, rowKey);
+            // Comics are stored with PartitionKey=PartitionKeyPrefix and RowKey=placeId
+            // (see ComicEntity.FromDomain). The generatedAt timestamp is not part of the key.
+            await _tableClient.DeleteEntityAsync(
+                partitionKey: PartitionKeyPrefix,
+                rowKey: placeId);
             _logger.LogInformation(
                 "Deleted comic for PlaceId {PlaceId} generated at {GeneratedAt}",
                 placeId,
@@ -141,11 +141,12 @@ public class ComicRepository : IComicRepository
             throw new ArgumentException("PlaceId cannot be null or empty", nameof(placeId));
         }
 
-        var partitionKey = $"{PartitionKeyPrefix}_{placeId}";
         var comics = new List<Comic>();
 
+        // Comics are stored with PartitionKey=PartitionKeyPrefix and RowKey=placeId
+        // (see ComicEntity.FromDomain); there is at most one comic per place.
         var filter = TableClient.CreateQueryFilter<ComicEntity>(entity =>
-            entity.PartitionKey == partitionKey);
+            entity.PartitionKey == PartitionKeyPrefix && entity.RowKey == placeId);
 
         var query = _tableClient.QueryAsync<ComicEntity>(filter: filter);
 

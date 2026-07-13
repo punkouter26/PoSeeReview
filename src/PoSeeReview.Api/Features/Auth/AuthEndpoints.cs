@@ -14,7 +14,9 @@ internal static class AuthEndpoints
 {
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/auth").WithTags("Auth");
+        // Auth routes must be reachable without a session (login, logout, and /me so the
+        // client can discover it is unauthenticated) — opt out of the global fallback policy.
+        var group = app.MapGroup("/auth").WithTags("Auth").AllowAnonymous();
 
         group.MapGet("/login/microsoft", (string? returnUrl, IConfiguration configuration) =>
         {

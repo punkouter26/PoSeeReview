@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using PoSeeReview.Shared.Dtos;
@@ -13,14 +14,21 @@ public class DevSessionClient(
     IJSRuntime jsRuntime,
     DevSessionStateService sessionState,
     AuthenticationStateProvider authenticationStateProvider,
+    IWebAssemblyHostEnvironment hostEnvironment,
     ILogger<DevSessionClient> logger)
 {
     private const string DevUserHeader = "X-Dev-User-Id";
     private const string SessionHeader = "X-Session-ID";
+    private const string CorrelationHeader = "X-Correlation-ID";
     private const string StorageKey = "posee_dev_session";
     private const string SessionIdStorageKey = "posee_session_id";
     private DevSessionDto? _cachedSession;
     private string? _sessionId;
+
+    // The server trusts X-Dev-User-Id for identity, so it must only ever be sent from
+    // non-production environments where the dev-bypass flow is legitimate.
+    private bool IsDevOrTest =>
+        hostEnvironment.IsEnvironment("Development") || hostEnvironment.IsEnvironment("Test");
 
     public async Task<DevSessionDto?> GetCurrentSessionAsync(bool refreshFromServer = false, CancellationToken cancellationToken = default)
     {
@@ -55,7 +63,7 @@ public class DevSessionClient(
 
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/devsession");
         var existingSession = _cachedSession ?? await ReadStoredSessionAsync();
-        if (!string.IsNullOrWhiteSpace(existingSession?.UserId))
+        if (IsDevOrTest && !string.IsNullOrWhiteSpace(existingSession?.UserId))
         {
             request.Headers.Add(DevUserHeader, existingSession.UserId);
         }
@@ -108,7 +116,7 @@ public class DevSessionClient(
     public async Task AttachStoredHeaderAsync(HttpRequestMessage request)
     {
         var session = await GetCurrentSessionAsync();
-        if (!string.IsNullOrWhiteSpace(session?.UserId))
+        if (IsDevOrTest && !string.IsNullOrWhiteSpace(session?.UserId))
         {
             request.Headers.Remove(DevUserHeader);
             request.Headers.Add(DevUserHeader, session.UserId);
@@ -119,6 +127,11 @@ public class DevSessionClient(
         var sessionId = await GetOrCreateSessionIdAsync();
         request.Headers.Remove(SessionHeader);
         request.Headers.Add(SessionHeader, sessionId);
+
+        // Fresh per-request correlation id (§6.9) so the server ties its logs/traces back to this
+        // exact request instead of generating its own when the header is absent.
+        request.Headers.Remove(CorrelationHeader);
+        request.Headers.Add(CorrelationHeader, Guid.NewGuid().ToString("N"));
     }
 
     /// <summary>

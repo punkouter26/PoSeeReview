@@ -1,11 +1,13 @@
 @page "/comic/{PlaceId}"
 @attribute [Authorize]
+@implements IDisposable
 @using PoSeeReview.Shared.Dtos
 @using PoSeeReview.Client.Services
 @using System.Threading
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject ShareService ShareService
+@inject ILogger<ComicView> Logger
 
 <PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
 
@@ -279,7 +281,7 @@
                 if (!shared)
                 {
                     // User cancelled or error - show message
-                    Console.WriteLine("Share cancelled or not supported, copying link instead");
+                    Logger.LogWarning("Share cancelled or not supported, copying link instead");
                     await CopyLinkToClipboard(currentUrl);
                 }
             }
@@ -291,7 +293,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sharing comic: {ex.Message}");
+            Logger.LogError(ex, "Error sharing comic");
             // Silently fail - user experience shouldn't be disrupted
         }
         finally
@@ -319,7 +321,7 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error copying to clipboard: {ex.Message}");
+            Logger.LogError(ex, "Error copying to clipboard");
         }
     }
 

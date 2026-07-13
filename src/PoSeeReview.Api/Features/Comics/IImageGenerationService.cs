@@ -11,8 +11,9 @@ public interface IImageGenerationService
     /// </summary>
     /// <param name="narrative">Narrative describing the restaurant's strange aspects</param>
     /// <param name="panelCount">Number of panels (1-4)</param>
+    /// <param name="cancellationToken">Cancels the (potentially slow) image generation call</param>
     /// <returns>PNG image bytes</returns>
     /// <exception cref="ArgumentException">If narrative is empty or panelCount is invalid</exception>
     /// <exception cref="HttpRequestException">If the image generation API call fails</exception>
-    Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount);
+    Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount, CancellationToken cancellationToken = default);
 }

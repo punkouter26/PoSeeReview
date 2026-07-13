@@ -13,6 +13,9 @@ public class ApiContractTests : IClassFixture<CustomWebApplicationFactory<Progra
     public ApiContractTests(CustomWebApplicationFactory<Program> factory)
     {
         _client = factory.CreateClient();
+        // Business endpoints deny by default (NET_RULES 4.1/4.5); authenticate via the
+        // Test-only FakeAuth scheme so these contract calls exercise the real handlers.
+        _client.DefaultRequestHeaders.Add("X-Fake-User", "contract-test-user");
     }
 
     [Fact]

@@ -12,6 +12,7 @@ public interface IComicTextOverlayService
     /// <param name="imageBytes">Original comic image</param>
     /// <param name="narrative">Story narrative to extract dialogue from</param>
     /// <param name="panelCount">Number of panels (1-4)</param>
+    /// <param name="cancellationToken">Cancels the underlying caption-generation model call</param>
     /// <returns>Modified image with text overlay</returns>
-    Task<byte[]> AddTextOverlayAsync(byte[] imageBytes, string narrative, int panelCount);
+    Task<byte[]> AddTextOverlayAsync(byte[] imageBytes, string narrative, int panelCount, CancellationToken cancellationToken = default);
 }

@@ -30,7 +30,6 @@ public class LeaderboardRepository : ILeaderboardRepository
 
         var tableName = options.Value.LeaderboardTableName ?? "PoSeeReviewLeaderboard";
         _tableClient = tableServiceClient.GetTableClient(tableName);
-        _tableClient.CreateIfNotExists();
     }
 
     /// <summary>
@@ -51,8 +50,11 @@ public class LeaderboardRepository : ILeaderboardRepository
 
         try
         {
+            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+                e => e.PartitionKey == partitionKey);
+
             var query = _tableClient.QueryAsync<LeaderboardEntity>(
-                filter: $"PartitionKey eq '{partitionKey}'",
+                filter: filter,
                 maxPerPage: limit
             );
 
@@ -93,9 +95,10 @@ public class LeaderboardRepository : ILeaderboardRepository
         try
         {
             // Query by PlaceId property (secondary filter)
-            var query = _tableClient.QueryAsync<LeaderboardEntity>(
-                filter: $"PartitionKey eq '{partitionKey}' and PlaceId eq '{placeId}'"
-            );
+            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+                e => e.PartitionKey == partitionKey && e.PlaceId == placeId);
+
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
             await foreach (var entity in query)
             {
@@ -119,9 +122,10 @@ public class LeaderboardRepository : ILeaderboardRepository
         try
         {
             // Cross-region scan — same pattern as DeleteByPlaceIdAsync
-            var query = _tableClient.QueryAsync<LeaderboardEntity>(
-                filter: $"PlaceId eq '{placeId}'"
-            );
+            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+                e => e.PlaceId == placeId);
+
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
             await foreach (var entity in query)
             {
@@ -152,18 +156,37 @@ public class LeaderboardRepository : ILeaderboardRepository
         if (string.IsNullOrWhiteSpace(entry.Region))
             throw new ArgumentException("Region is required", nameof(entry));
 
-        // Check if entry exists with different score
-        var existing = await GetByPlaceIdAsync(entry.PlaceId, entry.Region);
+        var partitionKey = $"{PartitionKeyPrefix}_{entry.Region}";
 
-        if (existing != null && Math.Abs(existing.StrangenessScore - entry.StrangenessScore) > 0.01)
+        // Find the existing row's RowKey (RowKey embeds the score, so a score change means a
+        // different RowKey). We capture it before writing so we can prune the stale row afterwards.
+        string? oldRowKey = null;
+        var existingFilter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+            e => e.PartitionKey == partitionKey && e.PlaceId == entry.PlaceId);
+
+        await foreach (var existing in _tableClient.QueryAsync<LeaderboardEntity>(filter: existingFilter))
         {
-            // Score changed - need to delete old entry (different RowKey)
-            await DeleteAsync(entry.PlaceId, entry.Region);
+            oldRowKey = existing.RowKey;
+            break;
         }
 
         var entity = LeaderboardEntity.FromDomain(entry);
 
+        // Rewrite-then-delete: write the new row FIRST so a crash mid-operation can never leave
+        // the entry missing. Only after the new row is durable do we remove the stale one.
         await _tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace);
+
+        if (oldRowKey != null && oldRowKey != entity.RowKey)
+        {
+            try
+            {
+                await _tableClient.DeleteEntityAsync(partitionKey, oldRowKey);
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                // Stale row already gone — nothing to prune.
+            }
+        }
 
         _logger.LogInformation(
             "Upserted leaderboard entry for {PlaceId} in {Region} with score {Score}",
@@ -187,9 +210,10 @@ public class LeaderboardRepository : ILeaderboardRepository
         try
         {
             // Find the entity by PlaceId to get its RowKey
-            var query = _tableClient.QueryAsync<LeaderboardEntity>(
-                filter: $"PartitionKey eq '{partitionKey}' and PlaceId eq '{placeId}'"
-            );
+            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+                e => e.PartitionKey == partitionKey && e.PlaceId == placeId);
+
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
             await foreach (var entity in query)
             {
@@ -221,9 +245,10 @@ public class LeaderboardRepository : ILeaderboardRepository
         try
         {
             // Query all partitions for this PlaceId
-            var query = _tableClient.QueryAsync<LeaderboardEntity>(
-                filter: $"PlaceId eq '{placeId}'"
-            );
+            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
+                e => e.PlaceId == placeId);
+
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
             var deleteCount = 0;
             await foreach (var entity in query)

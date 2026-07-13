@@ -163,5 +163,11 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
 
         // Set a valid browser user agent to pass UserAgentValidationMiddleware
         client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+        // Endpoints now deny by default (NET_RULES 4.1/4.5). Authenticate via the Test-only
+        // FakeAuth scheme (§4.4 guest bypass) so business-endpoint calls carry an authenticated
+        // principal instead of hitting the fallback policy with 401.
+        client.DefaultRequestHeaders.Add("X-Fake-User", "integration-test-user");
+        client.DefaultRequestHeaders.Add("X-Fake-Roles", "User");
     }
 }

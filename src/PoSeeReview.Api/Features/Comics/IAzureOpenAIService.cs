@@ -22,6 +22,7 @@ public interface IAzureOpenAIService
     /// </summary>
     /// <param name="narrative">Narrative paragraph from <see cref="AnalyzeStrangenessAsync"/></param>
     /// <param name="panelCount">Number of panels (1-4)</param>
+    /// <param name="cancellationToken">Cancels the model call when the caller abandons the request</param>
     /// <returns>List of exactly <paramref name="panelCount"/> short captions</returns>
-    Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount);
+    Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount, CancellationToken cancellationToken = default);
 }

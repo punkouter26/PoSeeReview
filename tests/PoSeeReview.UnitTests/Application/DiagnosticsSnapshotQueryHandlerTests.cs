@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PoSeeReview.Application.Abstractions;
@@ -26,6 +27,7 @@ public class DiagnosticsSnapshotQueryHandlerTests
             config,
             _healthCheckServiceMock.Object,
             _identityAccessorMock.Object,
+            Mock.Of<IHostEnvironment>(e => e.EnvironmentName == Environments.Development),
             NullLogger<DiagnosticsSnapshotQueryHandler>.Instance);
     }
 

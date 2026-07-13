@@ -101,6 +101,9 @@ public static class ServiceCollectionExtensions
             new Uri(openAiOptions.Endpoint),
             new AzureKeyCredential(openAiOptions.ApiKey)));
 
+        // Provision tables + blob container once at startup (fail-fast) instead of per-request.
+        services.AddHostedService<TableStorageInitializer>();
+
         // Register repositories
         services.AddScoped<RestaurantRepository>();
         services.AddScoped<IComicRepository, ComicRepository>();
@@ -136,10 +139,23 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBlobStorageService, BlobStorageService>();
         services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
 
-        // Named HttpClient used by GeminiComicService — generous timeout for image generation
+        // Named HttpClient used by GeminiComicService — generous timeout for image generation.
+        // Standard resilience handler provides retry/timeout/circuit-breaker on 5xx/429/timeouts,
+        // replacing the hand-rolled Polly retry that previously lived in GeminiComicService.
         services.AddHttpClient("GeminiApi")
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
-            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90))
+            .AddStandardResilienceHandler(options =>
+            {
+                options.Retry.MaxRetryAttempts = 3;
+                options.Retry.UseJitter = true;
+
+                // Image generation is slow, so budgets stay generous but within the 90s HttpClient
+                // timeout above. SamplingDuration must be >= 2x AttemptTimeout for the standard handler.
+                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(40);
+                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(90);
+            });
 
         services.AddScoped<IImageGenerationService>(sp =>
             new GeminiComicService(

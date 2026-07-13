@@ -21,8 +21,8 @@ public class TableStorageRepository<T> where T : class, ITableEntity, new()
         _tableClient = tableServiceClient.GetTableClient(tableName);
         _logger = logger;
 
-        // Ensure table exists
-        _tableClient.CreateIfNotExists();
+        // Table creation is handled once at startup by TableStorageInitializer (a hosted service)
+        // rather than on every scoped construction, which would add a blocking network call per request.
     }
 
     public virtual async Task<T?> GetByIdAsync(string partitionKey, string rowKey, CancellationToken cancellationToken = default)

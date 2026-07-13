@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace PoSeeReview.Api.Middleware;
 
 /// <summary>
@@ -27,7 +30,7 @@ public sealed class ApiKeyEndpointFilter(IConfiguration configuration, ILogger<A
         }
 
         if (!http.Request.Headers.TryGetValue(ApiKeyHeader, out var suppliedKey)
-            || !string.Equals(suppliedKey, expectedKey, StringComparison.Ordinal))
+            || !FixedTimeEquals(suppliedKey.ToString(), expectedKey))
         {
             logger.LogWarning("ApiKey: invalid or missing {Header} for {Path}. RemoteIp={Ip}",
                 ApiKeyHeader, http.Request.Path, http.Connection.RemoteIpAddress);
@@ -39,4 +42,9 @@ public sealed class ApiKeyEndpointFilter(IConfiguration configuration, ILogger<A
 
         return await next(context);
     }
+
+    private static bool FixedTimeEquals(string supplied, string expected) =>
+        CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(supplied),
+            Encoding.UTF8.GetBytes(expected));
 }
