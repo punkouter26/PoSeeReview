@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
-using PoSeeReview.Core.Interfaces;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Features.Leaderboard;
 
@@ -47,7 +49,7 @@ internal static class LeaderboardEndpoints
         {
             logger.LogInformation("Fetching leaderboard for region {Region} with limit {Limit}", region, limit);
 
-            var entries = await leaderboardService.GetTopComicsAsync(region, limit);
+            var entries = await leaderboardService.GetTopComicsAsync(RegionCode.From(region), limit);
 
             var response = new LeaderboardResponse
             {
@@ -55,10 +57,10 @@ internal static class LeaderboardEndpoints
                 Entries = entries.Select(e => new LeaderboardEntryDto
                 {
                     Rank = e.Rank,
-                    PlaceId = e.PlaceId,
+                    PlaceId = e.PlaceId.Value,
                     RestaurantName = e.RestaurantName,
                     Address = e.Address,
-                    Region = e.Region,
+                    Region = e.Region.Value,
                     StrangenessScore = e.StrangenessScore,
                     ComicBlobUrl = e.ComicBlobUrl,
                     LastUpdated = e.LastUpdated

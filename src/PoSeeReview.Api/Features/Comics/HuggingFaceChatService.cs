@@ -1,15 +1,13 @@
 using System.ClientModel;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenAI;
 using OpenAI.Chat;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
+using OpenAI;
 
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// HuggingFace chat backend for strangeness analysis + panel captions, used in place of

@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Thrown when a restaurant does not have enough reviews (or appropriate reviews after filtering)

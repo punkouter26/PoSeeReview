@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591;NU1902;NU1903</NoWarn>
+    <NoWarn>$(NoWarn);1591</NoWarn>
     <UserSecretsId>seereview-api-secrets</UserSecretsId>
     <!-- Git-driven versioning via MinVer -->
     <MinVerTagPrefix>v</MinVerTagPrefix>
@@ -20,6 +20,12 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!-- Direct reference so the fixed Microsoft.OpenApi wins over the vulnerable
+         2.0.0 that Microsoft.AspNetCore.OpenApi 10.0.7 drags in (GHSA-v5pm-xwqc-g5wc). -->
+    <PackageReference Include="Microsoft.OpenApi" />
+    <!-- Git-tag-driven versioning; the MinVer* properties in Directory.Build.props
+         and MinVerTagPrefix above were inert without this reference. -->
+    <PackageReference Include="MinVer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
     <PackageReference Include="OpenTelemetry" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
@@ -35,8 +41,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="PoSeeReview.UnitTests" />
-    <InternalsVisibleTo Include="PoSeeReview.IntegrationTests" />
+    <InternalsVisibleTo Include="PoSeeReview.Unit" />
+    <InternalsVisibleTo Include="PoSeeReview.Integration" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,29 +1,29 @@
 using System.Net;
-using Azure;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
 using Azure.Identity;
 using Azure.Storage.Blobs;
+using Azure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Comics;
-using PoSeeReview.Infrastructure.Configuration;
-using PoSeeReview.Infrastructure.Leaderboard;
-using PoSeeReview.Infrastructure.Repositories;
-using PoSeeReview.Infrastructure.Restaurants;
-using PoSeeReview.Infrastructure.Storage;
-using Polly;
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Features.Restaurants;
+using PoSeeReview.Api.Storage;
 using Polly.Retry;
+using Polly;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure;
+namespace PoSeeReview.Api;
 
 /// <summary>
 /// Extension methods for registering infrastructure services
 /// </summary>
-public static class ServiceCollectionExtensions
+public static class InfrastructureServiceCollectionExtensions
 {
     /// <summary>
     /// Registers all infrastructure services and Azure clients
@@ -39,6 +39,8 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(AzureOpenAIOptions.SectionName));
         services.Configure<ComicOptions>(
             configuration.GetSection(ComicOptions.SectionName));
+        services.Configure<LeaderboardOptions>(
+            configuration.GetSection(LeaderboardOptions.SectionName));
         services.Configure<HuggingFaceOptions>(
             configuration.GetSection(HuggingFaceOptions.SectionName));
 

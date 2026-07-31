@@ -1,6 +1,6 @@
 using Azure;
 
-namespace PoSeeReview.Core.Utilities;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Utility methods for Azure service retry logic

@@ -1,8 +1,8 @@
-using Azure;
 using Azure.Data.Tables;
+using Azure;
 using Microsoft.Extensions.Logging;
 
-namespace PoSeeReview.Infrastructure.Repositories;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Base class for Azure Table Storage repositories.

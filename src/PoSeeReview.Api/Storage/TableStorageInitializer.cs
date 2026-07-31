@@ -1,12 +1,11 @@
 using Azure.Data.Tables;
-using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Infrastructure.Configuration;
 
-namespace PoSeeReview.Infrastructure.Storage;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Startup initializer that provisions the Table Storage tables and Blob container once at

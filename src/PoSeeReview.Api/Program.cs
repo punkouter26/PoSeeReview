@@ -1,23 +1,22 @@
+
+// Only configure Serilog if not running in test mode
 using System.Diagnostics;
 using FluentValidation;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using PoSeeReview.Api;
-using PoSeeReview.Api.Features;
 using PoSeeReview.Api.Features.Auth;
+using PoSeeReview.Api.Features;
 using PoSeeReview.Api.Health;
 using PoSeeReview.Api.HostedServices;
 using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Telemetry;
-using PoSeeReview.Application;
-using PoSeeReview.Application.Abstractions;
-using PoSeeReview.Infrastructure;
+using PoSeeReview.Shared;
+using PoSeeReview.Api;
 using Scalar.AspNetCore;
-using Serilog;
 using Serilog.Events;
+using Serilog;
 
-// Only configure Serilog if not running in test mode
 var isTestMode = Environment.GetEnvironmentVariable("DISABLE_SERILOG") == "true";
 
 if (!isTestMode)
@@ -143,7 +142,7 @@ try
     // HTTPS redirection — disabled for Test/E2E environments that operate on HTTP only.
     // Health endpoints are exempted so platform probes (App Service / load balancers) that
     // hit them over plain HTTP get a 200 instead of a 307 redirect that reads as "unhealthy".
-    if (!app.Environment.IsEnvironment("Test"))
+    if (!app.Environment.IsEnvironment(HostEnvironments.Test))
     {
         app.UseWhen(
             ctx => !ctx.Request.Path.StartsWithSegments("/health"),

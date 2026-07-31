@@ -1,9 +1,10 @@
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Application.Abstractions;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Api.Identity;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Application.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 public class GenerateComicCommandHandler(
     IComicGenerationService comicGenerationService,
@@ -11,16 +12,16 @@ public class GenerateComicCommandHandler(
     ICurrentRequestIdentityAccessor currentRequestIdentityAccessor,
     ILogger<GenerateComicCommandHandler> logger)
 {
-    public async Task<Comic> ExecuteAsync(string placeId, bool forceRegenerate, CancellationToken cancellationToken)
+    public async Task<Comic> ExecuteAsync(PlaceId placeId, bool forceRegenerate, CancellationToken cancellationToken)
     {
         var comic = await comicGenerationService.GenerateComicAsync(placeId, forceRegenerate, cancellationToken);
         var currentUserId = currentRequestIdentityAccessor.GetCurrentUserId();
 
-        if (!string.IsNullOrWhiteSpace(currentUserId) && comic.RequestedByUserId != currentUserId)
+        if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)
         {
             comic.RequestedByUserId = currentUserId;
             await comicRepository.UpsertAsync(comic);
-            logger.LogInformation("Persisted request user {UserId} for comic {ComicId}", currentUserId, comic.Id);
+            logger.LogInformation("Persisted request user {UserId} for comic {ComicId}", currentUserId.Value, comic.Id.Value);
         }
 
         return comic;

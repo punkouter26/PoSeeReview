@@ -1,13 +1,13 @@
-using Azure;
 using Azure.Data.Tables;
+using Azure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
-using PoSeeReview.Infrastructure.Entities;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Repositories;
+namespace PoSeeReview.Api.Features.Leaderboard;
 
 /// <summary>
 /// Repository for leaderboard persistence with inverted RowKey for descending sort
@@ -19,7 +19,6 @@ public class LeaderboardRepository : ILeaderboardRepository
 {
     private readonly TableClient _tableClient;
     private readonly ILogger<LeaderboardRepository> _logger;
-    private const string PartitionKeyPrefix = "LEADERBOARD";
 
     public LeaderboardRepository(
         TableServiceClient tableServiceClient,
@@ -36,15 +35,15 @@ public class LeaderboardRepository : ILeaderboardRepository
     /// Gets top N entries for a region, sorted by strangeness score descending
     /// Leverages inverted RowKey for efficient sorting
     /// </summary>
-    public async Task<List<LeaderboardEntry>> GetTopEntriesAsync(string region, int limit)
+    public async Task<List<LeaderboardEntry>> GetTopEntriesAsync(RegionCode region, int limit)
     {
-        if (string.IsNullOrWhiteSpace(region))
+        if (region.IsEmpty)
             throw new ArgumentException("Region cannot be empty", nameof(region));
 
         if (limit < 1 || limit > 50)
             throw new ArgumentException("Limit must be between 1 and 50", nameof(limit));
 
-        var partitionKey = $"{PartitionKeyPrefix}_{region}";
+        var partitionKey = LeaderboardEntity.PartitionKeyFor(region);
 
         _logger.LogInformation("Fetching top {Limit} entries for region {Region}", limit, region);
 
@@ -82,21 +81,23 @@ public class LeaderboardRepository : ILeaderboardRepository
     /// <summary>
     /// Gets a specific entry by placeId and region
     /// </summary>
-    public async Task<LeaderboardEntry?> GetByPlaceIdAsync(string placeId, string region)
+    public async Task<LeaderboardEntry?> GetByPlaceIdAsync(PlaceId placeId, RegionCode region)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
             throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
 
-        if (string.IsNullOrWhiteSpace(region))
+        if (region.IsEmpty)
             throw new ArgumentException("Region cannot be empty", nameof(region));
 
-        var partitionKey = $"{PartitionKeyPrefix}_{region}";
+        var placeKey = placeId.Value;
+
+        var partitionKey = LeaderboardEntity.PartitionKeyFor(region);
 
         try
         {
             // Query by PlaceId property (secondary filter)
             var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-                e => e.PartitionKey == partitionKey && e.PlaceId == placeId);
+                e => e.PartitionKey == partitionKey && e.PlaceId == placeKey);
 
             var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
@@ -114,16 +115,18 @@ public class LeaderboardRepository : ILeaderboardRepository
     }
 
     /// <inheritdoc />
-    public async Task<LeaderboardEntry?> GetByPlaceIdAsync(string placeId)
+    public async Task<LeaderboardEntry?> GetByPlaceIdAsync(PlaceId placeId)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
             throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
+
+        var placeKey = placeId.Value;
 
         try
         {
             // Cross-region scan — same pattern as DeleteByPlaceIdAsync
             var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-                e => e.PlaceId == placeId);
+                e => e.PlaceId == placeKey);
 
             var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
@@ -150,19 +153,21 @@ public class LeaderboardRepository : ILeaderboardRepository
         if (entry == null)
             throw new ArgumentNullException(nameof(entry));
 
-        if (string.IsNullOrWhiteSpace(entry.PlaceId))
+        if (entry.PlaceId.IsEmpty)
             throw new ArgumentException("PlaceId is required", nameof(entry));
 
-        if (string.IsNullOrWhiteSpace(entry.Region))
+        if (entry.Region.IsEmpty)
             throw new ArgumentException("Region is required", nameof(entry));
 
-        var partitionKey = $"{PartitionKeyPrefix}_{entry.Region}";
+        var placeKey = entry.PlaceId.Value;
+
+        var partitionKey = LeaderboardEntity.PartitionKeyFor(entry.Region);
 
         // Find the existing row's RowKey (RowKey embeds the score, so a score change means a
         // different RowKey). We capture it before writing so we can prune the stale row afterwards.
         string? oldRowKey = null;
         var existingFilter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-            e => e.PartitionKey == partitionKey && e.PlaceId == entry.PlaceId);
+            e => e.PartitionKey == partitionKey && e.PlaceId == placeKey);
 
         await foreach (var existing in _tableClient.QueryAsync<LeaderboardEntity>(filter: existingFilter))
         {
@@ -197,21 +202,23 @@ public class LeaderboardRepository : ILeaderboardRepository
     /// Deletes a leaderboard entry
     /// Must query first to find the RowKey (which includes score)
     /// </summary>
-    public async Task DeleteAsync(string placeId, string region)
+    public async Task DeleteAsync(PlaceId placeId, RegionCode region)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
             throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
 
-        if (string.IsNullOrWhiteSpace(region))
+        if (region.IsEmpty)
             throw new ArgumentException("Region cannot be empty", nameof(region));
 
-        var partitionKey = $"{PartitionKeyPrefix}_{region}";
+        var placeKey = placeId.Value;
+
+        var partitionKey = LeaderboardEntity.PartitionKeyFor(region);
 
         try
         {
             // Find the entity by PlaceId to get its RowKey
             var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-                e => e.PartitionKey == partitionKey && e.PlaceId == placeId);
+                e => e.PartitionKey == partitionKey && e.PlaceId == placeKey);
 
             var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 
@@ -235,10 +242,12 @@ public class LeaderboardRepository : ILeaderboardRepository
     /// Deletes all leaderboard entries for a specific place ID across all regions
     /// Used for takedown requests
     /// </summary>
-    public async Task DeleteByPlaceIdAsync(string placeId)
+    public async Task DeleteByPlaceIdAsync(PlaceId placeId)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
             throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
+
+        var placeKey = placeId.Value;
 
         _logger.LogInformation("Deleting all leaderboard entries for PlaceId {PlaceId}", placeId);
 
@@ -246,7 +255,7 @@ public class LeaderboardRepository : ILeaderboardRepository
         {
             // Query all partitions for this PlaceId
             var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-                e => e.PlaceId == placeId);
+                e => e.PlaceId == placeKey);
 
             var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
 

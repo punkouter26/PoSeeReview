@@ -1,10 +1,12 @@
-namespace PoSeeReview.Application.Abstractions;
+using PoSeeReview.Shared.Ids;
+
+namespace PoSeeReview.Api.Identity;
 
 /// <summary>
 /// Abstraction for reading the current request identity without coupling handlers to ASP.NET.
 /// </summary>
 public interface ICurrentRequestIdentityAccessor
 {
-    string GetCurrentUserId();
+    UserId GetCurrentUserId();
     string? GetCurrentUserEmail();
 }

@@ -55,9 +55,9 @@
     gap: 0.35rem;
     padding: 0.4rem 0.85rem;
     border-radius: 999px;
-    border: 1.5px solid var(--color-border, #e8e8f0);
-    background: white;
-    color: var(--color-text-secondary, #555);
+    border: 1.5px solid var(--color-border);
+    background: var(--color-card);
+    color: var(--color-text-secondary);
     font-size: 0.875rem;
     font-weight: 600;
     cursor: pointer;
@@ -67,8 +67,8 @@
 }
 
 .region-chip:hover {
-    border-color: var(--color-brand, #7C3AED);
-    color: var(--color-brand, #7C3AED);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
     transform: translateY(-1px);
 }
 
@@ -99,7 +99,7 @@
 
 .limit-label {
     font-weight: 600;
-    color: var(--color-text-primary, #2c3e50);
+    color: var(--color-text-primary);
     font-size: 0.9rem;
 }
 
@@ -110,13 +110,13 @@
     justify-content: flex-end;
     gap: 0.5rem;
     text-align: right;
-    color: var(--color-text-muted, #7f8c8d);
+    color: var(--color-text-muted);
     font-size: 0.875rem;
     margin-bottom: 1.5rem;
 }
 
 .refresh-hint {
-    color: var(--color-brand, #7C3AED);
+    color: var(--color-brand);
     font-size: 0.8rem;
     font-weight: 500;
 }
@@ -127,8 +127,8 @@
     width: 14px;
     height: 14px;
     border-radius: 50%;
-    border: 2px solid var(--color-border, #e8e8f0);
-    border-top-color: var(--color-brand, #7C3AED);
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-brand);
     flex-shrink: 0;
 }
 
@@ -157,25 +157,25 @@
     width: 64px;
     height: 64px;
     border-radius: 12px;
-    border: 2.5px solid var(--color-border, #e8e8f0);
-    background: var(--color-surface, #F8F7FF);
+    border: 2.5px solid var(--color-border);
+    background: var(--color-surface);
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.75rem;
-    box-shadow: 3px 3px 0 var(--color-border, #e8e8f0);
+    box-shadow: 3px 3px 0 var(--color-border);
 }
 
 .empty-title {
     font-family: var(--font-display, 'Bangers', cursive);
     font-size: clamp(1.75rem, 5vw, 2.5rem);
     letter-spacing: 0.04em;
-    color: var(--color-text-primary, #1e1e2e);
+    color: var(--color-text-primary);
     margin: 0 0 0.75rem 0;
 }
 
 .empty-body {
-    color: var(--color-text-muted, #7f8c8d);
+    color: var(--color-text-muted);
     font-size: 1rem;
     line-height: 1.6;
     margin: 0 0 1.75rem 0;
@@ -214,7 +214,7 @@
     grid-template-columns: 64px 180px 1fr auto;
     gap: 1.25rem;
     padding: 1.25rem 1.5rem;
-    background: white;
+    background: var(--color-card);
     border-radius: 14px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     transition: transform 0.18s, box-shadow 0.18s;
@@ -266,9 +266,9 @@
 }
 
 .medal-default {
-    background: var(--color-surface-alt, #f5f5f5);
-    color: var(--color-text-muted, #7f8c8d);
-    border: 2px solid var(--color-border, #e8e8f0);
+    background: var(--color-surface-alt);
+    color: var(--color-text-muted);
+    border: 2px solid var(--color-border);
     font-size: 1.1rem;
     font-family: var(--font-display, 'Bangers', cursive);
     letter-spacing: 0.03em;
@@ -299,7 +299,7 @@
     overflow: hidden;
     border-radius: 10px;
     border: 1px solid rgba(124,58,237,0.1);
-    background: var(--color-surface-alt, #f8f9fa);
+    background: var(--color-surface-alt);
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
 }
 
@@ -330,13 +330,13 @@
     font-weight: 600;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--color-text-muted, #7f8c8d);
+    color: var(--color-text-muted);
 }
 
 .entry-recorded {
     margin: 0;
     font-size: 0.78rem;
-    color: var(--color-text-muted, #9ca3af);
+    color: var(--color-text-muted);
 }
 
 /* Entry Details */
@@ -351,12 +351,12 @@
     font-weight: 600;
     font-family: var(--font-display, 'Bangers', cursive);
     letter-spacing: 0.03em;
-    color: var(--color-text-primary, #2c3e50);
+    color: var(--color-text-primary);
     margin: 0;
 }
 
 .address {
-    color: var(--color-text-muted, #7f8c8d);
+    color: var(--color-text-muted);
     margin: 0;
     font-size: 0.9rem;
 }
@@ -417,9 +417,9 @@
 .btn-share-small {
     width: 2.8rem;
     height: 2.8rem;
-    background: white;
+    background: var(--color-card);
     color: #4c1d95;
-    border: 1px solid var(--color-border, #e8e8f0);
+    border: 1px solid var(--color-border);
     border-radius: 999px;
     padding: 0;
     font-size: 1.2rem;

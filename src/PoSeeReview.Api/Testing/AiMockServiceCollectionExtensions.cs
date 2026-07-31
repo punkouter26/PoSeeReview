@@ -1,13 +1,13 @@
 using System.ClientModel.Primitives;
-using Azure;
 using Azure.AI.OpenAI;
+using Azure;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using PoSeeReview.Api.Abstractions;
+using PoSeeReview.Api.Features.Comics;
 
-namespace PoSeeReview.Infrastructure.Testing;
+namespace PoSeeReview.Api.Testing;
 
 /// <summary>
 /// Wires <see cref="AiMockDelegatingHandler"/> into the BFF so AI provider calls are

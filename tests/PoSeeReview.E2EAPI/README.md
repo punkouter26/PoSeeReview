@@ -9,7 +9,7 @@ These are **in-memory API tests** that use a `WebApplicationFactory` with **fake
 - Testing error handling paths where real storage would be awkward to configure
 - CI checks that must run without infrastructure
 
-## How it differs from `PoSeeReview.IntegrationTests`
+## How it differs from `PoSeeReview.Integration`
 
 | | E2EAPI (this project) | IntegrationTests |
 |---|---|---|
@@ -22,7 +22,7 @@ These are **in-memory API tests** that use a `WebApplicationFactory` with **fake
 ## Where to add new tests
 
 - **New API contract tests** (status codes, response shape, routing) → add here
-- **Tests requiring real Table/Blob Storage** → add to `PoSeeReview.IntegrationTests`
+- **Tests requiring real Table/Blob Storage** → add to `PoSeeReview.Integration`
 
 ## Running
 

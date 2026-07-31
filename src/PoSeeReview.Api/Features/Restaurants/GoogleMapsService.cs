@@ -1,12 +1,13 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Restaurants;
+namespace PoSeeReview.Api.Features.Restaurants;
 
 /// <summary>
 /// Google Maps API integration service for restaurant discovery
@@ -196,7 +197,7 @@ public class GoogleMapsService
 
         return result?.Places?.Select(p => new Restaurant
         {
-            PlaceId = p.Id ?? string.Empty,
+            PlaceId = PlaceId.From(p.Id),
             Name = p.DisplayName?.Text ?? string.Empty,
             Address = p.FormattedAddress ?? string.Empty,
             Latitude = p.Location?.Latitude ?? 0,
@@ -212,35 +213,35 @@ public class GoogleMapsService
     /// Determines region code from coordinates (simplified implementation)
     /// Returns ISO 3166-1 alpha-2 country codes for leaderboard compatibility
     /// </summary>
-    private string DetermineRegion(double latitude, double longitude)
+    private static RegionCode DetermineRegion(double latitude, double longitude)
     {
         // Simplified region determination based on latitude/longitude
         // United States
         if (latitude >= 24.0 && latitude <= 50.0 && longitude >= -125.0 && longitude <= -66.0)
         {
-            return "US";
+            return RegionCode.From(CountryRegion.US);
         }
 
         // Canada
         if (latitude >= 41.0 && latitude <= 84.0 && longitude >= -141.0 && longitude <= -52.0)
         {
-            return "CA";
+            return RegionCode.From(CountryRegion.CA);
         }
 
         // United Kingdom (rough bounds)
         if (latitude >= 49.0 && latitude <= 61.0 && longitude >= -8.0 && longitude <= 2.0)
         {
-            return "GB";
+            return RegionCode.From(CountryRegion.GB);
         }
 
         // Australia
         if (latitude >= -44.0 && latitude <= -10.0 && longitude >= 112.0 && longitude <= 154.0)
         {
-            return "AU";
+            return RegionCode.From(CountryRegion.AU);
         }
 
         // Default to US if unknown
-        return "US";
+        return RegionCode.Default;
     }
 
     // Google Places API (New) response models
@@ -289,11 +290,11 @@ public class GoogleMapsService
     /// <summary>
     /// Gets detailed place information including reviews
     /// </summary>
-    public async Task<Restaurant?> GetPlaceDetailsAsync(string placeId, CancellationToken cancellationToken = default)
+    public async Task<Restaurant?> GetPlaceDetailsAsync(PlaceId placeId, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Fetching place details for {PlaceId}", placeId);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId}");
+        var request = new HttpRequestMessage(HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId.Value}");
         request.Headers.Add("X-Goog-Api-Key", _apiKey);
         request.Headers.Add("X-Goog-FieldMask", "id,displayName,formattedAddress,location,rating,userRatingCount,reviews");
 
@@ -330,7 +331,7 @@ public class GoogleMapsService
         var place = result;
         var restaurant = new Restaurant
         {
-            PlaceId = place.Id ?? placeId,
+            PlaceId = PlaceId.From(place.Id ?? placeId.Value),
             Name = place.DisplayName?.Text ?? string.Empty,
             Address = place.FormattedAddress ?? string.Empty,
             Latitude = place.Location?.Latitude ?? 0,

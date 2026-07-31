@@ -1,10 +1,9 @@
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Core.Utilities;
-using PoSeeReview.Infrastructure.Repositories;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Restaurants;
+namespace PoSeeReview.Api.Features.Restaurants;
 
 /// <summary>
 /// Service for discovering and managing restaurant data with 24-hour caching
@@ -75,11 +74,11 @@ public class RestaurantService : IRestaurantService
     /// Gets detailed restaurant information by Google place ID
     /// Returns cached data if available (24-hour TTL), otherwise fetches from Google Maps
     /// </summary>
-    public async Task<Restaurant> GetRestaurantByPlaceIdAsync(string placeId, CancellationToken cancellationToken = default)
+    public async Task<Restaurant> GetRestaurantByPlaceIdAsync(PlaceId placeId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
         {
-            throw new ArgumentNullException(nameof(placeId));
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
         }
 
         _logger.LogInformation("Getting restaurant details for {PlaceId}", placeId);
@@ -123,16 +122,13 @@ public class RestaurantService : IRestaurantService
     /// <summary>
     /// Attempts to get restaurant from cache by probing each region partition it could have been
     /// stored under. Restaurants are written with a partition key of RESTAURANT_{region}, where
-    /// region is the ISO 3166-1 alpha-2 country code produced by GoogleMapsService.DetermineRegion
-    /// ("US"/"CA"/"GB"/"AU"). Point-lookups by (region, placeId) across that closed set make the
+    /// region is the ISO 3166-1 alpha-2 country code produced by GoogleMapsService.DetermineRegion.
+    /// Point-lookups by (region, placeId) across <see cref="RegionCode.KnownCountries"/> make the
     /// 24h cache genuinely hit; the previous hardcoded city strings never matched a stored partition.
     /// </summary>
-    private async Task<Restaurant?> TryGetFromCacheAsync(string placeId)
+    private async Task<Restaurant?> TryGetFromCacheAsync(PlaceId placeId)
     {
-        // Closed set of country-code regions DetermineRegion can emit (defaults to "US").
-        var candidateRegions = new[] { "US", "CA", "GB", "AU" };
-
-        foreach (var region in candidateRegions)
+        foreach (var region in RegionCode.KnownCountries)
         {
             var restaurant = await _repository.GetByPlaceIdAsync(placeId, region);
             if (restaurant != null)

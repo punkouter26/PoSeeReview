@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Leaderboard;
+namespace PoSeeReview.Api.Features.Leaderboard;
 
 /// <summary>
 /// Service for managing the global strangeness leaderboard
@@ -15,14 +16,14 @@ public class LeaderboardService : ILeaderboardService
     private readonly ILeaderboardRepository _repository;
     private readonly IBlobStorageService _blobStorageService;
     private readonly ILogger<LeaderboardService> _logger;
-    private readonly ComicOptions _options;
+    private readonly LeaderboardOptions _options;
     private readonly TimeProvider _timeProvider;
 
     public LeaderboardService(
         ILeaderboardRepository repository,
         IBlobStorageService blobStorageService,
         ILogger<LeaderboardService> logger,
-        IOptions<ComicOptions> options,
+        IOptions<LeaderboardOptions> options,
         TimeProvider? timeProvider = null)
     {
         _repository = repository;
@@ -35,9 +36,9 @@ public class LeaderboardService : ILeaderboardService
     /// <summary>
     /// Gets top N comics for a region, with rank numbers assigned
     /// </summary>
-    public async Task<List<LeaderboardEntry>> GetTopComicsAsync(string region, int limit = 10)
+    public async Task<List<LeaderboardEntry>> GetTopComicsAsync(RegionCode region, int limit = 10)
     {
-        if (string.IsNullOrWhiteSpace(region))
+        if (region.IsEmpty)
         {
             _logger.LogWarning("GetTopComicsAsync called with empty region");
             throw new ArgumentException("Region cannot be empty", nameof(region));
@@ -104,13 +105,13 @@ public class LeaderboardService : ILeaderboardService
             throw new ArgumentNullException(nameof(entry));
         }
 
-        if (string.IsNullOrWhiteSpace(entry.PlaceId))
+        if (entry.PlaceId.IsEmpty)
         {
             _logger.LogWarning("UpsertEntryAsync called with empty PlaceId");
             throw new ArgumentException("PlaceId is required", nameof(entry));
         }
 
-        if (string.IsNullOrWhiteSpace(entry.Region))
+        if (entry.Region.IsEmpty)
         {
             _logger.LogWarning("UpsertEntryAsync called with empty Region");
             throw new ArgumentException("Region is required", nameof(entry));

@@ -195,11 +195,20 @@ azd env show
 az containerapp list --query "[].{name:name, fqdn:properties.configuration.ingress.fqdn}" -o table
 ```
 
-The base URL will be printed as `SERVICE_WEB_URL` or `SERVICE_API_URL` in the `azd env show` output. Visit `https://<fqdn>/health` to verify the deployment is healthy before running the Playwright smoke suite:
+The base URL will be printed as `SERVICE_WEB_URL` or `SERVICE_API_URL` in the `azd env show` output.
+
+The same post-deploy checks CI runs (Blazor render tree, `/health`, masked `/diag`) can be run by hand:
 
 ```powershell
-# Run smoke tests against the deployed environment
-$env:PLAYWRIGHT_BASE_URL = "https://<fqdn>"
-npx playwright test --grep @smoke
+# Post-deploy smoke (NET_RULES 5.4) — the deploy workflow runs this automatically
+$env:BASE_URL = "https://<fqdn>"
+node SCRIPTS/post-deploy-smoke.mjs
+```
+
+The full C# Playwright UI suite targets a running app via `E2E_BASE_URL`:
+
+```powershell
+$env:E2E_BASE_URL = "https://<fqdn>"
+dotnet test tests/PoSeeReview.E2EUI
 ```
 

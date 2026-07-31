@@ -5,12 +5,12 @@ using System.Text.RegularExpressions;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Orchestrates comic generation workflow: review fetching, strangeness analysis,
@@ -68,12 +68,12 @@ public class ComicGenerationService : IComicGenerationService
     /// <returns>Generated or cached Comic entity</returns>
     /// <exception cref="KeyNotFoundException">If restaurant not found</exception>
     /// <exception cref="InsufficientReviewsException">If restaurant has fewer than required reviews</exception>
-    public async Task<Comic> GenerateComicAsync(string placeId, bool forceRegenerate = false, CancellationToken cancellationToken = default)
+    public async Task<Comic> GenerateComicAsync(PlaceId placeId, bool forceRegenerate = false, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-            throw new ArgumentNullException(nameof(placeId));
+        if (placeId.IsEmpty)
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
 
-        _logger.GeneratingComic(placeId, forceRegenerate);
+        _logger.GeneratingComic(placeId.Value, forceRegenerate);
 
         var overallStopwatch = Stopwatch.StartNew();
 
@@ -83,7 +83,7 @@ public class ComicGenerationService : IComicGenerationService
             var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
             if (cachedComic != null && cachedComic.ExpiresAt > _timeProvider.GetUtcNow())
             {
-                _logger.ReturningCachedComic(placeId);
+                _logger.ReturningCachedComic(placeId.Value);
 
                 // Refresh SAS token if it is expired or within 2 hours of expiry
                 if (IsSasExpiringSoon(cachedComic.ImageUrl))
@@ -93,7 +93,7 @@ public class ComicGenerationService : IComicGenerationService
                     await _comicRepository.UpsertAsync(cachedComic);
                 }
 
-                cachedComic.IsCached = true; // Mark as cached for caller
+                cachedComic.CacheState = ComicCacheState.Cached; // Mark provenance for the caller
                 _telemetryClient.GetMetric("Comics.CacheHit").TrackValue(1);
                 overallStopwatch.Stop();
                 _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(overallStopwatch.Elapsed.TotalMilliseconds);
@@ -185,8 +185,8 @@ public class ComicGenerationService : IComicGenerationService
         _telemetryClient.GetMetric("Comics.Generation.TextOverlayDurationMs").TrackValue(overlayStopwatch.Elapsed.TotalMilliseconds);
 
         // Upload to blob storage
-        var comicId = Guid.NewGuid().ToString();
-        var blobUrl = await _blobStorageService.UploadComicImageAsync(comicId, imageBytes);
+        var comicId = ComicId.New();
+        var blobUrl = await _blobStorageService.UploadComicImageAsync(comicId.Value, imageBytes);
 
         _logger.LogInformation("Uploaded comic to blob: {BlobUrl}", blobUrl);
 
@@ -201,7 +201,7 @@ public class ComicGenerationService : IComicGenerationService
             StrangenessScore = strangenessScore,
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
-            IsCached = false
+            CacheState = ComicCacheState.Generated
         };
 
         // Save to cache
@@ -215,7 +215,7 @@ public class ComicGenerationService : IComicGenerationService
                 PlaceId = placeId,
                 RestaurantName = restaurant.Name,
                 Address = restaurant.Address,
-                Region = restaurant.Region ?? "US",
+                Region = restaurant.Region,
                 StrangenessScore = strangenessScore,
                 ComicBlobUrl = blobUrl,
                 LastUpdated = DateTimeOffset.UtcNow
@@ -230,11 +230,11 @@ public class ComicGenerationService : IComicGenerationService
             _logger.LogWarning(ex, "Failed to update leaderboard for {PlaceId}", placeId);
         }
 
-        _logger.ComicGenerationComplete(placeId);
+        _logger.ComicGenerationComplete(placeId.Value);
 
         _telemetryClient.TrackEvent("ComicGenerated", new Dictionary<string, string>
         {
-            ["PlaceId"] = placeId,
+            ["PlaceId"] = placeId.Value,
             ["RestaurantName"] = restaurant.Name,
             ["StrangenessScore"] = strangenessScore.ToString(),
             ["PanelCount"] = panelCount.ToString()
@@ -397,10 +397,10 @@ public class ComicGenerationService : IComicGenerationService
     /// <summary>
     /// Gets cached comic for a restaurant if it exists and hasn't expired
     /// </summary>
-    public async Task<Comic?> GetCachedComicAsync(string placeId, CancellationToken cancellationToken = default)
+    public async Task<Comic?> GetCachedComicAsync(PlaceId placeId, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-            throw new ArgumentNullException(nameof(placeId));
+        if (placeId.IsEmpty)
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
 
         var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
 
@@ -415,7 +415,7 @@ public class ComicGenerationService : IComicGenerationService
                 await _comicRepository.UpsertAsync(cachedComic);
             }
 
-            cachedComic.IsCached = true;
+            cachedComic.CacheState = ComicCacheState.Cached;
             return cachedComic;
         }
 

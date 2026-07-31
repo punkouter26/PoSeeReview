@@ -1,4 +1,4 @@
-namespace PoSeeReview.Infrastructure.Configuration;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Configuration options for Azure AI Foundry service (uses Azure.AI.OpenAI SDK).

@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core.Interfaces;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Service for analyzing restaurant reviews using Azure OpenAI <c>gpt-5.4-nano</c>

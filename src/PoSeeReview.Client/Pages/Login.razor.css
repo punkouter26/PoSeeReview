@@ -69,12 +69,12 @@
     font-family: var(--font-display, 'Bangers', cursive);
     font-size: 1.75rem;
     letter-spacing: 0.04em;
-    color: var(--color-text-primary, #1e1e2e);
+    color: var(--color-text-primary);
     margin: 0 0 0.5rem 0;
 }
 
 .login-container p {
-    color: var(--color-text-secondary, #555);
+    color: var(--color-text-secondary);
     font-size: 0.95rem;
     line-height: 1.5;
     margin: 0 0 1.5rem 0;
@@ -123,14 +123,14 @@
 
 .login-btn-secondary {
     background: transparent;
-    color: var(--color-text-secondary, #555);
-    border: 1.5px solid var(--color-border, #e8e8f0);
+    color: var(--color-text-secondary);
+    border: 1.5px solid var(--color-border);
 }
 
 .login-btn-secondary:hover {
-    background: var(--color-surface, #f8f7ff);
-    border-color: var(--color-brand, #7C3AED);
-    color: var(--color-brand, #7C3AED);
+    background: var(--color-surface);
+    border-color: var(--color-brand);
+    color: var(--color-brand);
 }
 
 @media (max-width: 640px) {

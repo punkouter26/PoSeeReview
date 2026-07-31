@@ -9,12 +9,12 @@
     font-size: 2.5rem;
     font-weight: 700;
     margin-bottom: 0.5rem;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
 }
 
 .subtitle {
     font-size: 1.1rem;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 2rem;
 }
 
@@ -80,7 +80,7 @@
 
 .status-details p {
     margin: 0.25rem 0;
-    color: #333;
+    color: var(--color-text-primary);
 }
 
 /* Health Checks */
@@ -99,7 +99,7 @@
 }
 
 .key-card {
-    background: white;
+    background: var(--color-card);
     border: 1px solid #e6e9ef;
     border-radius: 10px;
     padding: 1rem;
@@ -115,7 +115,7 @@
 
 .key-name {
     font-size: 0.85rem;
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 0.35rem;
 }
 
@@ -134,14 +134,14 @@
     grid-template-columns: minmax(220px, 320px) 1fr;
     gap: 1rem;
     padding: 0.85rem 1rem;
-    background: white;
+    background: var(--color-card);
     border: 1px solid #e6e9ef;
     border-radius: 8px;
 }
 
 .config-key {
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
 }
 
 .config-value {
@@ -152,11 +152,11 @@
 .health-checks h3 {
     font-size: 1.5rem;
     margin-bottom: 1rem;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
 }
 
 .health-check-card {
-    background: white;
+    background: var(--color-card);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1rem;
@@ -192,7 +192,7 @@
     margin: 0;
     font-size: 1.25rem;
     font-weight: 600;
-    color: #1a1a1a;
+    color: var(--color-text-primary);
 }
 
 .check-status {
@@ -204,22 +204,22 @@
 }
 
 .status-healthy .check-status {
-    background: #d4edda;
-    color: #155724;
+    background: var(--color-success-surface);
+    color: var(--color-success-text);
 }
 
 .status-degraded .check-status {
-    background: #fff3cd;
-    color: #856404;
+    background: var(--color-highlight);
+    color: var(--color-warning-text);
 }
 
 .status-unhealthy .check-status {
-    background: #f8d7da;
-    color: #721c24;
+    background: var(--color-danger-surface);
+    color: var(--color-danger-text);
 }
 
 .check-description {
-    color: #666;
+    color: var(--color-text-secondary);
     margin-bottom: 0.5rem;
 }
 
@@ -227,7 +227,7 @@
     display: flex;
     gap: 1rem;
     font-size: 0.875rem;
-    color: #666;
+    color: var(--color-text-secondary);
 }
 
 .error-summary {
@@ -237,7 +237,7 @@
 }
 
 .error-details {
-    background: #f8f9fa;
+    background: var(--color-surface-alt);
     padding: 1rem;
     border-radius: 4px;
     overflow-x: auto;
@@ -317,9 +317,9 @@
 }
 
 .alert-danger {
-    background: #f8d7da;
+    background: var(--color-danger-surface);
     border: 1px solid #f5c6cb;
-    color: #721c24;
+    color: var(--color-danger-text);
 }
 
 .alert h3 {

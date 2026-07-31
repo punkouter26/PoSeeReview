@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using PoSeeReview.Application.Abstractions;
-using Serilog;
+using PoSeeReview.Api.Identity;
 using Serilog.Events;
+using Serilog;
 
 namespace PoSeeReview.Api.Middleware;
 

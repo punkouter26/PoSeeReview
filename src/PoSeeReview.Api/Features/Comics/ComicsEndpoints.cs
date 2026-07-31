@@ -1,8 +1,9 @@
 using System.Diagnostics;
 using PoSeeReview.Api.Telemetry;
-using PoSeeReview.Application.Comics;
-using PoSeeReview.Core;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Features.Comics;
 
@@ -49,12 +50,12 @@ internal static class ComicsEndpoints
             logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
                 placeId, forceRegenerate);
 
-            var comic = await generateComicCommandHandler.ExecuteAsync(placeId, forceRegenerate, http.RequestAborted);
+            var comic = await generateComicCommandHandler.ExecuteAsync(PlaceId.From(placeId), forceRegenerate, http.RequestAborted);
 
             var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             var tags = new[]
             {
-                new KeyValuePair<string, object?>("cache_hit", comic.IsCached),
+                new KeyValuePair<string, object?>("cache_hit", comic.CacheState == ComicCacheState.Cached),
                 new KeyValuePair<string, object?>("force_regenerate", forceRegenerate)
             };
 
@@ -69,21 +70,21 @@ internal static class ComicsEndpoints
                 });
             }
 
-            activity?.SetTag("comic_id", comic.Id);
-            activity?.SetTag("cache_hit", comic.IsCached);
+            activity?.SetTag("comic_id", comic.Id.Value);
+            activity?.SetTag("cache_hit", comic.CacheState == ComicCacheState.Cached);
             activity?.SetTag("duration_ms", elapsedMs);
 
             var dto = new ComicDto
             {
-                ComicId = comic.Id,
-                PlaceId = comic.PlaceId,
+                ComicId = comic.Id.Value,
+                PlaceId = comic.PlaceId.Value,
                 RestaurantName = comic.RestaurantName,
                 Narrative = comic.Narrative,
                 StrangenessScore = comic.StrangenessScore,
                 BlobUrl = comic.ImageUrl,
                 GeneratedAt = comic.CreatedAt,
                 ExpiresAt = comic.ExpiresAt,
-                IsCached = comic.IsCached
+                IsCached = comic.CacheState == ComicCacheState.Cached
             };
 
             logger.LogInformation("Comic generated successfully for placeId: {PlaceId}", placeId);
@@ -169,14 +170,14 @@ internal static class ComicsEndpoints
 
         try
         {
-            var cachedComic = await getCachedComicQueryHandler.ExecuteAsync(placeId, http.RequestAborted);
+            var cachedComic = await getCachedComicQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
 
             if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
             {
                 var dto = new ComicDto
                 {
-                    ComicId = cachedComic.Id,
-                    PlaceId = cachedComic.PlaceId,
+                    ComicId = cachedComic.Id.Value,
+                    PlaceId = cachedComic.PlaceId.Value,
                     RestaurantName = cachedComic.RestaurantName,
                     Narrative = cachedComic.Narrative,
                     StrangenessScore = cachedComic.StrangenessScore,

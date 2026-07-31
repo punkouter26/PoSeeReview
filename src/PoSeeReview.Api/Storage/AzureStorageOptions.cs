@@ -1,4 +1,4 @@
-namespace PoSeeReview.Infrastructure.Configuration;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Configuration options for Azure Storage services

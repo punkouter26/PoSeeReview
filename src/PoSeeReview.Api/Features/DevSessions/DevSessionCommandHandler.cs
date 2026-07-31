@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
-using PoSeeReview.Application.Abstractions;
+using PoSeeReview.Api.Identity;
 using PoSeeReview.Shared.Dtos;
 
-namespace PoSeeReview.Application.DevSessions;
+namespace PoSeeReview.Api.Features.DevSessions;
 
 public class DevSessionCommandHandler(ICurrentRequestIdentityAccessor currentRequestIdentityAccessor)
 {
@@ -10,7 +10,7 @@ public class DevSessionCommandHandler(ICurrentRequestIdentityAccessor currentReq
     {
         var currentUserId = currentRequestIdentityAccessor.GetCurrentUserId();
         var email = currentRequestIdentityAccessor.GetCurrentUserEmail();
-        return BuildSession(currentUserId, email);
+        return BuildSession(currentUserId.Value, email);
     }
 
     public DevSessionDto CreateRandomAnonymousSession()

@@ -1,17 +1,27 @@
 using Azure;
 using Azure.Data.Tables;
-using PoSeeReview.Core.Entities;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Enums;
+using PoSeeReview.Shared.Ids;
+// The entity exposes a string column also called PlaceId, which would shadow the id type
+// inside ToDomain(); the alias keeps both readable.
+using PlaceIdentifier = PoSeeReview.Shared.Ids.PlaceId;
 
-namespace PoSeeReview.Infrastructure.Entities;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Table Storage entity for Comic with 24-hour cache support
-/// PartitionKey: "COMIC"
-/// RowKey: PlaceId (Google Maps Place ID)
+/// Table Storage entity for <see cref="Comic"/> with 24-hour cache support.
+/// PartitionKey: <see cref="PartitionKeyValue"/>; RowKey: the Google Maps place id.
+/// The Table SDK only persists primitives, so the strongly-typed ids are unwrapped here and
+/// re-wrapped in <see cref="ToDomain"/> — this is the single storage boundary that sees raw
+/// strings (NET_RULES 1.5).
 /// </summary>
 public class ComicEntity : ITableEntity
 {
-    public string PartitionKey { get; set; } = "COMIC";
+    /// <summary>Single partition holding every comic row.</summary>
+    public const string PartitionKeyValue = "COMIC";
+
+    public string PartitionKey { get; set; } = PartitionKeyValue;
     public string RowKey { get; set; } = string.Empty; // PlaceId
     public DateTimeOffset? Timestamp { get; set; }
     public ETag ETag { get; set; }
@@ -28,43 +38,44 @@ public class ComicEntity : ITableEntity
     public string RequestedByUserId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Converts from domain Comic entity to Table Storage entity
+    /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
     public static ComicEntity FromDomain(Comic comic)
     {
         return new ComicEntity
         {
-            PartitionKey = "COMIC",
-            RowKey = comic.PlaceId,
-            Id = comic.Id,
-            PlaceId = comic.PlaceId,
+            PartitionKey = PartitionKeyValue,
+            RowKey = comic.PlaceId.Value,
+            Id = comic.Id.Value,
+            PlaceId = comic.PlaceId.Value,
             RestaurantName = comic.RestaurantName,
             ImageUrl = comic.ImageUrl,
             Narrative = comic.Narrative,
             StrangenessScore = comic.StrangenessScore,
             ExpiresAt = comic.ExpiresAt,
             CreatedAt = comic.CreatedAt,
-            RequestedByUserId = comic.RequestedByUserId
+            RequestedByUserId = comic.RequestedByUserId.Value
         };
     }
 
     /// <summary>
-    /// Converts from Table Storage entity to domain Comic entity
+    /// Converts from the Table Storage entity back to the domain <see cref="Comic"/>.
     /// </summary>
     public Comic ToDomain()
     {
         return new Comic
         {
-            Id = Id,
-            PlaceId = PlaceId,
+            Id = ComicId.From(Id),
+            PlaceId = PlaceIdentifier.From(PlaceId),
             RestaurantName = RestaurantName,
             ImageUrl = ImageUrl,
             Narrative = Narrative,
             StrangenessScore = StrangenessScore,
             ExpiresAt = ExpiresAt,
             CreatedAt = CreatedAt,
-            RequestedByUserId = RequestedByUserId,
-            IsCached = false // Set by service layer
+            RequestedByUserId = UserId.From(RequestedByUserId),
+            // Cache provenance is a service-layer concern; storage never knows it.
+            CacheState = ComicCacheState.Generated
         };
     }
 }

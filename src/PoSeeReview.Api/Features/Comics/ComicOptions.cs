@@ -1,9 +1,10 @@
-namespace PoSeeReview.Infrastructure.Configuration;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Configuration options for comic generation business rules.
-/// Centralises constants that were previously hard-coded in ComicGenerationService
-/// and LeaderboardService so they are runtime-configurable without a redeploy.
+/// Centralises constants that were previously hard-coded in the generation pipeline so they
+/// are runtime-configurable without a redeploy. The leaderboard threshold lives in
+/// LeaderboardOptions, owned by that slice.
 /// </summary>
 public class ComicOptions
 {
@@ -26,8 +27,9 @@ public class ComicOptions
     public int CacheDurationDays { get; set; } = 7;
 
     /// <summary>
-    /// Minimum strangeness score (0–100) required for a restaurant to appear
-    /// on the global leaderboard.
+    /// Minimum strangeness score (0–100) a restaurant must reach before a comic is generated;
+    /// anything lower is rejected as too ordinary. The leaderboard's own admission threshold
+    /// lives in LeaderboardOptions.
     /// </summary>
     public int MinimumStrangenessScore { get; set; } = 20;
 }

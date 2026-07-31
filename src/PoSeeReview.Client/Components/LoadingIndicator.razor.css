@@ -9,7 +9,7 @@
 .loading-message {
     margin-top: 1rem;
     font-size: 1rem;
-    color: var(--color-text-secondary, #666);
+    color: var(--color-text-secondary);
     text-align: center;
 }
 
@@ -46,7 +46,7 @@
     stroke-linecap: round;
     transition: stroke-dasharray 0.3s ease-out;
     /* Fallback gradient if SVG defs not in scope */
-    stroke: var(--color-brand, #7C3AED);
+    stroke: var(--color-brand);
 }
 
 .stepper-ring-icon {
@@ -67,7 +67,7 @@
 .stepper-message {
     font-size: 1rem;
     font-weight: 600;
-    color: var(--color-text-primary, #1e1e2e);
+    color: var(--color-text-primary);
     margin: 0;
     animation: fadeSlideUp 0.3s ease-out both;
 }
@@ -86,12 +86,12 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--color-border, #e8e8f0);
+    background: var(--color-border);
     transition: background 0.3s, transform 0.2s;
 }
 
 .stepper-dot.active {
-    background: var(--color-brand, #7C3AED);
+    background: var(--color-brand);
     transform: scale(1.3);
 }
 

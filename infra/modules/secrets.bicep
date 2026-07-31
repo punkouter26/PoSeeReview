@@ -1,10 +1,6 @@
 @description('Key Vault name')
 param keyVaultName string
 
-@description('Storage account connection string')
-@secure()
-param storageConnectionString string
-
 @description('Google Maps API key for the SeeReview app, surfaced as the PoSeeReview--GoogleMaps--ApiKey secret. Mirrors the shared GoogleMaps--ApiKey so PrefixKeyVaultSecretManager (app-specific pass) can win the two-pass load. Empty by default so existing dev/test envs are not forced to provide it.')
 @secure()
 param poSeeReviewGoogleMapsApiKey string = ''
@@ -15,28 +11,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2024-04-01-preview' existing = {
 }
 
 // =============================================================================
-// Azure Storage Secrets
-// Secret names use '--' which Azure Key Vault Config Provider maps to ':'
+// Azure Storage
+// Deliberately NO connection-string secrets (NET_RULES 5.4): the app reaches Table and
+// Blob storage with the App Service System-Assigned Managed Identity against the
+// AzureStorage__TableEndpoint / AzureStorage__BlobEndpoint settings. Connection strings
+// exist only for the local Azurite emulator, which never touches Key Vault.
 // =============================================================================
-
-// Connection strings for Table and Blob storage
-resource azureTableStorageConnectionString 'Microsoft.KeyVault/vaults/secrets@2024-04-01-preview' = {
-  parent: keyVault
-  name: 'ConnectionStrings--AzureTableStorage'
-  properties: {
-    value: storageConnectionString
-    contentType: 'text/plain'
-  }
-}
-
-resource azureBlobStorageConnectionString 'Microsoft.KeyVault/vaults/secrets@2024-04-01-preview' = {
-  parent: keyVault
-  name: 'ConnectionStrings--AzureBlobStorage'
-  properties: {
-    value: storageConnectionString
-    contentType: 'text/plain'
-  }
-}
 
 // =============================================================================
 // Azure OpenAI Secrets
@@ -150,8 +130,6 @@ resource contentSafetyApiKey 'Microsoft.KeyVault/vaults/secrets@2024-04-01-previ
 // Outputs
 // =============================================================================
 
-output tableStorageSecretUri string = azureTableStorageConnectionString.properties.secretUri
-output blobStorageSecretUri string = azureBlobStorageConnectionString.properties.secretUri
 output azureOpenAIEndpointSecretUri string = azureOpenAIEndpoint.properties.secretUri
 output azureOpenAIKeySecretUri string = azureOpenAIApiKey.properties.secretUri
 output googleMapsKeySecretUri string = googleMapsApiKey.properties.secretUri

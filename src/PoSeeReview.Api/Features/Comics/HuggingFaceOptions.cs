@@ -1,4 +1,4 @@
-namespace PoSeeReview.Infrastructure.Configuration;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Configuration for the HuggingFace Inference Providers backend, activated by the

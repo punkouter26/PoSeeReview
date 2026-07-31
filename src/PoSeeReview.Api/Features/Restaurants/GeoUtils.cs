@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core.Utilities;
+namespace PoSeeReview.Api.Features.Restaurants;
 
 /// <summary>
 /// Geospatial utility methods for distance calculations.

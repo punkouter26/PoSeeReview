@@ -1,8 +1,11 @@
 using FluentValidation;
 using Microsoft.ApplicationInsights;
 using PoSeeReview.Api.Middleware;
-using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Features.Takedowns;
 
@@ -21,7 +24,7 @@ internal static class TakedownsEndpoints
             .AddEndpointFilter(new ApiKeyEndpointFilter(
                 app.ServiceProvider.GetRequiredService<IConfiguration>(),
                 app.ServiceProvider.GetRequiredService<ILogger<ApiKeyEndpointFilter>>())
-            { ConfigurationKey = "Takedowns:ApiKey" });
+            { ConfigurationKey = TakedownOptions.ApiKeyConfigurationKey });
 
         group.MapPost("", SubmitAsync);
 
@@ -53,17 +56,20 @@ internal static class TakedownsEndpoints
             ["Region"] = request.Region
         });
 
-        var existingComic = await comicRepository.GetByPlaceIdAsync(request.PlaceId);
+        var placeId = PlaceId.From(request.PlaceId);
+        var region = RegionCode.From(request.Region);
+
+        var existingComic = await comicRepository.GetByPlaceIdAsync(placeId);
         if (existingComic != null)
         {
-            await comicRepository.DeleteAsync(request.PlaceId);
+            await comicRepository.DeleteAsync(placeId);
 
-            if (!string.IsNullOrWhiteSpace(existingComic.Id))
+            if (!existingComic.Id.IsEmpty)
             {
-                await blobStorageService.DeleteComicImageAsync(existingComic.Id);
+                await blobStorageService.DeleteComicImageAsync(existingComic.Id.Value);
             }
 
-            await leaderboardRepository.DeleteAsync(request.PlaceId, request.Region);
+            await leaderboardRepository.DeleteAsync(placeId, region);
             logger.LogInformation("Removed cached comic and leaderboard entry for {PlaceId}", request.PlaceId);
         }
         else

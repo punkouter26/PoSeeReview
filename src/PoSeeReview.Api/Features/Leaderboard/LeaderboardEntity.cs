@@ -1,8 +1,14 @@
-using Azure;
 using Azure.Data.Tables;
-using PoSeeReview.Core.Entities;
+using Azure;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+// The entity exposes string columns named PlaceId/Region, which would shadow the id types
+// inside ToDomain(); the aliases keep both readable.
+using PlaceIdentifier = PoSeeReview.Shared.Ids.PlaceId;
+using RegionIdentifier = PoSeeReview.Shared.Ids.RegionCode;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Entities;
+namespace PoSeeReview.Api.Features.Leaderboard;
 
 /// <summary>
 /// Azure Table Storage entity for leaderboard with inverted RowKey for descending sort
@@ -11,6 +17,12 @@ namespace PoSeeReview.Infrastructure.Entities;
 /// </summary>
 public class LeaderboardEntity : ITableEntity
 {
+    /// <summary>Prefix for the per-region partition key.</summary>
+    public const string PartitionKeyPrefix = "LEADERBOARD";
+
+    /// <summary>Builds the partition key holding every row for <paramref name="region"/>.</summary>
+    public static string PartitionKeyFor(RegionIdentifier region) => $"{PartitionKeyPrefix}_{region.Value}";
+
     /// <summary>
     /// Partition key format: LEADERBOARD_{Region}
     /// Example: LEADERBOARD_US-WA-Seattle
@@ -80,12 +92,12 @@ public class LeaderboardEntity : ITableEntity
 
         return new LeaderboardEntity
         {
-            PartitionKey = $"LEADERBOARD_{entry.Region}",
-            RowKey = $"{invertedScore:D10}_{entry.PlaceId}",
-            PlaceId = entry.PlaceId,
+            PartitionKey = PartitionKeyFor(entry.Region),
+            RowKey = $"{invertedScore:D10}_{entry.PlaceId.Value}",
+            PlaceId = entry.PlaceId.Value,
             RestaurantName = entry.RestaurantName,
             Address = entry.Address,
-            Region = entry.Region,
+            Region = entry.Region.Value,
             StrangenessScore = entry.StrangenessScore,
             ComicBlobUrl = entry.ComicBlobUrl,
             LastUpdated = entry.LastUpdated
@@ -100,10 +112,10 @@ public class LeaderboardEntity : ITableEntity
         return new LeaderboardEntry
         {
             Rank = rank,
-            PlaceId = PlaceId,
+            PlaceId = PlaceIdentifier.From(PlaceId),
             RestaurantName = RestaurantName,
             Address = Address,
-            Region = Region,
+            Region = RegionIdentifier.From(Region),
             StrangenessScore = StrangenessScore,
             ComicBlobUrl = ComicBlobUrl,
             LastUpdated = LastUpdated

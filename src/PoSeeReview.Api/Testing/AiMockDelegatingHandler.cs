@@ -1,9 +1,9 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
-using PoSeeReview.Core.Interfaces;
+using System.Text;
+using PoSeeReview.Api.Abstractions;
 
-namespace PoSeeReview.Infrastructure.Testing;
+namespace PoSeeReview.Api.Testing;
 
 /// <summary>
 /// Test-only HTTP boundary that intercepts outbound calls to AI providers

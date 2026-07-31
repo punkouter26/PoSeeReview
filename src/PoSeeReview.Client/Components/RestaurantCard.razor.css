@@ -12,7 +12,7 @@
     border: 1px solid rgba(124,58,237,0.1) !important;
     border-left: 3px solid var(--card-accent, rgba(124,58,237,0.15)) !important;
     border-radius: 14px !important;
-    background: white !important;
+    background: var(--color-card) !important;
     animation: cardSlideIn 0.3s ease-out both;
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
@@ -29,14 +29,14 @@
 /* Disabled state for restaurants with <5 reviews */
 ::deep .restaurant-card.disabled {
     opacity: 0.65;
-    background: var(--color-surface-alt, #f9f9f9);
+    background: var(--color-surface-alt);
 }
 
 /* Rating tier accent colors via CSS custom property */
 ::deep .restaurant-card.tier-high   { --card-accent: #10b981; }
 ::deep .restaurant-card.tier-mid    { --card-accent: #F59E0B; }
 ::deep .restaurant-card.tier-low    { --card-accent: #ef4444; }
-::deep .restaurant-card.disabled    { --card-accent: var(--color-border, #e8e8f0); }
+::deep .restaurant-card.disabled    { --card-accent: var(--color-border); }
 
 @keyframes cardSlideIn {
     from { opacity: 0; transform: translateY(20px); }
@@ -63,7 +63,7 @@
     letter-spacing: 0.03em;
     font-weight: 400;
     margin: 0;
-    color: var(--color-text-primary, #1e1e2e);
+    color: var(--color-text-primary);
     line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -75,7 +75,7 @@
 
 .card-meta {
     margin: 0.35rem 0 0;
-    color: #6b7280;
+    color: var(--color-text-muted);
     font-size: 0.88rem;
     font-weight: 600;
 }
@@ -104,7 +104,7 @@
 }
 
 .address {
-    color: #666;
+    color: var(--color-text-secondary);
     font-size: clamp(0.8125rem, 1.5vw, 0.875rem);
     margin: 0;
     line-height: 1.5;
@@ -124,7 +124,7 @@
 }
 
 .review-summary {
-    color: #6b7280;
+    color: var(--color-text-muted);
     font-weight: 600;
 }
 
@@ -132,7 +132,7 @@
 
 .card-cta {
     padding-top: 0.625rem;
-    border-top: 1px solid var(--color-border, #eee);
+    border-top: 1px solid var(--color-border);
 }
 
 .cta-btn {
@@ -148,7 +148,7 @@
 
 .not-enough-hint {
     font-size: 0.73rem;
-    color: var(--color-text-muted, #999);
+    color: var(--color-text-muted);
     margin: 0.4rem 0 0 0;
     text-align: center;
     line-height: 1.4;

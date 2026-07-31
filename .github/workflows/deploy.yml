@@ -80,3 +80,38 @@ jobs:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
           resource-group-name: ${{ env.AZURE_RESOURCE_GROUP }}
           package: publish
+
+  smoke:
+    name: Post-deploy smoke
+    runs-on: ubuntu-latest
+    needs: deploy
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://app-poseereview.azurewebsites.net
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # App Service needs a moment to recycle after a package swap; poll /health rather
+      # than sleeping a fixed amount so a fast deploy is not penalised.
+      - name: Wait for the app to come back up
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/health" || echo 000)
+            echo "attempt $attempt: /health -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::/health never returned 200 after the deploy"
+          exit 1
+
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.49.0
+          npx playwright install --with-deps chromium
+
+      # NET_RULES 5.4: Blazor render tree init, /health, and masked config from /diag.
+      - name: Run smoke checks
+        run: node SCRIPTS/post-deploy-smoke.mjs

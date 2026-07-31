@@ -1,4 +1,4 @@
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Resolves the HuggingFace access token the same way the official HF SDKs do, so a local

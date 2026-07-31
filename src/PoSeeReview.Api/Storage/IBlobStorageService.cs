@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core.Interfaces;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Service for uploading and managing comic images in Azure Blob Storage

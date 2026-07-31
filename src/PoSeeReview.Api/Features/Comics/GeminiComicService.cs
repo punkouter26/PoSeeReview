@@ -4,9 +4,8 @@ using System.Text.Json;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core.Interfaces;
 
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Google Gemini image generation service using Imagen 4.

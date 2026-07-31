@@ -1,8 +1,8 @@
 using System.Net;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Telemetry;
-using PoSeeReview.Core;
 
 namespace PoSeeReview.Api.Middleware;
 

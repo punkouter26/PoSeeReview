@@ -1,7 +1,8 @@
 using PoSeeReview.Api.Telemetry;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Core.Utilities;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Features.Restaurants;
 
@@ -66,14 +67,14 @@ internal static class RestaurantsEndpoints
 
             var restaurantDtos = restaurants.Select(r => new RestaurantDto
             {
-                PlaceId = r.PlaceId,
+                PlaceId = r.PlaceId.Value,
                 Name = r.Name,
                 Address = r.Address,
                 Latitude = r.Latitude,
                 Longitude = r.Longitude,
                 AverageRating = r.AverageRating,
                 TotalReviews = r.TotalReviews,
-                Region = r.Region ?? "US",
+                Region = r.Region.Value,
                 Distance = GeoUtils.CalculateDistance(lat, lon, r.Latitude, r.Longitude)
             }).ToList();
 

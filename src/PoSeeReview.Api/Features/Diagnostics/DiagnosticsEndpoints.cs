@@ -1,5 +1,4 @@
-using PoSeeReview.Application.Diagnostics;
-using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Shared.Dtos;
 
 namespace PoSeeReview.Api.Features.Diagnostics;

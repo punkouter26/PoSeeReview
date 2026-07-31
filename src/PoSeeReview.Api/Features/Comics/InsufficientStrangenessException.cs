@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Thrown when a restaurant's reviews are too ordinary — the computed strangeness score falls

@@ -1,19 +1,18 @@
 using System.ClientModel;
 using System.Net.Http;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using Azure;
+using System.Text.Json;
 using Azure.AI.OpenAI;
+using Azure;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Core.Utilities;
-using Polly;
+using PoSeeReview.Api.Storage;
 using Polly.Retry;
+using Polly;
 
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Azure AI Foundry service for analyzing review strangeness using the

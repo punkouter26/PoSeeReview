@@ -1,15 +1,15 @@
 using System.Collections.Generic;
 using System.Threading;
-using Azure;
 using Azure.Data.Tables;
+using Azure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
-using PoSeeReview.Infrastructure.Entities;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Repositories;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Repository for managing comic entities in Azure Table Storage with 24-hour cache TTL.
@@ -18,7 +18,6 @@ public class ComicRepository : IComicRepository
 {
     private readonly TableClient _tableClient;
     private readonly ILogger<ComicRepository> _logger;
-    private const string PartitionKeyPrefix = "COMIC";
 
     public ComicRepository(
         TableServiceClient tableServiceClient,
@@ -36,16 +35,16 @@ public class ComicRepository : IComicRepository
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
     /// <returns>Comic entity if found, null otherwise</returns>
-    public async Task<Comic?> GetByPlaceIdAsync(string placeId)
+    public async Task<Comic?> GetByPlaceIdAsync(PlaceId placeId)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-            throw new ArgumentNullException(nameof(placeId));
+        if (placeId.IsEmpty)
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
 
         try
         {
             var response = await _tableClient.GetEntityAsync<ComicEntity>(
-                partitionKey: PartitionKeyPrefix,
-                rowKey: placeId
+                partitionKey: ComicEntity.PartitionKeyValue,
+                rowKey: placeId.Value
             );
 
             return response.Value.ToDomain();
@@ -66,7 +65,7 @@ public class ComicRepository : IComicRepository
         if (comic == null)
             throw new ArgumentNullException(nameof(comic));
 
-        if (string.IsNullOrWhiteSpace(comic.PlaceId))
+        if (comic.PlaceId.IsEmpty)
             throw new ArgumentException("PlaceId is required", nameof(comic));
 
         var entity = ComicEntity.FromDomain(comic);
@@ -77,16 +76,16 @@ public class ComicRepository : IComicRepository
     /// Deletes a comic by place ID.
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
-    public async Task DeleteAsync(string placeId)
+    public async Task DeleteAsync(PlaceId placeId)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-            throw new ArgumentNullException(nameof(placeId));
+        if (placeId.IsEmpty)
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
 
         try
         {
             await _tableClient.DeleteEntityAsync(
-                partitionKey: PartitionKeyPrefix,
-                rowKey: placeId
+                partitionKey: ComicEntity.PartitionKeyValue,
+                rowKey: placeId.Value
             );
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
@@ -100,20 +99,20 @@ public class ComicRepository : IComicRepository
     /// </summary>
     /// <param name="placeId">Google Maps Place ID</param>
     /// <param name="generatedAt">Generation timestamp used as RowKey</param>
-    public async Task DeleteAsync(string placeId, DateTimeOffset generatedAt)
+    public async Task DeleteAsync(PlaceId placeId, DateTimeOffset generatedAt)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
         {
-            throw new ArgumentException("PlaceId cannot be null or empty", nameof(placeId));
+            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
         }
 
         try
         {
-            // Comics are stored with PartitionKey=PartitionKeyPrefix and RowKey=placeId
+            // Comics are stored with PartitionKey=ComicEntity.PartitionKeyValue and RowKey=placeId
             // (see ComicEntity.FromDomain). The generatedAt timestamp is not part of the key.
             await _tableClient.DeleteEntityAsync(
-                partitionKey: PartitionKeyPrefix,
-                rowKey: placeId);
+                partitionKey: ComicEntity.PartitionKeyValue,
+                rowKey: placeId.Value);
             _logger.LogInformation(
                 "Deleted comic for PlaceId {PlaceId} generated at {GeneratedAt}",
                 placeId,
@@ -134,19 +133,21 @@ public class ComicRepository : IComicRepository
     /// </summary>
     /// <param name="placeId">Google Maps Place ID</param>
     /// <returns>List of all comics for this place</returns>
-    public async Task<IReadOnlyList<Comic>> GetComicsByPlaceIdAsync(string placeId)
+    public async Task<IReadOnlyList<Comic>> GetComicsByPlaceIdAsync(PlaceId placeId)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        if (placeId.IsEmpty)
         {
-            throw new ArgumentException("PlaceId cannot be null or empty", nameof(placeId));
+            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
         }
+
+        var rowKey = placeId.Value;
 
         var comics = new List<Comic>();
 
-        // Comics are stored with PartitionKey=PartitionKeyPrefix and RowKey=placeId
+        // Comics are stored with PartitionKey=ComicEntity.PartitionKeyValue and RowKey=placeId
         // (see ComicEntity.FromDomain); there is at most one comic per place.
         var filter = TableClient.CreateQueryFilter<ComicEntity>(entity =>
-            entity.PartitionKey == PartitionKeyPrefix && entity.RowKey == placeId);
+            entity.PartitionKey == ComicEntity.PartitionKeyValue && entity.RowKey == rowKey);
 
         var query = _tableClient.QueryAsync<ComicEntity>(filter: filter);
 
@@ -177,7 +178,7 @@ public class ComicRepository : IComicRepository
         var expiredComics = new List<Comic>(capacity: Math.Min(maxResults, 100));
 
         var filter = TableClient.CreateQueryFilter<ComicEntity>(entity =>
-            entity.PartitionKey == PartitionKeyPrefix && entity.ExpiresAt < cutoff);
+            entity.PartitionKey == ComicEntity.PartitionKeyValue && entity.ExpiresAt < cutoff);
 
         var query = _tableClient.QueryAsync<ComicEntity>(
             filter: filter,

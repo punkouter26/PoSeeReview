@@ -2,10 +2,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Application.Abstractions;
+using PoSeeReview.Api.Identity;
 using PoSeeReview.Shared.Dtos;
 
-namespace PoSeeReview.Application.Diagnostics;
+namespace PoSeeReview.Api.Features.Diagnostics;
 
 public class DiagnosticsSnapshotQueryHandler(
     IConfiguration configuration,
@@ -115,7 +115,7 @@ public class DiagnosticsSnapshotQueryHandler(
             OsVersion = Environment.OSVersion.ToString(),
             DotNetVersion = Environment.Version.ToString(),
             ProcessId = Environment.ProcessId,
-            CurrentUserId = currentRequestIdentityAccessor.GetCurrentUserId(),
+            CurrentUserId = currentRequestIdentityAccessor.GetCurrentUserId().Value,
             DependencyStatus = dependencyReport == null
                 ? null
                 : new DependencyStatusSummaryDto

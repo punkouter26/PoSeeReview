@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Comics;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Source-generated, allocation-free log messages for the comic generation hot path

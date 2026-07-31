@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core.Interfaces;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Service for overlaying readable text onto comic images.

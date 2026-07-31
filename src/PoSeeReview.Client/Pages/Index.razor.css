@@ -10,7 +10,7 @@
     padding: clamp(2.5rem, 5vw, 3.5rem) clamp(1rem, 3vw, 2rem);
     background: linear-gradient(160deg, #5B21B6 0%, #7C3AED 40%, #be185d 100%);
     color: white;
-    border-radius: var(--radius-card, 12px);
+    border-radius: var(--radius-card);
     margin-bottom: 2rem;
     position: relative;
     overflow: hidden;
@@ -107,7 +107,7 @@
 }
 
 .prompt-card {
-    background: white;
+    background: var(--color-card);
     border-radius: 16px;
     padding: clamp(1.5rem, 4vw, 2.25rem);
     text-align: center;
@@ -135,11 +135,11 @@
     font-size: 1.75rem;
     letter-spacing: 0.04em;
     margin: 0 0 0.75rem 0;
-    color: var(--color-text-primary, #1e1e2e);
+    color: var(--color-text-primary);
 }
 
 .prompt-card p {
-    color: var(--color-text-secondary, #555);
+    color: var(--color-text-secondary);
     margin: 0 0 1.5rem 0;
     line-height: 1.6;
 }
@@ -152,7 +152,7 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted);
     font-size: 0.875rem;
     margin: 1.25rem 0;
 }
@@ -162,26 +162,26 @@
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--color-border, #e8e8f0);
+    background: var(--color-border);
 }
 
 .error-message {
     text-align: center;
     padding: 2rem 1rem;
-    background: #fff9e6;
-    border-radius: var(--radius-card, 12px);
-    border: 1px solid var(--color-accent, #F59E0B);
+    background: var(--color-highlight);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-accent);
     margin: 1rem 0;
 }
 
 .error-message h2 {
     font-size: 1.5rem;
     margin: 0 0 1rem 0;
-    color: var(--color-accent-dark, #856404);
+    color: var(--color-accent-dark);
 }
 
 .error-message p {
-    color: var(--color-accent-dark, #856404);
+    color: var(--color-accent-dark);
     margin: 0.5rem 0;
     line-height: 1.6;
 }
@@ -201,7 +201,7 @@
 }
 
 .results-info {
-    color: var(--color-text-muted, #666);
+    color: var(--color-text-muted);
     font-size: clamp(0.8125rem, 1.5vw, 0.875rem);
     margin-bottom: 1rem;
     text-align: center;
@@ -228,7 +228,7 @@
 
 .hint-text {
     font-size: 0.85rem;
-    color: var(--color-text-muted, #888);
+    color: var(--color-text-muted);
     margin-top: 0.75rem;
 }
 
@@ -237,13 +237,13 @@
     display: flex;
     align-items: flex-start;
     gap: 0.6rem;
-    background: #fff8e6;
+    background: var(--color-highlight);
     border: 1px solid #F59E0B;
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
     font-size: 0.875rem;
-    color: #92400e;
+    color: var(--color-warning-text);
     text-align: left;
     line-height: 1.5;
     animation: fadeSlideUp 0.3s ease-out both;
@@ -256,7 +256,7 @@
 }
 
 .denied-alert a {
-    color: var(--color-brand, #7C3AED);
+    color: var(--color-brand);
     font-weight: 600;
 }
 
@@ -276,9 +276,9 @@
     align-items: center;
     gap: 0.45rem;
     padding: 0.5rem 0.8rem;
-    background: white;
-    border: 1px solid var(--color-border, #e8e8f0);
-    color: var(--color-text-primary, #1e1e2e);
+    background: var(--color-card);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-primary);
     border-radius: 999px;
     font-size: 0.875rem;
     font-weight: 600;
@@ -301,18 +301,18 @@
 .chip-clear:hover { opacity: 1; }
 
 .results-count {
-    color: var(--color-text-muted, #666);
+    color: var(--color-text-muted);
     font-size: 0.9rem;
     font-weight: 600;
 }
 
 /* Skeleton loading cards */
 .skeleton-card {
-    background: white;
-    border-radius: var(--radius-card, 12px);
+    background: var(--color-card);
+    border-radius: var(--radius-card);
     padding: clamp(0.875rem, 2vw, 1.25rem);
-    border: 1px solid var(--color-border, #e8e8f0);
-    box-shadow: var(--shadow-card, 0 2px 8px rgba(0,0,0,0.05));
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-card));
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     gap: 0.75rem;
@@ -341,7 +341,7 @@
     display: flex;
     gap: 0.5rem;
     padding-top: 0.625rem;
-    border-top: 1px solid #f0f0f4;
+    border-top: 1px solid var(--color-border);
 }
 
 .sk-title  { height: 1.3rem; flex: 0 0 60%; }

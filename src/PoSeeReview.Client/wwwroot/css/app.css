@@ -1,5 +1,12 @@
-/* === Design Tokens === */
+/* === Design Tokens (NET_RULES 4.3) ===
+   Light is the base set. Dark is layered on twice, deliberately:
+     1. @media (prefers-color-scheme: dark) — follows the OS automatically.
+     2. :root[data-theme="dark"] — an explicit override that must beat the media query,
+        so a user who picks a theme keeps it even when the OS disagrees.
+   Only the colour tokens flip; type, radii and geometry stay shared. */
 :root {
+    color-scheme: light dark;
+
     --color-brand: #7C3AED;
     --color-brand-dark: #1A0533;
     --color-accent: #F59E0B;
@@ -12,6 +19,14 @@
     --color-success: #10b981;
     --color-danger: #dc3545;
     --color-border: #e8e8f0;
+    --color-card: #ffffff;
+    --color-highlight: #fff9e6;
+    --color-brand-surface: #f9f8ff;
+    --color-danger-surface: #f8d7da;
+    --color-danger-text: #721c24;
+    --color-success-surface: #d4edda;
+    --color-success-text: #155724;
+    --color-warning-text: #856404;
     --font-display: 'Bangers', cursive;
     --font-body: 'DM Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
     --radius-card: 12px;
@@ -19,6 +34,63 @@
     --shadow-card-hover: 0 6px 24px rgba(124, 58, 237, 0.18);
     --gradient-brand: linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%);
     --gradient-sidebar: linear-gradient(180deg, #1A0533 0%, #2D1052 60%, #3b0764 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --color-brand: #A78BFA;
+        --color-brand-dark: #0F021F;
+        --color-accent: #FBBF24;
+        --color-accent-dark: #D97706;
+        --color-surface: #12101A;
+        --color-surface-alt: #1C1926;
+        --color-text-primary: #ECEAF5;
+        --color-text-secondary: #B4AFC6;
+        --color-text-muted: #8A85A0;
+        --color-success: #34d399;
+        --color-danger: #f87171;
+        --color-border: #2C2838;
+        --color-card: #1C1926;
+        --color-highlight: #2A2416;
+        --color-brand-surface: #1D1533;
+        --color-danger-surface: #3A1A1E;
+        --color-danger-text: #FCA5A5;
+        --color-success-surface: #12301F;
+        --color-success-text: #86EFAC;
+        --color-warning-text: #FCD34D;
+        --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.45);
+        --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.6);
+        --gradient-brand: linear-gradient(135deg, #6D28D9 0%, #3B1078 100%);
+        --gradient-sidebar: linear-gradient(180deg, #0F021F 0%, #1B0937 60%, #26104D 100%);
+    }
+}
+
+/* Explicit user choice wins over the OS preference, in both directions. */
+:root[data-theme="dark"] {
+    --color-brand: #A78BFA;
+    --color-brand-dark: #0F021F;
+    --color-accent: #FBBF24;
+    --color-accent-dark: #D97706;
+    --color-surface: #12101A;
+    --color-surface-alt: #1C1926;
+    --color-text-primary: #ECEAF5;
+    --color-text-secondary: #B4AFC6;
+    --color-text-muted: #8A85A0;
+    --color-success: #34d399;
+    --color-danger: #f87171;
+    --color-border: #2C2838;
+    --color-card: #1C1926;
+    --color-highlight: #2A2416;
+    --color-brand-surface: #1D1533;
+    --color-danger-surface: #3A1A1E;
+    --color-danger-text: #FCA5A5;
+    --color-success-surface: #12301F;
+    --color-success-text: #86EFAC;
+    --color-warning-text: #FCD34D;
+    --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.45);
+    --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.6);
+    --gradient-brand: linear-gradient(135deg, #6D28D9 0%, #3B1078 100%);
+    --gradient-sidebar: linear-gradient(180deg, #0F021F 0%, #1B0937 60%, #26104D 100%);
 }
 
 html, body {

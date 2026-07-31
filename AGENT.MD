@@ -16,18 +16,47 @@ boundaries or project configuration change.
     Telemetry/         App Insights + OpenTelemetry wiring, RoleNameTelemetryInitializer
     Testing/           AiMockDelegatingHandler boundary (never registered in Production)
   PoSeeReview.Client   Mobile-first Blazor WASM (trimmable, no tokens, Web Audio API)
-  PoSeeReview.Shared   DTOs + FluentValidation rules ONLY
+  PoSeeReview.Shared   Wire DTOs, strongly-typed Ids/, Enums/, cross-slice Contracts/,
+                       FluentValidation rules
 /tests
-  PoSeeReview.UnitTests           pure unit tests
-  PoSeeReview.IntegrationTests    Testcontainers Azurite (ephemeral per factory)
+  PoSeeReview.Unit           pure unit tests
+  PoSeeReview.Integration    Testcontainers Azurite (ephemeral per factory)
   PoSeeReview.E2EAPI              in-memory host + Testcontainers Azurite, AI mocked
   PoSeeReview.E2EUI               C# Playwright against a live app (E2E_BASE_URL)
 ```
 
 The former Application/Core/Infrastructure projects were collapsed into the Api project
-(2026-07-01). Namespaces were intentionally preserved (`PoSeeReview.Core.*`,
-`PoSeeReview.Application.*`, `PoSeeReview.Infrastructure.*`) to keep the move purely
-structural; prefer `PoSeeReview.Api.*` namespaces for new code.
+(2026-07-01) and their leftover namespaces were retired (2026-07-31): every type now lives
+in the `PoSeeReview.Api.*` namespace matching its folder, so folder == namespace == slice.
+
+### Slice autonomy (NET_RULES 2.2)
+
+Slices must not reference each other. Anything two slices both need lives in
+`PoSeeReview.Shared/Contracts/`:
+
+- Models: `Comic`, `Restaurant`, `Review`, `LeaderboardEntry`
+- Contracts: `IComicRepository`, `ILeaderboardRepository`, `IRestaurantService`,
+  `ILeaderboardService`
+
+`Features/FeatureEndpoints.cs` is the composition root and may reference every slice;
+nothing else may. `Abstractions/IMockable.cs` is a cross-cutting marker, deliberately
+outside any slice. Each slice owns its own options type — the Leaderboard's admission
+threshold is `LeaderboardOptions`, separate from `ComicOptions`.
+
+### Domain primitives (NET_RULES 1.5)
+
+`PoSeeReview.Shared/Ids/` holds `readonly record struct` ids — `PlaceId`, `ComicId`,
+`UserId`, `RegionCode` — used across domain models, service and repository signatures.
+`PoSeeReview.Shared/Enums/` holds `AiImageProvider`, `CountryRegion`, `ComicCacheState`,
+`DependencyState`.
+
+Two boundaries deliberately still speak raw strings, and convert at the edge:
+
+- **Table Storage entities** (`ComicEntity`, `LeaderboardEntity`, `RestaurantEntity`) —
+  the Table SDK persists primitives only; `FromDomain`/`ToDomain` do the wrapping.
+- **Wire DTOs** (`ComicDto`, `RestaurantDto`, `TakedownRequestDto`, …) — keeps the WASM
+  client's source-generated `AppJsonContext` trim-safe. Endpoints convert with
+  `PlaceId.From(...)` / `.Value`.
 
 ## Runtime & configuration
 
@@ -40,7 +69,7 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
 - Secrets: Azure Key Vault `kv-poshared` with `PoSeeReview--` prefix-scoped names via
   `PrefixKeyVaultSecretManager`; `DefaultAzureCredential` everywhere.
 - Storage: `AzureStorage:TableEndpoint`/`BlobEndpoint` set → Managed Identity clients
-  (Prod); otherwise connection strings (Azurite in Docker, container name `PoSeeReview`
+  (Prod, the only supported cloud path); otherwise connection strings (Azurite in Docker, container name `PoSeeReview`
   via docker-compose). `Storage:UseAzurite=true` (appsettings.Development.json)
   short-circuits Key Vault connection strings and pins both clients to the local
   Azurite emulator — without it local dev hits the real storage account.
@@ -51,8 +80,16 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   the pipeline so rate-limiting and request logging see the real client IP.
 - Typed HttpClients (`GoogleMaps`, `GeminiApi`) use `AddStandardResilienceHandler`;
   external AI/Maps calls propagate the request `CancellationToken` end to end.
-- `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset, timing-safe compare);
-  Development uses the placeholder `local-dev-takedown-key` from appsettings.Development.json.
+- `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset, timing-safe compare). It is a
+  secret and appears in NO appsettings file: Key Vault in Azure, user-secrets locally
+  (`dotnet user-secrets set "Takedowns:ApiKey" "<value>"`). Unset = fails closed with 503.
+  The config path is the constant `TakedownOptions.ApiKeyConfigurationKey`.
+- Key Vault holds no storage connection strings (removed 2026-07-31): Table/Blob access in
+  Azure is Managed Identity against `AzureStorage__TableEndpoint`/`__BlobEndpoint`.
+  Connection strings exist only for local Azurite, which never touches Key Vault.
+- `AzureAd:ClientId` and `AzureAd:AllowedTenants` stay in appsettings.json on purpose:
+  they are public application identifiers, not credentials. `AzureAd:ClientSecret` is
+  Key Vault only.
 
 ## Authentication (BFF cookie proxy)
 
@@ -94,9 +131,13 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
 
 ## Deployment
 
-- GitHub Actions (`.github/workflows/deploy.yml`) builds and deploys to Azure App
-  Service `app-poseereview` (resource group `PoSeeReview`, F1 plan via
-  `infra/modules/appservice.bicep`). Tests do NOT run in the pipeline.
+- GitHub Actions (`.github/workflows/deploy.yml`): `build` → `deploy` → `smoke`. Deploys
+  to Azure App Service `app-poseereview` (resource group `PoSeeReview`, F1 plan via
+  `infra/modules/appservice.bicep`). The tiered test suites do NOT run in the pipeline.
+- Post-deploy smoke (NET_RULES 5.4) is `SCRIPTS/post-deploy-smoke.mjs`, run by the `smoke`
+  job after it polls `/health` back to 200. It asserts the Blazor render tree initialises,
+  `/health` is not Unhealthy, and `/diag` returns configuration with secret values masked.
+  Runs anonymously — never give it credentials.
 - System-assigned Managed Identity: Key Vault Secrets User on `kv-poshared` (PoShared
   RG) + Storage RBAC.
 - First run: `SCRIPTS/setup.ps1` (WinGet/Docker/Azure CLI checks, build verification).
@@ -109,3 +150,13 @@ structural; prefer `PoSeeReview.Api.*` namespaces for new code.
   matching; minimal comments.
 - Client + Shared: `IsTrimmable` + `EnableTrimAnalyzer`; JSON is source-generated via
   `AppJsonContext` (add new DTOs there). No AOT.
+- NuGet audit warnings (NU1901/2/3) are NOT suppressed anywhere; `TreatWarningsAsErrors`
+  makes a new advisory break the build. `Microsoft.OpenApi` carries a direct pin because
+  `Microsoft.AspNetCore.OpenApi` 10.0.7 drags in a vulnerable 2.0.0.
+- UI: no inline styles; scoped `.razor.css` + design tokens in `wwwroot/css/app.css`.
+  Themes are system-aware — tokens flip under `@media (prefers-color-scheme: dark)`, and
+  `:root[data-theme="dark"|"light"]` overrides the OS in both directions. Never hardcode a
+  colour in scoped CSS; add or reuse a token.
+- Test tiers and quotas (NET_RULES 5.1): Unit 100 / Integration 50 / E2EAPI 25 / E2EUI 25.
+  There is exactly one E2E UI suite — the C# Playwright project. The old TypeScript suite
+  under `tests/e2e` was folded into it and deleted (2026-07-31).

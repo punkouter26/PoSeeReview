@@ -161,7 +161,6 @@ module secrets './modules/secrets.bicep' = {
   scope: rg
   params: {
     keyVaultName: keyVault.outputs.name
-    storageConnectionString: storage.outputs.connectionString
     poSeeReviewGoogleMapsApiKey: poSeeReviewGoogleMapsApiKey
   }
 }

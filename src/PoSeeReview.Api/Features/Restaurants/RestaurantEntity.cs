@@ -1,7 +1,10 @@
-using Azure;
 using Azure.Data.Tables;
+using Azure;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Entities;
+namespace PoSeeReview.Api.Features.Restaurants;
 
 /// <summary>
 /// Azure Table Storage entity for restaurant data with 24-hour cache
@@ -36,15 +39,19 @@ public class RestaurantEntity : ITableEntity
     /// </summary>
     public DateTimeOffset CachedAt { get; set; }
 
-    /// <summary>
-    /// Creates partition key from region (format: RESTAURANT_{Region})
-    /// </summary>
-    public static string CreatePartitionKey(string region)
-        => $"RESTAURANT_{region}";
+    /// <summary>Prefix for the per-region partition key.</summary>
+    public const string PartitionKeyPrefix = "RESTAURANT";
 
     /// <summary>
-    /// Creates row key from Google place_id
+    /// Creates the partition key holding every restaurant in <paramref name="region"/>
+    /// (format: RESTAURANT_{Region}).
     /// </summary>
-    public static string CreateRowKey(string placeId)
-        => placeId;
+    public static string CreatePartitionKey(RegionCode region)
+        => $"{PartitionKeyPrefix}_{region.Value}";
+
+    /// <summary>
+    /// Creates the row key from a Google place identifier.
+    /// </summary>
+    public static string CreateRowKey(PlaceId placeId)
+        => placeId.Value;
 }

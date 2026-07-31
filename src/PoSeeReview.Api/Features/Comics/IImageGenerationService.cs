@@ -1,4 +1,4 @@
-namespace PoSeeReview.Core.Interfaces;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Service for generating comic strip images using an AI image model.

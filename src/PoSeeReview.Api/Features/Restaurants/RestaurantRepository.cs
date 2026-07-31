@@ -1,10 +1,12 @@
 using System.Text.Json;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Infrastructure.Entities;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Infrastructure.Repositories;
+namespace PoSeeReview.Api.Features.Restaurants;
 
 /// <summary>
 /// Repository for restaurant data with 24-hour cache in Azure Table Storage
@@ -28,10 +30,10 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
     /// Gets restaurant by Google place ID
     /// Returns null if not cached or cache expired (> 24 hours)
     /// </summary>
-    public async Task<Restaurant?> GetByPlaceIdAsync(string placeId, string region)
+    public async Task<Restaurant?> GetByPlaceIdAsync(PlaceId placeId, RegionCode region)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-            throw new ArgumentNullException(nameof(placeId));
+        if (placeId.IsEmpty)
+            throw new ArgumentException("PlaceId is required", nameof(placeId));
 
         var partitionKey = RestaurantEntity.CreatePartitionKey(region);
         var rowKey = RestaurantEntity.CreateRowKey(placeId);
@@ -54,7 +56,7 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
     /// <summary>
     /// Gets all valid (non-expired) restaurants in a region
     /// </summary>
-    public async Task<List<Restaurant>> GetByRegionAsync(string region)
+    public async Task<List<Restaurant>> GetByRegionAsync(RegionCode region)
     {
         var partitionKey = RestaurantEntity.CreatePartitionKey(region);
         var filter = TableClient.CreateQueryFilter<RestaurantEntity>(
@@ -97,12 +99,12 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
         {
             PartitionKey = RestaurantEntity.CreatePartitionKey(restaurant.Region),
             RowKey = RestaurantEntity.CreateRowKey(restaurant.PlaceId),
-            PlaceId = restaurant.PlaceId,
+            PlaceId = restaurant.PlaceId.Value,
             Name = restaurant.Name,
             Address = restaurant.Address,
             Latitude = restaurant.Latitude,
             Longitude = restaurant.Longitude,
-            Region = restaurant.Region,
+            Region = restaurant.Region.Value,
             AverageRating = restaurant.AverageRating,
             TotalReviews = restaurant.TotalReviews,
             ReviewsJson = JsonSerializer.Serialize(restaurant.Reviews),
@@ -117,12 +119,12 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
     {
         return new Restaurant
         {
-            PlaceId = entity.PlaceId,
+            PlaceId = PlaceId.From(entity.PlaceId),
             Name = entity.Name,
             Address = entity.Address,
             Latitude = entity.Latitude,
             Longitude = entity.Longitude,
-            Region = entity.Region,
+            Region = RegionCode.From(entity.Region),
             AverageRating = entity.AverageRating,
             TotalReviews = entity.TotalReviews,
             Reviews = string.IsNullOrWhiteSpace(entity.ReviewsJson)

@@ -5,7 +5,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core.Interfaces;
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.HostedServices;
 
@@ -111,7 +116,7 @@ public class ExpiredComicCleanupService : BackgroundService
                 {
                     await comicRepository.DeleteAsync(comic.PlaceId);
 
-                    if (!string.IsNullOrWhiteSpace(comic.Id))
+                    if (!comic.Id.IsEmpty)
                     {
                         // Do not delete the blob if a leaderboard entry still references it.
                         // Leaderboard entries are permanent; the comic record may expire but
@@ -120,17 +125,17 @@ public class ExpiredComicCleanupService : BackgroundService
                         var blobIsReferencedByLeaderboard =
                             leaderboardEntry != null &&
                             !string.IsNullOrWhiteSpace(leaderboardEntry.ComicBlobUrl) &&
-                            leaderboardEntry.ComicBlobUrl.Contains(comic.Id, StringComparison.OrdinalIgnoreCase);
+                            leaderboardEntry.ComicBlobUrl.Contains(comic.Id.Value, StringComparison.OrdinalIgnoreCase);
 
                         if (blobIsReferencedByLeaderboard)
                         {
                             _logger.LogInformation(
                                 "Skipping blob deletion for comic {ComicId} ({PlaceId}) \u2014 leaderboard entry still references it",
-                                comic.Id, comic.PlaceId);
+                                comic.Id.Value, comic.PlaceId.Value);
                         }
                         else
                         {
-                            await blobStorageService.DeleteComicImageAsync(comic.Id);
+                            await blobStorageService.DeleteComicImageAsync(comic.Id.Value);
                         }
                     }
 
@@ -138,11 +143,11 @@ public class ExpiredComicCleanupService : BackgroundService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to delete expired comic {ComicId} for {PlaceId}", comic.Id, comic.PlaceId);
+                    _logger.LogWarning(ex, "Failed to delete expired comic {ComicId} for {PlaceId}", comic.Id.Value, comic.PlaceId.Value);
                     _telemetryClient.TrackException(ex, new Dictionary<string, string>
                     {
-                        ["ComicId"] = comic.Id,
-                        ["PlaceId"] = comic.PlaceId
+                        ["ComicId"] = comic.Id.Value,
+                        ["PlaceId"] = comic.PlaceId.Value
                     });
                 }
             }

@@ -1,15 +1,19 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Core;
-using PoSeeReview.Core.Entities;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Testing;
+using PoSeeReview.Api.Abstractions;
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.Restaurants;
+using PoSeeReview.Api;
 using Testcontainers.Azurite;
+using PoSeeReview.Api.Testing;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.E2EAPI;
 
@@ -137,13 +141,13 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
     private sealed class FakeComicGenerationService : IComicGenerationService, IMockable
     {
         public Task<Comic> GenerateComicAsync(
-            string placeId,
+            PlaceId placeId,
             bool forceRegenerate = false,
             CancellationToken cancellationToken = default)
             => throw new KeyNotFoundException($"Restaurant not found in test environment: {placeId}");
 
         public Task<Comic?> GetCachedComicAsync(
-            string placeId,
+            PlaceId placeId,
             CancellationToken cancellationToken = default)
             => Task.FromResult<Comic?>(null);
     }
@@ -161,7 +165,7 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
             => Task.FromResult(new List<Restaurant>());
 
         public Task<Restaurant> GetRestaurantByPlaceIdAsync(
-            string placeId,
+            PlaceId placeId,
             CancellationToken cancellationToken = default)
             => throw new KeyNotFoundException($"Restaurant not found in test environment: {placeId}");
 

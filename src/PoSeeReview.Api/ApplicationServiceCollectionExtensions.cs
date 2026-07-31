@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
-using PoSeeReview.Application.Comics;
-using PoSeeReview.Application.DevSessions;
-using PoSeeReview.Application.Diagnostics;
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.DevSessions;
+using PoSeeReview.Api.Features.Diagnostics;
 
-namespace PoSeeReview.Application;
+namespace PoSeeReview.Api;
 
-public static class ServiceCollectionExtensions
+public static class ApplicationServiceCollectionExtensions
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {

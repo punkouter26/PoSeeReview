@@ -13,7 +13,8 @@ public sealed class ApiKeyEndpointFilter(IConfiguration configuration, ILogger<A
 {
     private const string ApiKeyHeader = "X-Api-Key";
 
-    public string ConfigurationKey { get; init; } = "Takedowns:ApiKey";
+    /// <summary>Configuration path holding the expected key. Set by the owning slice.</summary>
+    public required string ConfigurationKey { get; init; }
 
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
     {

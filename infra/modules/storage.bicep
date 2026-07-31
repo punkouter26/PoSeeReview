@@ -93,4 +93,5 @@ output primaryEndpoints object = storage.properties.primaryEndpoints
 output tableEndpoint string = storage.properties.primaryEndpoints.table
 output blobEndpoint string = storage.properties.primaryEndpoints.blob
 #disable-next-line outputs-should-not-contain-secrets
-output connectionString string = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${storage.listKeys().keys[0].value}'
+// No connectionString output: emitting one would surface a storage ACCOUNT KEY in the
+// deployment history. Consumers use the endpoints above with Managed Identity (NET_RULES 5.4).

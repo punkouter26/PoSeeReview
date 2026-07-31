@@ -1,13 +1,11 @@
-using Azure;
-using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
+using Azure.Storage.Blobs;
 using Azure.Storage.Sas;
+using Azure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Core.Interfaces;
-using PoSeeReview.Infrastructure.Configuration;
 
-namespace PoSeeReview.Infrastructure.Storage;
+namespace PoSeeReview.Api.Storage;
 
 /// <summary>
 /// Azure Blob Storage service for uploading and managing comic images.
