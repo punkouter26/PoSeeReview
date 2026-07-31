@@ -11,9 +11,12 @@ public class ComicOptions
     public const string SectionName = "Comics";
 
     /// <summary>
-    /// Minimum number of raw reviews needed before a comic can be generated.
+    /// Minimum number of raw reviews needed before a comic can be generated, also applied to
+    /// the surviving set after inappropriate-content filtering. 1 — the default — is the floor:
+    /// a comic needs at least one review to draw from, so this is as permissive as the pipeline
+    /// allows. Raise it to demand more source material per comic.
     /// </summary>
-    public int MinimumReviewsRequired { get; set; } = 5;
+    public int MinimumReviewsRequired { get; set; } = 1;
 
     /// <summary>
     /// Maximum number of reviews forwarded to GPT for strangeness analysis
@@ -28,8 +31,10 @@ public class ComicOptions
 
     /// <summary>
     /// Minimum strangeness score (0–100) a restaurant must reach before a comic is generated;
-    /// anything lower is rejected as too ordinary. The leaderboard's own admission threshold
-    /// lives in LeaderboardOptions.
+    /// anything lower is rejected as too ordinary. Scores are never negative, so 0 — the
+    /// default — disables the gate entirely and every restaurant gets a comic. Raise it to
+    /// reinstate the "too ordinary → 422" rejection. The leaderboard's own admission
+    /// threshold lives in LeaderboardOptions and is unaffected.
     /// </summary>
-    public int MinimumStrangenessScore { get; set; } = 20;
+    public int MinimumStrangenessScore { get; set; }
 }

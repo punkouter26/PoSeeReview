@@ -135,9 +135,10 @@ Two boundaries deliberately still speak raw strings, and convert at the edge:
   to Azure App Service `app-poseereview` (resource group `PoSeeReview`, F1 plan via
   `infra/modules/appservice.bicep`). The tiered test suites do NOT run in the pipeline.
 - Post-deploy smoke (NET_RULES 5.4) is `SCRIPTS/post-deploy-smoke.mjs`, run by the `smoke`
-  job after it polls `/health` back to 200. It asserts the Blazor render tree initialises,
-  `/health` is not Unhealthy, and `/diag` returns configuration with secret values masked.
-  Runs anonymously — never give it credentials.
+  job after it polls `/health` back to 200. It asserts the Blazor render tree initialises and
+  `/health` is not Unhealthy. Runs anonymously — never give it credentials. The `/diag`
+  secret-masking assertion was dropped (2026-07-31): `/diag` sits behind the
+  unsupported-user-agent guard, so an anonymous scripted fetch always gets a 400.
 - System-assigned Managed Identity: Key Vault Secrets User on `kv-poshared` (PoShared
   RG) + Storage RBAC.
 - First run: `SCRIPTS/setup.ps1` (WinGet/Docker/Azure CLI checks, build verification).

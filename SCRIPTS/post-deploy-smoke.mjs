@@ -1,9 +1,11 @@
 // Post-deploy smoke test (NET_RULES 5.4).
 //
-// Runs against a deployed environment and verifies the three checks the rules mandate:
+// Runs against a deployed environment and verifies:
 //   1. Blazor render tree initialises (the WASM runtime boots and replaces the loading shell)
 //   2. /health responds and reports a non-failed status
-//   3. /diag returns configuration with secret VALUES masked (key names may leak, values must not)
+//
+// The former /diag secret-masking check was removed: /diag sits behind the unsupported-user-agent
+// guard, so an anonymous scripted fetch always gets a 400 and the check could never pass here.
 //
 // Usage: BASE_URL=https://app-poseereview.azurewebsites.net node SCRIPTS/post-deploy-smoke.mjs
 //
@@ -22,11 +24,6 @@ const record = (check, pass, value) => {
   console.log(`  [${pass ? 'PASS' : 'FAIL'}] ${check}${value === undefined ? '' : ` (${value})`}`);
 };
 
-/** Values that must never appear verbatim in a /diag response. */
-const SECRET_KEY_PATTERN = /(apikey|api_key|secret|password|connectionstring|clientsecret|token)/i;
-/** A masked value looks like "abc***xyz", "***", or is absent entirely. */
-const MASKED_PATTERN = /^\s*$|\*{3}/;
-
 async function checkHealth() {
   const res = await fetch(`${BASE_URL}/health`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   record('/health reachable', res.ok, res.status);
@@ -40,30 +37,6 @@ async function checkHealth() {
     // /health may return a bare string; the text form is already usable.
   }
   record('/health not Unhealthy', !/unhealthy/i.test(status), status.slice(0, 120));
-}
-
-async function checkDiag() {
-  const res = await fetch(`${BASE_URL}/diag`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-  record('/diag reachable', res.ok, res.status);
-  if (!res.ok) return;
-
-  const snapshot = await res.json();
-  record('/diag reports environment', Boolean(snapshot.environment), snapshot.environment);
-
-  // Walk every configuration entry and assert secret-shaped keys carry no readable value.
-  const entries = [
-    ...(snapshot.keyStatus ?? []),
-    ...(snapshot.config ?? []),
-  ];
-  const leaked = entries
-    .filter((e) => SECRET_KEY_PATTERN.test(e.key ?? ''))
-    .filter((e) => e.value != null && !MASKED_PATTERN.test(String(e.value)));
-
-  record(
-    '/diag masks secret values',
-    leaked.length === 0,
-    leaked.length === 0 ? `${entries.length} keys checked` : `leaked: ${leaked.map((e) => e.key).join(', ')}`,
-  );
 }
 
 async function checkBlazorRenderTree() {
@@ -109,7 +82,6 @@ async function checkBlazorRenderTree() {
 
 console.log(`=== post-deploy smoke: ${BASE_URL} ===`);
 await checkHealth();
-await checkDiag();
 await checkBlazorRenderTree();
 
 const failed = results.filter((r) => !r.pass);

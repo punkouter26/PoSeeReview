@@ -202,8 +202,8 @@
         {
             if (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
             {
-                _errorTitle = "This Place is Refreshingly Normal! 😌";
-                _error = "This restaurant doesn't have enough reviews (minimum 5) to generate a comic. The reviews we found were probably too ordinary anyway!";
+                _errorTitle = "No Reviews to Draw From! 📭";
+                _error = "We couldn't find any usable reviews for this restaurant, so there's nothing to build a comic out of. Try another place!";
             }
             else if (ex.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
             {

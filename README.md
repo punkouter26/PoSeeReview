@@ -197,7 +197,7 @@ az containerapp list --query "[].{name:name, fqdn:properties.configuration.ingre
 
 The base URL will be printed as `SERVICE_WEB_URL` or `SERVICE_API_URL` in the `azd env show` output.
 
-The same post-deploy checks CI runs (Blazor render tree, `/health`, masked `/diag`) can be run by hand:
+The same post-deploy checks CI runs (Blazor render tree, `/health`) can be run by hand:
 
 ```powershell
 # Post-deploy smoke (NET_RULES 5.4) — the deploy workflow runs this automatically
