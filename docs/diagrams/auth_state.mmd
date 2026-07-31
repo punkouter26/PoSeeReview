@@ -1,0 +1,13 @@
+stateDiagram-v2
+  [*] --> ShellBoot: GET / and /_framework assets
+  ShellBoot --> AuthProbe: client starts and calls /auth/me
+  AuthProbe --> GuestCookie: Dev/Test /auth/login/fake
+  AuthProbe --> OidcChallenge: /auth/login/microsoft
+  OidcChallenge --> CookieSession: OIDC callback succeeds
+  GuestCookie --> CookieSession: sign-in cookie issued
+  CookieSession --> AuthorizedApi: /api/* requests carry the BFF cookie
+  AuthorizedApi --> AnonymousBootstrap: static assets stay anonymous
+  AnonymousBootstrap --> [*]
+  CookieSession --> UnauthorizedApi: fallback policy rejects missing/invalid session
+  UnauthorizedApi --> AuthProbe: user must reauthenticate
+  ShellBoot --> AnonymousBootstrap: /_framework and index.html are anonymous boot assets

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth Lifecycle · PoSeeReview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+  *,*::before,*::after{box-sizing:border-box}
+  :root{
+    --paper:#f5f5f5;--ink:#2d3142;--muted:#4f5d75;--accent:#eb6c36;
+    --panel:#ffffff;--line:#d1d5db;--shadow:0 10px 30px rgba(15,23,42,.08);
+    --green:#14532d;--blue:#0c4a6e;--indigo:#312e81;--slate:#1e293b;--gold:#7c2d12;--violet:#4a044e;
+    --sans:'Geist',system-ui,sans-serif;--serif:'Instrument Serif',serif;--mono:'Geist Mono',ui-monospace,monospace;
+  }
+  body{margin:0;font-family:var(--sans);background:linear-gradient(180deg,#fbfbfb 0%,var(--paper) 45%,#eef2f7 100%);color:var(--ink);min-height:100vh;padding:2rem 1.25rem 3rem}
+  .frame{max-width:1440px;margin:0 auto}
+  .eyebrow{font:600 .68rem var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 .5rem}
+  h1{font:400 clamp(2rem,3vw + 1rem,3.25rem)/1.05 var(--serif);letter-spacing:-.025em;margin:.2rem 0 .5rem}
+  .lede{max-width:78ch;color:var(--muted);line-height:1.65;font-size:1rem;margin:0 0 1.5rem}
+  .topbar{display:flex;gap:1rem;flex-wrap:wrap;align-items:center;justify-content:space-between;margin-bottom:1.5rem}
+  .pill-row{display:flex;gap:.5rem;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:.35rem;padding:.32rem .65rem;border-radius:999px;font:600 .66rem var(--mono);letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--line);background:#fff;color:var(--ink)}
+  .pill strong{font-weight:700}
+  .pill.good{background:#ecfdf5;color:var(--green);border-color:#bbf7d0}
+  .pill.warn{background:#fff7ed;color:var(--gold);border-color:#fed7aa}
+  .pill.info{background:#eff6ff;color:var(--blue);border-color:#bfdbfe}
+  .pill.bad{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+  .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;align-items:start}
+  .grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;align-items:start}
+  @media (max-width:980px){.grid-2,.grid-3{grid-template-columns:1fr}}
+  .card,.panel,.note{background:var(--panel);border:1px solid rgba(209,213,219,.85);border-radius:18px;box-shadow:var(--shadow)}
+  .card{padding:1rem 1rem 1.1rem}
+  .panel{padding:1.1rem}
+  .card h2,.panel h2,.panel h3{font:400 1.3rem/1.15 var(--serif);margin:.1rem 0 .7rem}
+  .section{margin-top:1.15rem}
+  .section h2{font:400 1.55rem/1.1 var(--serif);margin:0 0 .75rem}
+  .muted{color:var(--muted)}
+  .table-wrap{overflow:auto;border-radius:14px;border:1px solid rgba(209,213,219,.8)}
+  table{width:100%;border-collapse:collapse;font-size:.82rem;background:#fff}
+  th,td{padding:.72rem .8rem;vertical-align:top;border-bottom:1px solid #e5e7eb;text-align:left}
+  th{font:700 .67rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:#fff;background:#1f2937;white-space:nowrap}
+  tbody tr:nth-child(even) td{background:#fafafa}
+  .two-col{display:grid;grid-template-columns:minmax(300px,1.1fr) minmax(360px,.9fr);gap:1rem;align-items:start}
+  @media (max-width:980px){.two-col{grid-template-columns:1fr}}
+  .chart-box{padding:1rem;background:linear-gradient(180deg,#ffffff 0%,#fcfcfd 100%);border-radius:18px;border:1px solid rgba(209,213,219,.8);min-height:340px}
+  .chart-box.compact{min-height:280px}
+  .diagram{width:100%;height:auto;display:block;border-radius:18px;border:1px solid rgba(209,213,219,.8);background:#fff;padding:.5rem}
+  .back{display:inline-block;margin-top:1rem;font:600 .7rem var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);text-decoration:none}
+  .list{margin:.4rem 0 0 1.05rem;padding:0;color:var(--ink);line-height:1.55}
+  .list li{margin:.28rem 0}
+  .subtle{font-size:.86rem;color:var(--muted)}
+  .split{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+  @media (max-width:800px){.split{grid-template-columns:1fr}}
+  .code{font-family:var(--mono);font-size:.8rem;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:.55rem .7rem;overflow:auto}
+  .toggle-row{display:flex;gap:.5rem;flex-wrap:wrap;margin:.4rem 0 1rem}
+  .toggle-row button{border:1px solid var(--line);border-radius:999px;background:#fff;padding:.4rem .8rem;font:600 .68rem var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink);cursor:pointer}
+  .toggle-row button[aria-pressed='true']{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .report-footer{margin-top:1.5rem;font-size:.76rem;color:var(--muted);letter-spacing:.04em}
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="topbar">
+      <div>
+        <p class="eyebrow">NET_DOCS · Auth Lifecycle</p>
+        <h1>Auth Lifecycle</h1>
+      </div>
+    </div>
+    <p class="lede">This report documents the BFF cookie handshake, the Dev/Test FakeAuth bypass, and the API-facing status behavior that keeps browser and API clients on the right side of the redirect boundary.</p>
+    
+    <div class="grid-3 section">
+      <div class="card"><p class="eyebrow">FakeAuth</p><h2>Dev/Test only</h2><p class="subtle">Maps X-Fake-User and X-Fake-Roles headers to a claims principal, and refuses to exist in Production.</p></div>
+      <div class="card"><p class="eyebrow">Cookie BFF</p><h2>Primary session</h2><p class="subtle">HttpOnly, SameSite=Strict, Secure cookie named .PoSeeReview.Auth.</p></div>
+      <div class="card"><p class="eyebrow">OIDC</p><h2>Microsoft /common</h2><p class="subtle">Challenge uses Entra OIDC with issuer-shape validation against allowed tenants.</p></div>
+    </div>
+
+    <div class="two-col section">
+      <div class="chart-box"><canvas id="authChart" height="210"></canvas></div>
+      <div class="panel">
+        <h2>Auth modes and guards</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mode</th><th>Where it appears</th><th>Guard</th><th>Status logic</th></tr></thead>
+            <tbody>
+              <tr><td>Cookie</td><td>/auth/me, authenticated API routes</td><td>Fallback policy requires auth</td><td>Redirects are suppressed to 401/403 for API clients.</td></tr>
+              <tr><td>OIDC</td><td>/auth/login/microsoft</td><td>Challenge via OpenIdConnectDefaults.AuthenticationScheme</td><td>Returns 503 when AzureAd:ClientId is missing.</td></tr>
+              <tr><td>FakeAuth</td><td>/auth/login/fake, test clients, non-prod auth header mode</td><td>Header-mapped scheme in Dev/Test only</td><td>/auth/login/fake returns 404 in Production.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="section split">
+      <div class="panel">
+        <h2>BFF handshake</h2>
+        <ul class="list">
+          <li>The WASM client never holds tokens; the cookie is the session.</li>
+          <li>/auth/me reports the server-side auth state back to the client.</li>
+          <li>Client requests stamp X-Session-ID and per-request X-Correlation-ID headers.</li>
+          <li>Anonymous routes are explicit: /auth, /health, /diag, /api/devsession, /api/takedowns, and the SPA fallback.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h2>401 vs 302 enforcement</h2>
+        <ul class="list">
+          <li>Cookie redirects are converted to 401/403 by the cookie events so API clients do not receive login HTML.</li>
+          <li>/auth/login/microsoft returns a challenge, not a redirect loop, when configured.</li>
+          <li>/api routes rely on the fallback policy, so business slices stay protected even when they do not carry per-endpoint authorize metadata.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section panel">
+      <h2>State diagram context</h2>
+      <p class="muted">The rendered state diagram shows anonymous boot, fake/guest auth, Microsoft OIDC sign-in, cookie session establishment, and the web app’s anonymous static boot path before auth is discovered.</p>
+      <img class="diagram" src="assets/auth_state.svg" alt="auth_state" />
+    </div>
+  
+    <a class="back" href="index.html">← All Diagrams</a>
+    <div class="report-footer">Generated from code-verified anchors in the PoSeeReview workspace.</div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  
+  <script>
+    new Chart(document.getElementById('authChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Cookie session', 'OIDC challenge', 'FakeAuth header', 'Anonymous boot'],
+        datasets: [{ label: 'Auth modes', data: [1,1,1,1], backgroundColor: ['#14532d','#0c4a6e','#7c2d12','#1e3a8a'] }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, max: 1 } } }
+    });
+  </script>
+</body>
+</html>
