@@ -123,7 +123,7 @@
     margin-bottom: 0.8rem;
     border-radius: 999px;
     background: rgba(124, 58, 237, 0.1);
-    color: #6d28d9;
+    color: var(--color-brand);
     font-size: 0.78rem;
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -186,6 +186,24 @@
     line-height: 1.6;
 }
 
+.retry-link {
+    margin-top: 0.75rem;
+    padding: 0.5rem 1.1rem;
+    min-height: 2.75rem;
+    border-radius: 999px;
+    border: 1.5px solid var(--color-accent-dark);
+    background: transparent;
+    color: var(--color-accent-dark);
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.retry-link:hover {
+    background: rgba(245, 158, 11, 0.14);
+}
+
 .restaurants-grid {
     margin-top: 1rem;
     display: grid;
@@ -206,12 +224,6 @@
     margin-bottom: 1rem;
     text-align: center;
     font-weight: 500;
-}
-
-.location-search-fallback {
-    display: flex;
-    justify-content: center;
-    padding: 2rem 1rem;
 }
 
 .search-row {
@@ -238,7 +250,7 @@
     align-items: flex-start;
     gap: 0.6rem;
     background: var(--color-highlight);
-    border: 1px solid #F59E0B;
+    border: 1px solid var(--color-accent);
     border-radius: 8px;
     padding: 0.75rem 1rem;
     margin-bottom: 1rem;
@@ -291,7 +303,7 @@
     border: none;
     border-radius: 50%;
     background: rgba(124, 58, 237, 0.08);
-    color: #6d28d9;
+    color: var(--color-brand);
     cursor: pointer;
     font-size: 1rem;
     line-height: 1;
@@ -312,14 +324,19 @@
     border-radius: var(--radius-card);
     padding: clamp(0.875rem, 2vw, 1.25rem);
     border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-card));
+    box-shadow: var(--shadow-card);
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     gap: 0.75rem;
 }
 
+/* Token-driven so the placeholder blocks stay darker than the card in dark mode. Hardcoded
+   light greys turned every loading skeleton into a bright slab on a dark page. */
 .sk-block {
-    background: linear-gradient(90deg, #f0f0f4 25%, #e4e4ea 50%, #f0f0f4 75%);
+    background: linear-gradient(90deg,
+        var(--color-surface-alt) 25%,
+        var(--color-border) 50%,
+        var(--color-surface-alt) 75%);
     background-size: 200% 100%;
     animation: skShimmer 1.4s ease-in-out infinite;
     border-radius: 6px;

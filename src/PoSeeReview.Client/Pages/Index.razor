@@ -18,7 +18,20 @@
         <a href="/leaderboard" class="leaderboard-hero-link">🏆 Hall of Fame — See the Weirdest Stories</a>
     </header>
 
-    @if (_flowState == LocationFlowState.Idle || _flowState == LocationFlowState.Denied)
+    @* The error banner renders ABOVE the prompt card, and the prompt card stays mounted in
+       the Error state. Previously Error replaced the whole form, so a failed text search left
+       the user with a single "Try again" link that re-requested geolocation — no way back to
+       the search box they had just used. *@
+    @if (_flowState == LocationFlowState.Error)
+    {
+        <div class="error-message" role="alert">
+            <h2>Something Went Wrong</h2>
+            <p>@_errorMessage</p>
+            <button type="button" class="retry-link" @onclick="RetryLastAttemptAsync">@RetryLabel</button>
+        </div>
+    }
+
+    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied or LocationFlowState.Error)
     {
         <div class="location-prompt">
             <FluentCard class="prompt-card">
@@ -41,11 +54,13 @@
                 }
                 <div class="search-row">
                     <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
-                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync" Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))" title="Type a city, address, or ZIP code first">
+                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync"
+                                  Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))"
+                                  title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
                         Search
                     </FluentButton>
                 </div>
-                <p class="hint-text">Only restaurants with enough review history appear, so every result is comic-ready.</p>
+                <p class="hint-text">Comics are drawn from a place's recent public reviews — the more it has, the stranger the story.</p>
             </FluentCard>
         </div>
     }
@@ -73,14 +88,6 @@
     }
 
 
-    @if (_flowState == LocationFlowState.Error)
-    {
-        <div class="error-message">
-            <h2>Something Went Wrong</h2>
-            <p>@_errorMessage <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>Try again</a></p>
-        </div>
-    }
-
     @if (_restaurants.Count > 0)
     {
         <div class="restaurants-grid">
@@ -89,7 +96,9 @@
                     &#128205; @_lastSearch
                     <button class="chip-clear" @onclick="ClearSearch" title="New search">&#215;</button>
                 </span>
-                <span class="results-count">@_totalCount comic-ready restaurants</span>
+                @* Not "comic-ready" any more: the client no longer pre-filters by review
+                   count, so this is simply what the search returned. *@
+                <span class="results-count">@_totalCount restaurant@(_totalCount == 1 ? "" : "s") found</span>
             </div>
             @foreach (var restaurant in _restaurants)
             {
@@ -104,7 +113,12 @@
 
 @code {
     private enum LocationFlowState { Idle, Loading, Denied, Error, Ready }
+
+    /// <summary>Which entry point produced the current results, so a retry repeats it.</summary>
+    private enum DiscoveryAttempt { None, Location, Search }
+
     private LocationFlowState _flowState = LocationFlowState.Idle;
+    private DiscoveryAttempt _lastAttempt = DiscoveryAttempt.None;
     private string _loadingMessage = "Getting your location...";
     private string _errorMessage = string.Empty;
     private List<RestaurantDto> _restaurants = new();
@@ -132,8 +146,22 @@
         }
     }
 
+    private string RetryLabel => _lastAttempt == DiscoveryAttempt.Search
+        ? $"Search “{_lastSearch}” again"
+        : "Try my location again";
+
+    /// <summary>
+    /// Repeats whichever discovery path failed. Retrying a failed text search by asking for
+    /// geolocation — what the old single "Try again" link did — is a different action than
+    /// the one the user took.
+    /// </summary>
+    private Task RetryLastAttemptAsync() => _lastAttempt == DiscoveryAttempt.Search
+        ? SearchByLocationAsync()
+        : RequestLocationAsync();
+
     private async Task RequestLocationAsync()
     {
+        _lastAttempt = DiscoveryAttempt.Location;
         _flowState = LocationFlowState.Loading;
         _loadingMessage = "Getting your location...";
         StateHasChanged();
@@ -144,7 +172,7 @@
 
             if (!result.Success)
             {
-                if (result.ErrorMessage.Contains("denied", StringComparison.OrdinalIgnoreCase))
+                if (result.PermissionDenied)
                 {
                     _flowState = LocationFlowState.Denied;
                     await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "false");
@@ -248,6 +276,8 @@
 
         var searchTerm = _searchQuery.Trim();
 
+        _lastAttempt = DiscoveryAttempt.Search;
+        _lastSearch = searchTerm;
         _flowState = LocationFlowState.Loading;
         _loadingMessage = $"Searching restaurants near {searchTerm}...";
         StateHasChanged();
@@ -256,7 +286,25 @@
         {
             var response = await ApiClient.SearchRestaurantsByLocationAsync(searchTerm);
 
-            if (response == null || response.Restaurants.Count == 0)
+            if (response == null)
+            {
+                _errorMessage = "No restaurants found for that location. Try a different city or ZIP code.";
+                _flowState = LocationFlowState.Error;
+                return;
+            }
+
+            // Same short-circuit the nearby path already handled. Without this a placeholder
+            // Google Maps key reported "try a different city", sending the user chasing a
+            // problem that has nothing to do with their query.
+            if (response.Stale)
+            {
+                _errorMessage = response.StaleReason
+                    ?? "Restaurant search is temporarily unavailable. Please try again later.";
+                _flowState = LocationFlowState.Error;
+                return;
+            }
+
+            if (response.Restaurants.Count == 0)
             {
                 _errorMessage = "No restaurants found for that location. Try a different city or ZIP code.";
                 _flowState = LocationFlowState.Error;
@@ -346,16 +394,18 @@
 
     private void SetRestaurantResults(IEnumerable<RestaurantDto> restaurants, string label)
     {
-        _restaurants = restaurants
-            .Where(static restaurant => restaurant.TotalReviews >= 5)
-            .ToList();
+        // No client-side review threshold. This used to drop anything under 5 reviews while
+        // the API's ComicOptions.MinimumReviewsRequired was 1, so the client hid places the
+        // server would happily draw. The only genuinely unusable case — zero reviews — is
+        // handled by RestaurantCard, which matches the server's floor.
+        _restaurants = restaurants.ToList();
 
         _totalCount = _restaurants.Count;
         _lastSearch = label;
 
         if (_restaurants.Count == 0)
         {
-            _errorMessage = "We found restaurants, but none have enough reviews yet to generate a comic. Try a busier area.";
+            _errorMessage = "We couldn't find any restaurants there. Try a busier area.";
             _flowState = LocationFlowState.Error;
         }
     }

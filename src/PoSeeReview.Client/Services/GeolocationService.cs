@@ -35,20 +35,6 @@ public class GeolocationService
         }
     }
 
-    /// <summary>
-    /// Checks if geolocation is supported in the browser.
-    /// </summary>
-    public async Task<bool> IsGeolocationSupportedAsync()
-    {
-        try
-        {
-            return await _jsRuntime.InvokeAsync<bool>("geolocation.isSupported");
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }
 
 /// <summary>
@@ -59,6 +45,12 @@ public class GeolocationResult
     public bool Success { get; set; } = true;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
-    public double? Accuracy { get; set; }
     public string ErrorMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// True when the browser reported PERMISSION_DENIED. Callers used to substring-match the
+    /// message for "denied", which coupled the denial branch to English prose the JS layer
+    /// already knew the code for.
+    /// </summary>
+    public bool PermissionDenied { get; set; }
 }

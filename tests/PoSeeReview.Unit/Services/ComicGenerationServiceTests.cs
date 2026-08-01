@@ -45,7 +45,7 @@ public class ComicGenerationServiceTests
         _telemetryClient = new TelemetryClient(new TelemetryConfiguration());
     }
 
-    private ComicGenerationService CreateService()
+    private ComicGenerationService CreateService(ComicOptions? options = null)
     {
         // Default setup: text overlay returns input bytes unchanged (passthrough)
         _mockTextOverlayService.Setup(x => x.AddTextOverlayAsync(
@@ -65,7 +65,7 @@ public class ComicGenerationServiceTests
             _mockLeaderboardService.Object,
             _mockLogger.Object,
             _telemetryClient,
-            Options.Create(new ComicOptions())
+            Options.Create(options ?? new ComicOptions())
         );
     }
 
@@ -194,9 +194,12 @@ public class ComicGenerationServiceTests
     }
 
     [Fact]
-    public async Task GenerateComicAsync_WithInsufficientReviews_ShouldThrowInvalidOperationException()
+    public async Task GenerateComicAsync_WithFewerReviewsThanConfiguredMinimum_ShouldThrowInsufficientReviews()
     {
-        // Arrange
+        // Arrange — the minimum is configuration, so the test must set it rather than lean on
+        // the default. This previously asserted that ONE review was insufficient, which stopped
+        // being true when MinimumReviewsRequired dropped to 1; the test then sailed past the
+        // guard and failed with a NullReferenceException from deeper in the pipeline.
         var placeId = "test-place-123";
         var restaurant = new Restaurant
         {
@@ -208,7 +211,7 @@ public class ComicGenerationServiceTests
             }
         };
 
-        var service = CreateService();
+        var service = CreateService(new ComicOptions { MinimumReviewsRequired = 2 });
         _mockComicRepository.Setup(x => x.GetByPlaceIdAsync(PlaceId.From(placeId)))
             .ReturnsAsync((Comic?)null);
         _mockRestaurantService.Setup(x => x.GetRestaurantByPlaceIdAsync(PlaceId.From(placeId), It.IsAny<CancellationToken>()))
@@ -217,6 +220,37 @@ public class ComicGenerationServiceTests
         // Act & Assert — InsufficientReviewsException derives from InvalidOperationException
         await Assert.ThrowsAsync<InsufficientReviewsException>(() =>
             service.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate: false));
+    }
+
+    [Fact]
+    public async Task GenerateComicAsync_WhenAnalyzerReturnsEmptyNarrative_ShouldThrowInsteadOfNullReferencing()
+    {
+        // Arrange — an empty narrative is a plausible AI response, not a bug in our code, and
+        // must surface as a handled 400 rather than a NullReferenceException the user reads as
+        // "Object reference not set to an instance of an object".
+        var placeId = "test-place-123";
+        var restaurant = new Restaurant
+        {
+            PlaceId = PlaceId.From(placeId),
+            Name = "Test Restaurant",
+            Reviews = new List<Review> { new Review { Text = "A review", Rating = 1 } }
+        };
+
+        var service = CreateService();
+        _mockComicRepository.Setup(x => x.GetByPlaceIdAsync(PlaceId.From(placeId)))
+            .ReturnsAsync((Comic?)null);
+        _mockRestaurantService.Setup(x => x.GetRestaurantByPlaceIdAsync(PlaceId.From(placeId), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(restaurant);
+        _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((72, 2, string.Empty));
+
+        // Act & Assert
+        await Assert.ThrowsAsync<InsufficientReviewsException>(() =>
+            service.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate: false));
+
+        _mockImageGenerationService.Verify(
+            x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [Fact]

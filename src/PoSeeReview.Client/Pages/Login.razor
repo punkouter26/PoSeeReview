@@ -20,26 +20,21 @@
         <p>Sign in to discover strange restaurant stories nearby and turn them into shareable comics.</p>
 
         <div class="login-actions">
-            @if (IsTest)
+            <button class="login-btn login-btn-microsoft" @onclick="LoginWithMicrosoft">
+                <svg class="login-btn-icon" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+                    <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+                    <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+                </svg>
+                Sign in with Microsoft
+            </button>
+            @* Guest bypass renders in Dev AND Test (NET_RULES 4.4). Test used to auto-navigate
+               instead of rendering the button, which contradicted the E2E UI suite — every one
+               of its tests clicks "Continue as guest" and so only ever worked against Dev. *@
+            @if (IsDevelopment || IsTest)
             {
-                @* Test env enforces the guest bypass so automated suites skip interactive auth (NET_RULES 4.4). *@
-                <p>Signing in as guest&hellip;</p>
-            }
-            else
-            {
-                <button class="login-btn login-btn-microsoft" @onclick="LoginWithMicrosoft">
-                    <svg class="login-btn-icon" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                        <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
-                        <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
-                        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
-                        <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
-                    </svg>
-                    Sign in with Microsoft
-                </button>
-                @if (IsDevelopment)
-                {
-                    <button class="login-btn login-btn-secondary" @onclick="LoginAsGuest">Continue As Guest</button>
-                }
+                <button class="login-btn login-btn-secondary" @onclick="LoginAsGuest">Continue As Guest</button>
             }
         </div>
     </div>
@@ -69,13 +64,7 @@
             if (authState.User.Identity?.IsAuthenticated == true)
             {
                 Navigation.NavigateTo(SafeReturnUrl, replace: true);
-                return;
             }
-        }
-
-        if (IsTest)
-        {
-            LoginAsGuest();
         }
     }
 

@@ -1,5 +1,6 @@
 @page "/leaderboard"
 @attribute [Authorize]
+@implements IDisposable
 @using PoSeeReview.Shared.Dtos
 @using PoSeeReview.Client.Services
 @inject ApiClient ApiClient
@@ -19,10 +20,14 @@
         <div class="region-chips" role="group" aria-label="Select region">
             @foreach (var (regionCode, flag, label) in _regions)
             {
+                @* aria-pressed so the selected region is announced, not just tinted. The
+                   visible label is a 2-letter code, so the full country name is the a11y name. *@
                 <button class="region-chip @(selectedRegion == regionCode ? "active" : "")"
                         @onclick="() => SelectRegionAsync(regionCode)"
+                        aria-pressed="@(selectedRegion == regionCode)"
+                        aria-label="@label"
                         title="@label">
-                    <span class="region-flag">@flag</span>
+                    <span class="region-flag" aria-hidden="true">@flag</span>
                     <span class="region-code">@regionCode</span>
                 </button>
             }
@@ -45,7 +50,7 @@
 
     @if (errorMessage != null)
     {
-        <div class="alert alert-danger mt-3" role="alert">
+        <div class="alert alert-danger" role="alert">
             @errorMessage
         </div>
     }
@@ -65,8 +70,10 @@
     }
     else
     {
+        @* The server stamps LastUpdated with the request time, so it only ever said "now".
+           Report when THIS page last fetched, which is a fact we actually own. *@
         <div class="last-updated">
-            <span>Standings refreshed @lastUpdated.ToLocalTime().ToString("g")</span>
+            <span>Loaded @lastLoadedLocal.ToString("t")</span>
             <FluentButton Appearance="Appearance.Lightweight" @onclick="LoadLeaderboardAsync" Disabled="@isLoading">
                 &#8635; Refresh
             </FluentButton>
@@ -87,10 +94,12 @@
                         }
                         else
                         {
-                            <div class="comic-thumbnail-placeholder" role="img" aria-label="Comic image expired — open this entry to redraw it">
+                            @* Was a plain <div> that said "Tap to redraw" and did nothing. *@
+                            <a href="/comic/@entry.PlaceId?from=leaderboard" class="comic-thumbnail-placeholder"
+                               aria-label="Comic image for @entry.RestaurantName expired — open to redraw it">
                                 <span class="placeholder-icon">🎨</span>
                                 <span class="placeholder-text">Tap to redraw</span>
-                            </div>
+                            </a>
                         }
                     </div>
 
@@ -114,6 +123,11 @@
             }
         </div>
     }
+
+    @if (shareToast != null)
+    {
+        <div class="copy-toast" role="status">@shareToast</div>
+    }
 </div>
 
 @code {
@@ -133,9 +147,11 @@
     private string selectedRegion = "US";
     private int limit = 10;
     private string limitStr = "10";
-    private DateTimeOffset lastUpdated = DateTimeOffset.MinValue;
+    private DateTimeOffset lastLoadedLocal = DateTimeOffset.Now;
     private string? errorMessage;
     private bool isLoading = false;
+    private string? shareToast;
+    private System.Threading.Timer? shareToastTimer;
     protected override async Task OnInitializedAsync()
     {
         await LoadLeaderboardAsync();
@@ -170,7 +186,7 @@
             if (response != null)
             {
                 leaderboardEntries = response.Entries;
-                lastUpdated = response.LastUpdated;
+                lastLoadedLocal = DateTimeOffset.Now;
                 Logger.LogInformation("Loaded {Count} leaderboard entries", leaderboardEntries.Count);
             }
             else
@@ -189,7 +205,9 @@
         }
     }
 
-    private static string GetMedal(int rank) => rank switch { 1 => "🎉", 2 => "🥈", 3 => "🥉", _ => $"#{rank}" };
+    // Rank 1 is gold — it carries .medal-gold styling, so a party popper read as a mismatch
+    // next to the silver and bronze medals below it.
+    private static string GetMedal(int rank) => rank switch { 1 => "🥇", 2 => "🥈", 3 => "🥉", _ => $"#{rank}" };
     private static string GetMedalClass(int rank) => rank switch { 1 => "medal-gold", 2 => "medal-silver", 3 => "medal-bronze", _ => "medal-default" };
 
     private static string GetRankClass(int rank) => rank switch { 1 => "rank-gold", 2 => "rank-silver", 3 => "rank-bronze", _ => "" };
@@ -215,22 +233,44 @@
             var title = $"Strange Review Comic - {entry.RestaurantName}";
             var text = $"Check out this weird review comic! Strangeness: {entry.StrangenessScore:F0}/100 🎨 #PoSeeReview";
 
-            var shareSupported = await ShareService.IsShareSupportedAsync();
-            
-            if (shareSupported)
+            var outcome = await ShareService.IsShareSupportedAsync()
+                ? await ShareService.ShareComicAsync(title, text, comicUrl)
+                : ShareOutcome.Unsupported;
+
+            // Every branch now reports back. Copying to the clipboard with no confirmation —
+            // what this did before — is indistinguishable from a dead button.
+            switch (outcome)
             {
-                await ShareService.ShareComicAsync(title, text, comicUrl);
-            }
-            else
-            {
-                await ShareService.CopyToClipboardAsync(comicUrl);
-                // Could show a toast notification here
+                case ShareOutcome.Shared:
+                    ShowShareToast("Shared!");
+                    break;
+                case ShareOutcome.Cancelled:
+                    break;
+                default:
+                    await ShareService.CopyToClipboardAsync(comicUrl);
+                    ShowShareToast("✓ Link copied to clipboard");
+                    break;
             }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error sharing comic for {PlaceId}", entry.PlaceId);
+            ShowShareToast("Couldn't share that comic.");
         }
     }
 
+    private void ShowShareToast(string message)
+    {
+        shareToast = message;
+        StateHasChanged();
+
+        shareToastTimer?.Dispose();
+        shareToastTimer = new System.Threading.Timer(_ =>
+        {
+            shareToast = null;
+            InvokeAsync(StateHasChanged);
+        }, null, 3000, System.Threading.Timeout.Infinite);
+    }
+
+    public void Dispose() => shareToastTimer?.Dispose();
 }

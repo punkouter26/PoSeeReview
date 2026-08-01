@@ -156,10 +156,6 @@
     color: #bae6fd;
 }
 
-.nav-user-badge--inactive {
-    color: rgba(255,255,255,0.4);
-}
-
 .nav-user-dot {
     width: 6px;
     height: 6px;

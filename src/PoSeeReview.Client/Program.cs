@@ -24,7 +24,6 @@ builder.Services.AddScoped<GeolocationService>();
 builder.Services.AddScoped<DevSessionClient>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ShareService>();
-builder.Services.AddScoped<AudioService>();
 builder.Services.AddSingleton<DevSessionStateService>();
 
 await builder.Build().RunAsync();

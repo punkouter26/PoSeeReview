@@ -3,6 +3,18 @@ using Microsoft.JSInterop;
 namespace PoSeeReview.Client.Services;
 
 /// <summary>
+/// How a Web Share attempt ended. Cancelling is deliberately distinct from "unsupported":
+/// a user who dismisses the share sheet wants nothing to happen, whereas a browser without
+/// the API needs the clipboard fallback.
+/// </summary>
+public enum ShareOutcome
+{
+    Shared,
+    Cancelled,
+    Unsupported
+}
+
+/// <summary>
 /// Service for sharing comics on social media using the Web Share API
 /// Falls back to clipboard copy for browsers that don't support Web Share API
 /// </summary>
@@ -16,14 +28,14 @@ public class ShareService
     }
 
     /// <summary>
-    /// Share a comic using the Web Share API
+    /// Share a comic using the Web Share API.
     /// </summary>
     /// <param name="title">Title of the comic (restaurant name)</param>
     /// <param name="text">Description text for the share</param>
     /// <param name="url">URL to the comic page</param>
-    /// <returns>True if share was successful or user completed the action, false if cancelled or not supported</returns>
+    /// <returns>Whether the share completed, was cancelled by the user, or is unsupported.</returns>
     /// <exception cref="ArgumentException">Thrown when title or url is null or empty</exception>
-    public async Task<bool> ShareComicAsync(string title, string text, string url)
+    public async Task<ShareOutcome> ShareComicAsync(string title, string text, string url)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Title cannot be null or empty", nameof(title));
@@ -33,12 +45,17 @@ public class ShareService
 
         try
         {
-            return await _jsRuntime.InvokeAsync<bool>("shareUtils.share", title, text ?? "", url);
+            var outcome = await _jsRuntime.InvokeAsync<string>("shareUtils.share", title, text ?? "", url);
+            return outcome switch
+            {
+                "shared" => ShareOutcome.Shared,
+                "cancelled" => ShareOutcome.Cancelled,
+                _ => ShareOutcome.Unsupported
+            };
         }
         catch (JSException)
         {
-            // Web Share API not supported or user cancelled
-            return false;
+            return ShareOutcome.Unsupported;
         }
     }
 

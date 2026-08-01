@@ -175,7 +175,10 @@ try
     // AllowAnonymous metadata is honored and the deny-by-default fallback policy
     // (RequireAuthenticatedUser) no longer 401s "/" and client-side routes. In a published app
     // "/" is not served by static files, so without this the SPA shell never loads.
-    app.MapFallbackToFile("index.html").AllowAnonymous();
+    // Rate limiting is disabled here on purpose: a 429 on the SPA document returns no HTML at
+    // all, so the user gets a blank white page with no error UI and no way to retry. The
+    // limiter still guards the business /api/* slices, which is where the spend actually is.
+    app.MapFallbackToFile("index.html").AllowAnonymous().DisableRateLimiting();
 
     if (!isTestMode)
     {

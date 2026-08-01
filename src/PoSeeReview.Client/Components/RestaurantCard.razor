@@ -18,15 +18,25 @@
     <p class="address">@Restaurant.Address</p>
     
     <div class="card-footer">
-        <span class="review-summary">@Restaurant.TotalReviews reviews ready for comic generation</span>
+        <span class="review-summary">
+            @($"{Restaurant.TotalReviews} review{(Restaurant.TotalReviews == 1 ? "" : "s")} to draw from")
+        </span>
     </div>
 
     <div class="card-cta">
         @if (IsEnabled)
         {
-            <FluentButton Appearance="Appearance.Accent" class="cta-btn" Disabled="@IsLoading" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
-                @(IsLoading ? "Opening Comic..." : "Generate Comic")
-            </FluentButton>
+            @* The whole card is clickable too, so the button's click must not also bubble up
+               to it. stopPropagation is only valid on an HTML element, hence the wrapper. *@
+            <div class="cta-wrap" @onclick:stopPropagation="true">
+                <FluentButton Appearance="Appearance.Accent" class="cta-btn" Disabled="@IsLoading" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
+                    @(IsLoading ? "Opening Comic..." : "Generate Comic")
+                </FluentButton>
+            </div>
+        }
+        else
+        {
+            <p class="not-enough-hint">No reviews yet — nothing to draw from.</p>
         }
     </div>
 </FluentCard>
@@ -41,8 +51,12 @@
     [Parameter]
     public bool IsLoading { get; set; }
 
-    private const int MinReviews = 5;
-    private bool IsEnabled => Restaurant.TotalReviews >= MinReviews;
+    /// <summary>
+    /// Mirrors the API's floor (ComicOptions.MinimumReviewsRequired = 1): a comic needs at
+    /// least one review to draw from. The card used to demand 5, which disagreed with the
+    /// server and hid perfectly generatable places.
+    /// </summary>
+    private bool IsEnabled => Restaurant.TotalReviews > 0;
 
     private string GetCardClass()
     {
@@ -52,9 +66,9 @@
 
     private string GetTooltipText()
     {
-        return IsEnabled 
+        return IsEnabled
             ? (IsLoading ? "Comic generation in progress" : "Click to generate a comic based on reviews")
-            : "This restaurant needs at least 5 reviews to generate a comic";
+            : "This restaurant has no reviews yet, so there's nothing to draw from";
     }
 
     private async Task OnClickIfEnabled()

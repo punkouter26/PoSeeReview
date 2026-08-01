@@ -153,6 +153,18 @@ public class ComicGenerationService : IComicGenerationService
         var (strangenessScore, panelCount, narrative) = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
         analysisStopwatch.Stop();
 
+        // The analyser is an external AI call: an empty or absent narrative is a plausible
+        // response, not a programming error. Dereferencing it unguarded turned that into a
+        // NullReferenceException surfaced to the user as "Object reference not set to an
+        // instance of an object" on the comic page.
+        if (string.IsNullOrWhiteSpace(narrative))
+        {
+            _logger.LogWarning("Strangeness analysis returned an empty narrative for placeId {PlaceId}", placeId);
+            _telemetryClient.GetMetric("Comics.EmptyNarrative").TrackValue(1);
+            throw new InsufficientReviewsException(
+                "We couldn't turn these reviews into a story. Try another restaurant.");
+        }
+
         _logger.LogInformation("Strangeness score: {Score}, Panel count: {PanelCount}, Narrative length: {Length}",
             strangenessScore, panelCount, narrative.Length);
         _telemetryClient.GetMetric("Comics.Generation.AnalysisDurationMs").TrackValue(analysisStopwatch.Elapsed.TotalMilliseconds);

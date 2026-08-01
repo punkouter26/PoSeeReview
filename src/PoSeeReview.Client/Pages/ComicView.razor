@@ -14,7 +14,7 @@
 <div class="comic-view">
     @if (_isLoading)
     {
-        <LoadingIndicator Message="Reading the weird stuff..." Steps="@_comicSteps" />
+        <LoadingIndicator Message="Reading the weird stuff..." Steps="@(_isRegenerating ? _regenerateSteps : _comicSteps)" />
     }
     else if (_error != null)
     {
@@ -22,9 +22,11 @@
             <div class="error-icon">🤷</div>
             <h2>@_errorTitle</h2>
             <p class="error-message">@_error</p>
-            <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
-                ← Back to Restaurants
-            </FluentButton>
+            <div class="error-actions">
+                <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
+                    &#8592; @BackLabel
+                </FluentButton>
+            </div>
         </FluentCard>
     }
     else if (_needsGeneration)
@@ -33,12 +35,14 @@
             <div class="error-icon">🎨</div>
             <h2>No Comic Here Yet</h2>
             <p class="error-message">This place doesn't have an active comic — it may have expired. Generating a fresh one takes about 10 seconds.</p>
-            <FluentButton Appearance="Appearance.Accent" @onclick="GenerateFromPromptAsync">
-                Generate Comic
-            </FluentButton>
-            <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
-                &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Back to Restaurants")
-            </FluentButton>
+            <div class="error-actions">
+                <FluentButton Appearance="Appearance.Accent" @onclick="GenerateFromPromptAsync">
+                    Generate Comic
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
+                    &#8592; @BackLabel
+                </FluentButton>
+            </div>
         </FluentCard>
     }
     else if (_comic != null)
@@ -55,8 +59,10 @@
                             </linearGradient>
                         </defs>
                         <circle class="ring-bg" cx="50" cy="50" r="42" />
+                        @* InvariantCulture: WASM picks up the browser locale, and a
+                           comma-decimal locale would emit "13,2" and break the SVG attribute. *@
                         <circle class="ring-fill" cx="50" cy="50" r="42"
-                                style="stroke-dasharray: @((_comic.StrangenessScore / 100.0 * 263.9).ToString("F1")) 263.9" />
+                                style="stroke-dasharray: @RingDashArray" />
                     </svg>
                     <div class="ring-label">
                         <span class="ring-score">@_comic.StrangenessScore</span>
@@ -65,9 +71,8 @@
                 </div>
             </div>
 
-            <ComicStrip ImageUrl="@_comic.BlobUrl" 
-                       RestaurantName="@_comic.RestaurantName" 
-                       IsCached="@_comic.IsCached" />
+            <ComicStrip ImageUrl="@_comic.BlobUrl"
+                        RestaurantName="@_comic.RestaurantName" />
 
             <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
             <p class="comic-source-note">Drawn from a small sample of recent public Google reviews — not the restaurant's full history.</p>
@@ -91,14 +96,7 @@
                     &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Find Another")
                 </FluentButton>
                 <FluentButton Appearance="Appearance.Outline" @onclick="RegenerateComic" Disabled="@(_isRegenerating || _isSharing)">
-                    @if (_isRegenerating)
-                    {
-                        <text>Regenerating...</text>
-                    }
-                    else
-                    {
-                        <text>Try Another Version</text>
-                    }
+                    Try Another Version
                 </FluentButton>
             </div>
             
@@ -142,6 +140,31 @@
         ("🎨", "Drawing panels..."),
         ("✨", "Almost done!"),
     ];
+
+    private static readonly (string Icon, string Label)[] _regenerateSteps =
+    [
+        ("🗑️", "Discarding the old take..."),
+        ("🧠", "Finding a new angle..."),
+        ("🎨", "Redrawing panels..."),
+        ("✨", "Almost done!"),
+    ];
+
+    // Both recovery cards leave the comic entirely, so they must name the same destination
+    // GoBack() actually navigates to.
+    private string BackLabel => From == "leaderboard" ? "Back to Hall of Fame" : "Back to Restaurants";
+
+    /// <summary>Circumference of the r=42 score ring: 2 * PI * 42.</summary>
+    private const double RingCircumference = 263.89;
+
+    private string RingDashArray
+    {
+        get
+        {
+            var filled = (_comic?.StrangenessScore ?? 0) / 100.0 * RingCircumference;
+            return $"{filled.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} "
+                 + RingCircumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -275,13 +298,13 @@
 
             if (_shareSupported)
             {
-                // Use Web Share API
-                var shared = await ShareService.ShareComicAsync(title, text, currentUrl);
-                
-                if (!shared)
+                var outcome = await ShareService.ShareComicAsync(title, text, currentUrl);
+
+                // Cancelling is a decision, not a failure: falling back to a clipboard copy
+                // would hand the user a link they just declined to share.
+                if (outcome == ShareOutcome.Unsupported)
                 {
-                    // User cancelled or error - show message
-                    Logger.LogWarning("Share cancelled or not supported, copying link instead");
+                    Logger.LogWarning("Web Share unavailable at call time, copying link instead");
                     await CopyLinkToClipboard(currentUrl);
                 }
             }

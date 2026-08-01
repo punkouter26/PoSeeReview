@@ -115,29 +115,27 @@
     margin-bottom: 1.5rem;
 }
 
-.refresh-hint {
-    color: var(--color-brand);
-    font-size: 0.8rem;
-    font-weight: 500;
+/* Transient confirmation for the per-entry share/copy action. */
+.copy-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.5rem;
+    transform: translateX(-50%);
+    z-index: 50;
+    padding: 0.7rem 1.25rem;
+    border-radius: 999px;
+    background: var(--color-success-surface);
+    color: var(--color-success-text);
+    border: 1px solid var(--color-success);
+    font-weight: 600;
+    font-size: 0.9rem;
+    box-shadow: var(--shadow-card-hover);
+    animation: toastIn 0.25s ease-out both;
 }
 
-/* Auto-refresh countdown ring */
-.refresh-ring {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 2px solid var(--color-border);
-    border-top-color: var(--color-brand);
-    flex-shrink: 0;
-}
-
-.refresh-ring.spinning {
-    animation: spin-ring 30s linear infinite;
-}
-
-@keyframes spin-ring {
-    to { transform: rotate(360deg); }
+@keyframes toastIn {
+    from { opacity: 0; transform: translate(-50%, 8px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
 }
 
 /* No Entries / Empty State */
@@ -287,10 +285,12 @@
     border-left: 5px solid #cd7f32;
 }
 
-/* Top-3 row highlight */
-.rank-gold { background: linear-gradient(90deg, rgba(255,215,0,0.06) 0%, white 20%); }
-.rank-silver { background: linear-gradient(90deg, rgba(192,192,192,0.08) 0%, white 20%); }
-.rank-bronze { background: linear-gradient(90deg, rgba(205,127,50,0.07) 0%, white 20%); }
+/* Top-3 row highlight. The fade MUST land on the card token, not a literal white — the
+   entry name and address use --color-text-primary/--color-text-muted, so a hardcoded white
+   made the three most prominent rows unreadable in dark mode. */
+.rank-gold { background: linear-gradient(90deg, rgba(255,215,0,0.10) 0%, var(--color-card) 20%); }
+.rank-silver { background: linear-gradient(90deg, rgba(192,192,192,0.12) 0%, var(--color-card) 20%); }
+.rank-bronze { background: linear-gradient(90deg, rgba(205,127,50,0.11) 0%, var(--color-card) 20%); }
 
 /* Comic Thumbnail */
 .comic-thumbnail {
@@ -312,6 +312,8 @@
 .comic-thumbnail-placeholder {
     width: 100%;
     height: 100%;
+    text-decoration: none;
+    cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -368,7 +370,7 @@
     gap: 0.4rem;
     padding: 0.3rem 0.6rem;
     background: rgba(124,58,237,0.07);
-    color: #5b21b6;
+    color: var(--color-brand);
     border-radius: 8px;
     font-weight: 700;
     width: fit-content;
@@ -392,33 +394,23 @@
     gap: 0.65rem;
 }
 
+/* .btn / .btn-primary and .alert* are global primitives in app.css — only the
+   leaderboard-specific sizing lives here. */
 .entry-actions .btn {
     white-space: nowrap;
 }
 
-.btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    text-decoration: none;
-    border: none;
-    border-radius: 999px;
-    cursor: pointer;
-    font-weight: 700;
-}
-
-.btn-primary {
+.entry-actions .btn-primary {
     padding: 0.75rem 1rem;
-    background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
-    color: white;
     min-width: 8rem;
 }
 
 .btn-share-small {
     width: 2.8rem;
     height: 2.8rem;
+    min-height: 2.8rem;
     background: var(--color-card);
-    color: #4c1d95;
+    color: var(--color-brand);
     border: 1px solid var(--color-border);
     border-radius: 999px;
     padding: 0;
@@ -502,13 +494,8 @@
         flex-direction: row;
     }
 
-    .btn-primary {
+    .entry-actions .btn-primary {
         flex: 1;
     }
-}
-
-/* Alert Styling */
-.alert {
-    border-radius: 8px;
 }
     

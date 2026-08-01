@@ -13,7 +13,7 @@
     border-radius: 24px;
     padding: 3rem 2rem;
     text-align: center;
-    box-shadow: var(--shadow-card));
+    box-shadow: var(--shadow-card);
 }
 
 .error-icon {
@@ -35,14 +35,23 @@
     margin-bottom: 2rem;
 }
 
+/* The recovery card stacks its actions so the primary sits above the secondary. */
+.error-container .error-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-width: 320px;
+    margin: 0 auto;
+}
+
 .comic-container {
     max-width: 980px;
     margin: 0 auto;
     background: var(--color-card);
     border-radius: 20px;
     padding: clamp(1rem, 3vw, 2rem);
-    box-shadow: 0 4px 32px rgba(124,58,237,0.1), 0 1px 4px rgba(0,0,0,0.06);
-    border: 1px solid rgba(124,58,237,0.08);
+    box-shadow: 0 4px 32px rgba(124, 58, 237, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(124, 58, 237, 0.08);
     animation: fadeSlideUp 0.4s ease-out both;
 }
 
@@ -82,7 +91,7 @@
 .comic-source-note {
     margin: 0.35rem 0 0;
     text-align: center;
-    color: #9ca3af;
+    color: var(--color-text-muted);
     font-size: 0.8rem;
 }
 
@@ -151,6 +160,7 @@
     color: rgba(255, 255, 255, 0.8);
 }
 
+/* FluentMessageBar brings its own success styling — this only handles placement. */
 .copied-message {
     text-align: center;
     margin-top: 1rem;
@@ -184,397 +194,14 @@
     }
 }
 
-.error-container {
-    max-width: 600px;
-    margin: 4rem auto;
-    background: var(--color-card);
-    border-radius: 12px;
-    padding: 3rem 2rem;
-    text-align: center;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
-
-.error-icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-}
-
-.error-container h2 {
-    color: var(--color-text-primary);
-    margin-bottom: 1rem;
-    font-size: 1.75rem;
-}
-
-.error-message {
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin-bottom: 2rem;
-}
-
-.comic-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    background: var(--color-card);
-    border-radius: 12px;
-    padding: 2rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-}
-
-.comic-header {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: clamp(1rem, 2vw, 2rem);
-    align-items: center;
-    margin-bottom: 2rem;
-}
-
-.comic-header h1 {
-    font-size: clamp(1.5rem, 4vw, 2rem);
-    color: var(--color-text-primary);
-    margin: 0;
-    line-height: 1.3;
-}
-
-/* Fluent UI Badge styling for strangeness score */
-::deep .strangeness-badge-fluent {
-    padding: 1rem 1.5rem;
-    font-size: 1rem;
-}
-
-.badge-content {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-}
-
-.badge-content .score {
-    font-size: clamp(2rem, 4vw, 2.5rem);
-    font-weight: bold;
-    line-height: 1;
-}
-
-.badge-content .label {
-    font-size: clamp(0.75rem, 1.5vw, 0.875rem);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-
-.narrative-section {
-    margin: 2rem 0;
-}
-
-.narrative-section h3 {
-    color: var(--color-text-primary);
-    margin-bottom: 1rem;
-    font-size: 1.5rem;
-}
-
-.narrative {
-    color: var(--color-text-secondary);
-    line-height: 1.8;
-    font-size: 1.125rem;
-    background: var(--color-surface-alt);
-    padding: 1.5rem;
-    border-radius: 8px;
-    border-left: 4px solid #667eea;
-}
-
-.comic-meta {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: clamp(1rem, 2vw, 1.5rem);
-    margin: 2rem 0;
-    padding: clamp(0.75rem, 2vw, 1rem);
-    background: var(--color-surface-alt);
-    border-radius: 8px;
-}
-
-.action-buttons {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: clamp(0.75rem, 2vw, 1rem);
-    margin-top: 2rem;
-}
-
-@container (max-width: 600px) {
-    .action-buttons {
-        grid-template-columns: 1fr;
-    }
-}
-
-.btn-primary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.btn-secondary {
-    background: var(--color-card);
-    color: #667eea;
-    border: 2px solid #667eea;
-}
-
-.btn-secondary:hover {
-    background: var(--color-surface-alt);
-    transform: translateY(-2px);
-}
-
-.btn-share {
-    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-    color: white;
-}
-
-.btn-share:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
-}
-
-.btn-share:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.copied-message {
-    text-align: center;
-    background: #10b981;
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 8px;
-    margin-top: 1rem;
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.link-button {
-    background: none;
-    border: none;
-    color: #667eea;
-    font-size: 0.95rem;
-    cursor: pointer;
-    padding: 0.5rem 0;
-    margin-top: 0.5rem;
-    text-decoration: underline;
-    transition: color 0.2s;
-}
-
-.link-button:hover {
-    color: #764ba2;
-}
-
-/* Modal Styles */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    padding: 1rem;
-}
-
-.modal-content {
-    background: var(--color-card);
-    border-radius: 12px;
-    max-width: 800px;
-    width: 100%;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem;
-    border-bottom: 1px solid #e5e5e5;
-}
-
-.modal-header h2 {
-    margin: 0;
-    font-size: 1.5rem;
-    color: var(--color-text-primary);
-}
-
-.modal-close {
-    background: none;
-    border: none;
-    font-size: 2rem;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    line-height: 1;
-    padding: 0;
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.modal-close:hover {
-    background: var(--color-surface-alt);
-    color: var(--color-text-primary);
-}
-
-.modal-body {
-    padding: 1.5rem;
-    overflow-y: auto;
-    flex: 1;
-}
-
-.no-reviews {
-    text-align: center;
-    color: var(--color-text-muted);
-    padding: 2rem;
-}
-
-.loading-reviews {
-    text-align: center;
-    padding: 3rem;
-    color: #667eea;
-}
-
-.loading-reviews p {
-    font-size: 1.1rem;
-}
-
-.reviews-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.api-limitation-notice {
-    background: var(--color-highlight);
-    border-left: 4px solid #f59e0b;
-    padding: 1rem;
-    margin-bottom: 1.5rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    color: var(--color-warning-text);
-}
-
-.review-item {
-    background: var(--color-surface-alt);
-    border-radius: 8px;
-    padding: 1.25rem;
-    border-left: 4px solid #667eea;
-}
-
-.review-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 0.75rem;
-    gap: 1rem;
-}
-
-.review-author {
-    font-weight: 600;
-    color: var(--color-text-primary);
-    font-size: 1rem;
-}
-
-.review-rating {
-    color: #f59e0b;
-    font-size: 0.95rem;
-    white-space: nowrap;
-}
-
-.review-text {
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin: 0.5rem 0;
-}
-
-.review-date {
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-}
-
-/* Mobile responsive */
-@media (max-width: 768px) {
-    .comic-view {
-        padding: 0.5rem;
+@media (prefers-reduced-motion: reduce) {
+    .comic-container,
+    .ring-fill,
+    .copied-message {
+        animation: none;
     }
 
-    .comic-container {
-        padding: 1.5rem;
-        border-radius: 8px;
-    }
-
-    .comic-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .comic-header h1 {
-        font-size: 1.5rem;
-    }
-
-    .strangeness-badge {
-        align-self: flex-end;
-    }
-
-    .narrative {
-        font-size: 1rem;
-        padding: 1rem;
-    }
-
-    .comic-meta {
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .action-buttons {
-        flex-direction: column;
-    }
-
-    .btn-primary,
-    .btn-secondary {
-        width: 100%;
-    }
-
-    .modal-content {
-        max-height: 90vh;
-        border-radius: 8px;
-    }
-
-    .modal-header h2 {
-        font-size: 1.25rem;
-    }
-
-    .review-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-
-@media (max-width: 480px) {
-    .error-container {
-        margin: 2rem auto;
-        padding: 2rem 1rem;
-    }
-
-    .comic-container {
-        border-radius: 0;
-        padding: 1rem;
+    .ring-fill {
+        transition: none;
     }
 }

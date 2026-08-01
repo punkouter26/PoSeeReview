@@ -79,15 +79,9 @@
                     <button class="nav-logout-btn" @onclick="LogoutAsync" title="Sign out">Sign out</button>
                 </div>
             </Authorized>
-            <NotAuthorized>
-                <div class="nav-user-zone">
-                    <div class="nav-user-badge nav-user-badge--inactive">
-                        <span class="nav-user-dot" aria-hidden="true"></span>
-                        <span>Not signed in</span>
-                    </div>
-                    <a class="nav-logout-btn" href="login">Sign in</a>
-                </div>
-            </NotAuthorized>
+            @* No unauthenticated session zone. An anonymous visitor is always on /login, which
+               already presents the sign-in choice front and centre — a second "Not signed in /
+               Sign in" pair in the header restated it and competed with the real CTA. *@
         </AuthorizeView>
     </div>
 </div>

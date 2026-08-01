@@ -9,7 +9,7 @@
                 <svg viewBox="0 0 64 64" class="stepper-ring-svg">
                     <circle class="stepper-ring-bg" cx="32" cy="32" r="28" />
                     <circle class="stepper-ring-fill" cx="32" cy="32" r="28"
-                            style="stroke-dasharray: @(_stepProgress.ToString("F0")) 175.9" />
+                            style="stroke-dasharray: @DashArray" />
                 </svg>
                 <span class="stepper-ring-icon">@Steps[_stepIndex % Steps.Length].Icon</span>
             </div>
@@ -34,27 +34,51 @@
 
     [Parameter] public (string Icon, string Label)[]? Steps { get; set; }
 
-    private int _stepIndex = 0;
-    private double _stepProgress = 0;
+    /// <summary>Circumference of the r=28 progress circle: 2 * PI * 28.</summary>
+    private const double RingCircumference = 175.93;
+
+    private const int TickIntervalMs = 80;
+    private const int TicksPerStep = 30; // 30 * 80ms = 2.4s per step
+
+    private int _stepIndex;
+    private double _stepProgress;
     private Timer? _timer;
+
+    /// <summary>
+    /// The filled arc must be expressed in user units along the circumference, not as a raw
+    /// percentage. Feeding 0-100 straight into a 175.93-unit circle capped the ring at ~57%,
+    /// so it never visually completed.
+    /// </summary>
+    private string DashArray =>
+        $"{(_stepProgress / 100.0 * RingCircumference).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} {RingCircumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}";
 
     protected override void OnParametersSet()
     {
         if (Steps is { Length: > 0 } && _timer == null)
         {
-            _timer = new Timer(Tick, null, 0, 80);
+            _timer = new Timer(Tick, null, 0, TickIntervalMs);
         }
     }
 
     private void Tick(object? _)
     {
-        _stepProgress += 100.0 / (Steps!.Length * 30.0); // ~30 ticks per step @ 80ms ≈ 2.4s per step
+        // Per STEP, not per run: dividing by Steps.Length as well stretched each step to 9.6s,
+        // so a ~10s generation never got past "Finding reviews...".
+        _stepProgress += 100.0 / TicksPerStep;
+
         if (_stepProgress >= 100)
         {
             _stepProgress = 0;
             _stepIndex++;
-            if (_stepIndex >= Steps.Length) _stepIndex = Steps.Length - 1; // hold at last step
+            if (_stepIndex >= Steps!.Length)
+            {
+                // Hold the last step (and a full ring) until the caller swaps us out.
+                _stepIndex = Steps.Length - 1;
+                _stepProgress = 100;
+                _timer?.Change(Timeout.Infinite, Timeout.Infinite);
+            }
         }
+
         InvokeAsync(StateHasChanged);
     }
 

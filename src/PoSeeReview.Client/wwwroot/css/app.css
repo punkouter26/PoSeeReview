@@ -22,6 +22,9 @@
     --color-card: #ffffff;
     --color-highlight: #fff9e6;
     --color-brand-surface: #f9f8ff;
+    /* Heavy comic-panel outline. Must flip: the light value is within a couple of hex points
+       of the dark card surface, so hardcoding it made every panel border disappear in dark. */
+    --color-comic-ink: #1e1e2e;
     --color-danger-surface: #f8d7da;
     --color-danger-text: #721c24;
     --color-success-surface: #d4edda;
@@ -53,6 +56,7 @@
         --color-card: #1C1926;
         --color-highlight: #2A2416;
         --color-brand-surface: #1D1533;
+        --color-comic-ink: #ECEAF5;
         --color-danger-surface: #3A1A1E;
         --color-danger-text: #FCA5A5;
         --color-success-surface: #12301F;
@@ -82,6 +86,7 @@
     --color-card: #1C1926;
     --color-highlight: #2A2416;
     --color-brand-surface: #1D1533;
+    --color-comic-ink: #ECEAF5;
     --color-danger-surface: #3A1A1E;
     --color-danger-text: #FCA5A5;
     --color-success-surface: #12301F;
@@ -204,6 +209,83 @@ code {
     min-height: 2.75rem;
     justify-content: center;
     font-weight: 600;
+}
+
+/* === Shared button + alert primitives ===
+   These live globally rather than in scoped page CSS so one class renders identically
+   everywhere. Diagnostics and the Hall of Fame each used to define their own .btn-primary
+   (a blue 6px rectangle vs a purple pill), and Leaderboard's .alert-danger fell through to
+   Bootstrap's untokenised light-mode default while Diagnostics styled its own. Pills match
+   the rest of the design language (login, empty state, region chips). */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem; /* >=44px touch target */
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary {
+    background: var(--gradient-brand);
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
+}
+
+.btn-primary:hover {
+    color: #ffffff;
+    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: 1.5px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+    border-color: var(--color-brand);
+    color: var(--color-brand);
+}
+
+.alert {
+    padding: 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+}
+
+.alert-danger {
+    background: var(--color-danger-surface);
+    border: 1px solid var(--color-danger);
+    color: var(--color-danger-text);
+}
+
+.alert h3 {
+    margin-top: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn:hover {
+        transform: none;
+    }
 }
 
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {

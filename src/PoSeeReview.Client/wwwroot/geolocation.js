@@ -1,10 +1,5 @@
 // Geolocation service wrapper for Blazor interop
 window.geolocation = {
-    // Check if geolocation is supported
-    isSupported: function () {
-        return 'geolocation' in navigator;
-    },
-
     // Get current position
     getCurrentPosition: function () {
         return new Promise((resolve) => {
@@ -13,7 +8,7 @@ window.geolocation = {
                     success: false,
                     latitude: 0,
                     longitude: 0,
-                    accuracy: null,
+                    permissionDenied: false,
                     errorMessage: 'Geolocation is not supported by your browser'
                 });
                 return;
@@ -25,11 +20,13 @@ window.geolocation = {
                         success: true,
                         latitude: position.coords.latitude,
                         longitude: position.coords.longitude,
-                        accuracy: position.coords.accuracy,
+                        permissionDenied: false,
                         errorMessage: ''
                     });
                 },
                 (error) => {
+                    // The denial branch is reported as a flag, not inferred by the caller
+                    // substring-matching the (localisable) message text.
                     let errorMessage = 'Unknown error occurred';
                     switch (error.code) {
                         case error.PERMISSION_DENIED:
@@ -46,7 +43,7 @@ window.geolocation = {
                         success: false,
                         latitude: 0,
                         longitude: 0,
-                        accuracy: null,
+                        permissionDenied: error.code === error.PERMISSION_DENIED,
                         errorMessage: errorMessage
                     });
                 },

@@ -20,12 +20,15 @@
     pointer-events: none;
 }
 
+/* The card surface MUST come from the token, not a hardcoded white: the headings and body
+   copy below use --color-text-primary/--color-text-secondary, which flip to near-white in
+   dark mode. A literal white background left the entire login screen unreadable. */
 .login-container {
     max-width: 420px;
     width: 100%;
     padding: 2.5rem 2rem;
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.97);
+    background: var(--color-card);
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.1);
     text-align: center;
     position: relative;

@@ -39,14 +39,14 @@
     stroke-width: 6;
 }
 
+/* #ringGrad is defined inside ComicView's SVG, not this component's — referencing it here
+   never resolved. The brand token is the actual stroke and always was. */
 .stepper-ring-fill {
     fill: none;
-    stroke: url(#ringGrad);
+    stroke: var(--color-brand);
     stroke-width: 6;
     stroke-linecap: round;
     transition: stroke-dasharray 0.3s ease-out;
-    /* Fallback gradient if SVG defs not in scope */
-    stroke: var(--color-brand);
 }
 
 .stepper-ring-icon {

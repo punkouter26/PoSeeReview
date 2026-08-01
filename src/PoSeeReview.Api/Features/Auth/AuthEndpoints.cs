@@ -16,7 +16,9 @@ internal static class AuthEndpoints
     {
         // Auth routes must be reachable without a session (login, logout, and /me so the
         // client can discover it is unauthenticated) — opt out of the global fallback policy.
-        var group = app.MapGroup("/auth").WithTags("Auth").AllowAnonymous();
+        // They also opt out of the global rate limiter: session discovery is session plumbing,
+        // not a spendable resource, and throttling it strands the client with no auth state.
+        var group = app.MapGroup("/auth").WithTags("Auth").AllowAnonymous().DisableRateLimiting();
 
         group.MapGet("/login/microsoft", (string? returnUrl, IConfiguration configuration) =>
         {

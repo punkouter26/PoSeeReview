@@ -10,12 +10,17 @@ internal static class RateLimitingServiceCollectionExtensions
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            // Partitioned by client IP. The limit has to clear normal browsing for a whole
+            // NAT'd office sharing one egress IP, not just one user: every SPA route change
+            // costs a handful of requests. 60/min was roughly ten page views and throttled
+            // real sessions. The SPA document and /auth/* opt out entirely (see Program.cs).
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
                 var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
                 return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
                 {
-                    PermitLimit = configuration.GetValue<int>("RateLimiting:GlobalPermitLimit", 60),
+                    PermitLimit = configuration.GetValue<int>("RateLimiting:GlobalPermitLimit", 240),
                     Window = TimeSpan.FromMinutes(1),
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
                     QueueLimit = 0,

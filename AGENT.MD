@@ -15,7 +15,7 @@ boundaries or project configuration change.
     Identity/          ICurrentRequestIdentityAccessor + HttpContext implementation
     Telemetry/         App Insights + OpenTelemetry wiring, RoleNameTelemetryInitializer
     Testing/           AiMockDelegatingHandler boundary (never registered in Production)
-  PoSeeReview.Client   Mobile-first Blazor WASM (trimmable, no tokens, Web Audio API)
+  PoSeeReview.Client   Mobile-first Blazor WASM (trimmable, no tokens)
   PoSeeReview.Shared   Wire DTOs, strongly-typed Ids/, Enums/, cross-slice Contracts/,
                        FluentValidation rules
 /tests
@@ -78,6 +78,13 @@ Two boundaries deliberately still speak raw strings, and convert at the edge:
   `CreateIfNotExists` per request; startup fails fast if storage is unreachable (§5.6).
 - `UseForwardedHeaders` (X-Forwarded-For/Proto, App Service proxy trusted) runs first in
   the pipeline so rate-limiting and request logging see the real client IP.
+- Rate limiting: global fixed window of `RateLimiting:GlobalPermitLimit` (240/min) partitioned
+  by client IP, plus a stricter `comics-post` limiter (3/min) on the paid generation endpoint.
+  The SPA document (`MapFallbackToFile`) and the whole `/auth` group call `.DisableRateLimiting()`
+  — a 429 on `index.html` returns no HTML at all, so the user gets a blank white page with no
+  error UI and no retry. Static/framework files bypass the limiter already by being served
+  before `UseRateLimiter()`. Keep the limiter on the business `/api/*` slices, which is where
+  the spend is.
 - Typed HttpClients (`GoogleMaps`, `GeminiApi`) use `AddStandardResilienceHandler`;
   external AI/Maps calls propagate the request `CancellationToken` end to end.
 - `Takedowns:ApiKey` gates `/api/takedowns` (503 when unset, timing-safe compare). It is a
@@ -104,6 +111,11 @@ Two boundaries deliberately still speak raw strings, and convert at the edge:
   (Dev/Test only; its constructor throws in Production). Integration/E2EAPI test clients
   authenticate by sending `X-Fake-User` (set in their `CustomWebApplicationFactory` /
   test ctor) so they satisfy the fallback policy below.
+- The header is deliberately minimal: branding | Home + Hall of Fame | session zone. The right
+  zone renders only for an authenticated principal (identity + Sign out) — there is no
+  unauthenticated "Not signed in / Sign in" pair, because anonymous visitors are always on
+  `/login`, whose card is already the sign-in CTA. `/diagnostics` has no nav entry either;
+  it is reached by URL.
 - Server-side authz is DENY BY DEFAULT (NET_RULES 4.5): a `FallbackPolicy` of
   `RequireAuthenticatedUser` is set in `AddBffAuthentication`. Public endpoints opt out
   with `.AllowAnonymous()`: `/auth`, `/health*`, `/diag`, `/api/devsession`,
@@ -116,9 +128,11 @@ Two boundaries deliberately still speak raw strings, and convert at the edge:
   identity in Prod.
 - Client: `BffAuthenticationStateProvider` polls `/auth/me` (memoized; invalidated on
   `NotifyStateChanged`); every page except `/login` carries `[Authorize]` behind
-  `AuthorizeRouteView`. Login views: Prod = Microsoft only; Dev = Microsoft + guest;
-  Test = forced guest bypass. Client stamps `X-Session-ID` + a per-request
-  `X-Correlation-ID` on every API call.
+  `AuthorizeRouteView`. Login views: Prod = Microsoft only; Dev AND Test = Microsoft + a
+  "Continue As Guest" button. Test used to auto-navigate to the guest endpoint instead of
+  rendering the button, which contradicted the E2E UI suite — every one of its tests clicks
+  that button, so the suite only ever worked against Development. Client stamps `X-Session-ID`
+  + a per-request `X-Correlation-ID` on every API call.
 
 ## Observability
 
@@ -157,7 +171,16 @@ Two boundaries deliberately still speak raw strings, and convert at the edge:
 - UI: no inline styles; scoped `.razor.css` + design tokens in `wwwroot/css/app.css`.
   Themes are system-aware — tokens flip under `@media (prefers-color-scheme: dark)`, and
   `:root[data-theme="dark"|"light"]` overrides the OS in both directions. Never hardcode a
-  colour in scoped CSS; add or reuse a token.
+  colour in scoped CSS; add or reuse a token. **A hardcoded surface is the dangerous case:**
+  a literal `white` under token-driven text renders white-on-white in dark mode, and the
+  theme tests assert token *values*, not rendered contrast, so they will not catch it.
+- Theming follows the OS only. The `:root[data-theme="dark"|"light"]` override in `app.css` has
+  no UI that sets it — a header toggle was tried and removed by request — so today it is
+  exercised only by `ThemeUiTests`, which stamps the attribute via JS.
+- Shared `.btn`/`.btn-primary`/`.btn-secondary`/`.alert*` primitives live in `app.css`, NOT in
+  scoped page CSS. Scoped stylesheets load after `app.css` and carry a `[b-*]` attribute, so a
+  page-level redefinition silently wins — that is how Diagnostics and the Hall of Fame ended up
+  with different-looking buttons and error banners for the same classes.
 - Test tiers and quotas (NET_RULES 5.1): Unit 100 / Integration 50 / E2EAPI 25 / E2EUI 25.
   There is exactly one E2E UI suite — the C# Playwright project. The old TypeScript suite
   under `tests/e2e` was folded into it and deleted (2026-07-31).

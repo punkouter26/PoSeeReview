@@ -9,16 +9,18 @@ window.shareUtils = {
     },
 
     /**
-     * Share content using the Web Share API
+     * Share content using the Web Share API.
+     * Cancelling is reported separately from failure so the caller can leave the user alone
+     * instead of falling back to a clipboard copy they did not ask for.
      * @param {string} title - Title of the shared content
      * @param {string} text - Description text for the share
      * @param {string} url - URL to share
-     * @returns {Promise<boolean>} True if share was successful, false if cancelled or failed
+     * @returns {Promise<'shared'|'cancelled'|'unsupported'>}
      */
     share: async function (title, text, url) {
         if (!this.isSupported()) {
             console.warn('Web Share API is not supported in this browser');
-            return false;
+            return 'unsupported';
         }
 
         try {
@@ -27,15 +29,14 @@ window.shareUtils = {
                 text: text,
                 url: url
             });
-            return true;
+            return 'shared';
         } catch (error) {
-            // User cancelled the share or an error occurred
             if (error.name === 'AbortError') {
                 console.log('Share cancelled by user');
-                return false;
+                return 'cancelled';
             }
             console.error('Error sharing:', error);
-            return false;
+            return 'unsupported';
         }
     },
 

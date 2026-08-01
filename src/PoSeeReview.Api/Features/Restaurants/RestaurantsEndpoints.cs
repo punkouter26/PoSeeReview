@@ -58,7 +58,12 @@ internal static class RestaurantsEndpoints
                     Restaurants = new List<RestaurantDto>(),
                     TotalCount = 0,
                     CachedAt = DateTimeOffset.UtcNow,
-                    Stale = true
+                    Stale = true,
+                    // Populated so the client can explain the real cause instead of falling
+                    // back to a generic "no results here" that sends the user hunting for a
+                    // different city when the actual problem is an unconfigured API key.
+                    StaleReason = "Restaurant search is not configured: GoogleMaps:ApiKey is still a "
+                        + "dev placeholder. Add a real key to appsettings.Development.json or Key Vault."
                 };
                 return Results.Ok(devResponse);
             }

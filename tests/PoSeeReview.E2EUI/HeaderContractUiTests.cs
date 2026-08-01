@@ -5,7 +5,8 @@ namespace PoSeeReview.E2EUI;
 /// <summary>
 /// Enforces the header layout contract (NET_RULES 4.1): Left (branding) | Center (actions) |
 /// Right (session / logout). The right zone regressed once by being wrapped in a
-/// Development-only conditional, so it is asserted explicitly in every state.
+/// Development-only conditional, so it is asserted explicitly whenever a principal exists.
+/// Anonymous visitors get no session zone at all — /login is already the sign-in CTA.
 /// </summary>
 [Collection("e2e-ui")]
 [Trait("Tier", "E2EUI")]
@@ -58,15 +59,17 @@ public sealed class HeaderContractUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Header_RightZone_ShowsSignInWhenUnauthenticated(string viewport)
+    public async Task Header_RightZone_IsEmptyWhenUnauthenticated(string viewport)
     {
         var page = await fixture.NewPageAsync(viewport);
         await page.GotoAsync($"{fixture.BaseUrl}/login");
         await page.Locator(".login-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
 
-        // Unauthenticated must still render a right zone — an empty one was the original bug.
-        await Assertions.Expect(page.Locator(".nav-user-zone .nav-user-badge--inactive"))
-            .ToBeVisibleAsync(new() { Timeout = RenderTimeout });
+        // An anonymous visitor is already on /login, which presents the sign-in choice as its
+        // primary CTA. The header deliberately carries no "Not signed in / Sign in" pair — it
+        // restated the page and competed with that CTA.
+        await Assertions.Expect(page.Locator(".nav-user-zone")).ToHaveCountAsync(0);
+        await Assertions.Expect(page.Locator(".login-btn-microsoft")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
     }
 
     [Theory]

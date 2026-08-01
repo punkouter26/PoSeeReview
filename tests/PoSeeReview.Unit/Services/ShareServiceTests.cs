@@ -33,18 +33,18 @@ public class ShareServiceTests
         var url = "https://poseereviews.com/comic/test123";
 
         _mockJsRuntime
-            .Setup(x => x.InvokeAsync<bool>(
+            .Setup(x => x.InvokeAsync<string>(
                 "shareUtils.share",
                 It.IsAny<object[]>()))
-            .ReturnsAsync(true);
+            .ReturnsAsync("shared");
 
         // Act
         var result = await _shareService.ShareComicAsync(title, text, url);
 
         // Assert
-        Assert.True(result);
+        Assert.Equal(ShareOutcome.Shared, result);
         _mockJsRuntime.Verify(
-            x => x.InvokeAsync<bool>(
+            x => x.InvokeAsync<string>(
                 "shareUtils.share",
                 It.Is<object[]>(args =>
                     args.Length == 3 &&
@@ -55,7 +55,7 @@ public class ShareServiceTests
     }
 
     [Fact]
-    public async Task ShareComicAsync_WhenWebShareNotSupported_ShouldReturnFalse()
+    public async Task ShareComicAsync_WhenWebShareNotSupported_ShouldReturnUnsupported()
     {
         // Arrange
         var title = "Test Comic";
@@ -63,7 +63,7 @@ public class ShareServiceTests
         var url = "https://test.com/comic/123";
 
         _mockJsRuntime
-            .Setup(x => x.InvokeAsync<bool>(
+            .Setup(x => x.InvokeAsync<string>(
                 "shareUtils.share",
                 It.IsAny<object[]>()))
             .ThrowsAsync(new JSException("Web Share API not supported"));
@@ -72,7 +72,25 @@ public class ShareServiceTests
         var result = await _shareService.ShareComicAsync(title, text, url);
 
         // Assert
-        Assert.False(result);
+        Assert.Equal(ShareOutcome.Unsupported, result);
+    }
+
+    [Fact]
+    public async Task ShareComicAsync_WhenUserCancels_ShouldReportCancelledNotUnsupported()
+    {
+        // Arrange — a dismissed share sheet must NOT be mistaken for "no Web Share API",
+        // or the caller silently copies a link the user never asked for.
+        _mockJsRuntime
+            .Setup(x => x.InvokeAsync<string>(
+                "shareUtils.share",
+                It.IsAny<object[]>()))
+            .ReturnsAsync("cancelled");
+
+        // Act
+        var result = await _shareService.ShareComicAsync("Test Comic", "text", "https://test.com/c/1");
+
+        // Assert
+        Assert.Equal(ShareOutcome.Cancelled, result);
     }
 
     [Fact]
