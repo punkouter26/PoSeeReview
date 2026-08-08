@@ -47,13 +47,14 @@
                 }
                 @if (_flowState == LocationFlowState.Denied)
                 {
-                    <div class="denied-alert">
+                    <div class="denied-alert" role="alert">
                         <span class="denied-icon">📍</span>
                         <span>Location access was denied. Search manually below or <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>try enabling location</a> again.</span>
                     </div>
                 }
                 <div class="search-row">
-                    <FluentTextField @bind-Value="_searchQuery" Immediate="true" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
+                    <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
+                    <FluentTextField id="city-search-input" @bind-Value="_searchQuery" Immediate="true" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" />
                     <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync"
                                   Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))"
                                   title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">

@@ -94,6 +94,8 @@ secrets.json
 # Azure Storage Emulator (Azurite)
 azurite/
 __azurite_db*__
+__azurite_db_*
+AzuriteConfig
 __blobstorage__
 __queuestorage__
 __tablestorage__

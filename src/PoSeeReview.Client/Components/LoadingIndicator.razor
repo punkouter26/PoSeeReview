@@ -1,20 +1,20 @@
 @implements IDisposable
 @using System.Threading
 
-<div class="loading-indicator">
+<div class="loading-indicator" role="status" aria-live="polite" aria-busy="true">
     @if (Steps is { Length: > 0 })
     {
         <div class="progress-stepper">
             <div class="stepper-ring">
-                <svg viewBox="0 0 64 64" class="stepper-ring-svg">
+                <svg viewBox="0 0 64 64" class="stepper-ring-svg" aria-hidden="true">
                     <circle class="stepper-ring-bg" cx="32" cy="32" r="28" />
                     <circle class="stepper-ring-fill" cx="32" cy="32" r="28"
                             style="stroke-dasharray: @DashArray" />
                 </svg>
-                <span class="stepper-ring-icon">@Steps[_stepIndex % Steps.Length].Icon</span>
+                <span class="stepper-ring-icon" aria-hidden="true">@Steps[_stepIndex % Steps.Length].Icon</span>
             </div>
             <p class="loading-message stepper-message">@Steps[_stepIndex % Steps.Length].Label</p>
-            <div class="stepper-dots">
+            <div class="stepper-dots" aria-hidden="true">
                 @for (var i = 0; i < Steps.Length; i++)
                 {
                     <span class="stepper-dot @(i == _stepIndex % Steps.Length ? "active" : i < _stepIndex % Steps.Length ? "done" : "")"></span>
@@ -24,7 +24,7 @@
     }
     else
     {
-        <FluentProgressRing />
+        <FluentProgressRing aria-hidden="true" />
         <p class="loading-message">@Message</p>
     }
 </div>

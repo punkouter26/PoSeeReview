@@ -70,9 +70,31 @@ window.shareUtils = {
                 
                 document.body.removeChild(textArea);
             }
+            this.showToast('Link copied to clipboard!');
         } catch (error) {
             console.error('Error copying to clipboard:', error);
             throw error;
         }
+    },
+
+    /**
+     * Display an accessible toast alert notification
+     * @param {string} message
+     */
+    showToast: function (message) {
+        let toast = document.getElementById('posee-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'posee-toast';
+            toast.setAttribute('role', 'status');
+            toast.setAttribute('aria-live', 'polite');
+            toast.style.cssText = 'position: fixed; bottom: 24px; right: 24px; background: #7C3AED; color: white; padding: 12px 24px; border-radius: 999px; box-shadow: 0 4px 16px rgba(0,0,0,0.3); font-weight: 600; z-index: 9999; transition: opacity 0.3s ease-in-out; opacity: 0; pointer-events: none;';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.style.opacity = '1';
+        setTimeout(() => {
+            toast.style.opacity = '0';
+        }, 3000);
     }
 };

@@ -17,18 +17,17 @@
     </div>
 
     <div class="region-selector">
-        <div class="region-chips" role="group" aria-label="Select region">
+        <div class="region-chips" role="tablist" aria-label="Select leaderboard region">
             @foreach (var (regionCode, flag, label) in _regions)
             {
-                @* aria-pressed so the selected region is announced, not just tinted. The
-                   visible label is a 2-letter code, so the full country name is the a11y name. *@
                 <button class="region-chip @(selectedRegion == regionCode ? "active" : "")"
+                        role="tab"
                         @onclick="() => SelectRegionAsync(regionCode)"
-                        aria-pressed="@(selectedRegion == regionCode)"
+                        aria-selected="@(selectedRegion == regionCode)"
                         aria-label="@label"
                         title="@label">
                     <span class="region-flag" aria-hidden="true">@flag</span>
-                    <span class="region-code">@regionCode</span>
+                    <span class="region-code" aria-hidden="true">@regionCode</span>
                 </button>
             }
         </div>
