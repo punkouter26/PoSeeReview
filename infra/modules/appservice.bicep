@@ -29,13 +29,13 @@ param applicationInsightsConnectionString string
 @description('ASPNETCORE_ENVIRONMENT value')
 param aspnetcoreEnvironment string = 'Production'
 
-// NOTE: the live site was destroyed and recreated (2026-08-14, moved off a shared plan in
-// PoShared) and is currently bound to a manually created plan named `asp-PoSeeReview-f1`, not
-// `asp-${appName}`. deploy.yml never runs this Bicep (it deploys straight to the existing site
-// via azure/webapps-deploy@v3), so that mismatch is latent — but an `azd provision` run would
-// create a second, differently-named plan under this var instead of adopting the live one.
-// Reconcile planName here before ever running provision against this environment again.
-var planName = 'asp-${appName}'
+// The live site was destroyed and recreated on 2026-08-14 (moved off a shared plan in PoShared
+// onto its own dedicated F1 plan) and is bound to `asp-PoSeeReview-f1`, not the `asp-${appName}`
+// this var used to compute (`asp-app-poseereview`). deploy.yml never runs this Bicep — it deploys
+// straight to the existing site via azure/webapps-deploy@v3 — so the two names being different
+// was latent, not broken. Hardcoded to match the live plan so a future `azd provision` adopts it
+// instead of creating a second, orphaned plan under the old naming.
+var planName = 'asp-PoSeeReview-f1'
 
 // ─── App Service Plan (Linux) ───────────────────────────────────────────────
 
