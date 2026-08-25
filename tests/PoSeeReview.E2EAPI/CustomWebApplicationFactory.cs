@@ -143,6 +143,7 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
         public Task<Comic> GenerateComicAsync(
             PlaceId placeId,
             bool forceRegenerate = false,
+            IProgress<ComicGenerationPhase>? progress = null,
             CancellationToken cancellationToken = default)
             => throw new KeyNotFoundException($"Restaurant not found in test environment: {placeId}");
 

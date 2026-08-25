@@ -1,20 +1,23 @@
 @page "/leaderboard"
 @attribute [Authorize]
-@implements IDisposable
+@implements IAsyncDisposable
 @using PoSeeReview.Shared.Dtos
 @using PoSeeReview.Client.Services
 @inject ApiClient ApiClient
 @inject ILogger<Leaderboard> Logger
 @inject ShareService ShareService
 @inject NavigationManager Navigation
+@inject FxService Fx
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
-<div class="leaderboard-container">
-    <div class="leaderboard-header">
-        <h1>Hall of Fame</h1>
-        <p class="subtitle">The strangest restaurant experiences from around the world</p>
-    </div>
+@* Class keeps `.leaderboard-container` on the element so the E2E UI suite's selector, and the
+   page's own scoped rules, both still resolve. *@
+<PageShell Title="Hall of Fame"
+           Subtitle="The strangest restaurant experiences from around the world"
+           Hero="true"
+           Width="PageShell.ShellWidth.Wide"
+           Class="leaderboard-container">
 
     <div class="region-selector">
         <div class="region-chips" role="tablist" aria-label="Select leaderboard region">
@@ -34,15 +37,13 @@
 
         <div class="region-controls-row">
             <label for="limit" class="limit-label">Show:</label>
-            <FluentSelect TOption="string" id="limit" @bind-Value="limitStr" @bind-Value:after="OnLimitChangedAsync">
-                <FluentOption TOption="string" Value="10">Top 10</FluentOption>
-                <FluentOption TOption="string" Value="25">Top 25</FluentOption>
-                <FluentOption TOption="string" Value="50">Top 50</FluentOption>
-            </FluentSelect>
+            <RadzenDropDown TValue="string" id="limit" @bind-Value="limitStr" Change="@(_ => OnLimitChangedAsync())"
+                            Data="@_limitOptions" TextProperty="Text" ValueProperty="Value"
+                            class="limit-select" aria-label="Number of entries to show" />
 
             @if (isLoading)
             {
-                <FluentProgressRing />
+                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
             }
         </div>
     </div>
@@ -73,15 +74,19 @@
            Report when THIS page last fetched, which is a fact we actually own. *@
         <div class="last-updated">
             <span>Loaded @lastLoadedLocal.ToString("t")</span>
-            <FluentButton Appearance="Appearance.Lightweight" @onclick="LoadLeaderboardAsync" Disabled="@isLoading">
+            <RadzenButton ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="btn btn-secondary" Click="@(_ => LoadLeaderboardAsync())" Disabled="@isLoading">
                 &#8635; Refresh
-            </FluentButton>
+            </RadzenButton>
         </div>
 
-        <div class="leaderboard-list">
+        @* Three.js shelf (FX #8) layered over the list, NOT replacing it. The DOM list below
+           stays the real leaderboard: focusable, in reading order, and announced. A canvas-only
+           3D list would be unreachable by keyboard and invisible to a screen reader, which is
+           not a trade a leaderboard is worth. *@
+        <div class="leaderboard-list shelf-host cq-list" @ref="_shelfHost">
             @foreach (var entry in leaderboardEntries)
             {
-                <div class="leaderboard-card @GetRankClass(entry.Rank)">
+                <div class="leaderboard-card glass @GetRankClass(entry.Rank)">
                     <div class="rank-badge">
                         <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
                     </div>
@@ -127,7 +132,7 @@
     {
         <div class="copy-toast" role="status">@shareToast</div>
     }
-</div>
+</PageShell>
 
 @code {
     private static readonly (string Code, string Flag, string Label)[] _regions =
@@ -142,6 +147,24 @@
         ("SG", "🇸🇬", "Singapore"),
     ];
 
+    /// <summary>
+    /// Options for the Radzen dropdown, which binds to a data source rather than to child option
+    /// elements the way the previous Fluent select did.
+    /// <para>
+    /// A record CLASS, not a ValueTuple: Radzen resolves TextProperty/ValueProperty by
+    /// reflection over public PROPERTIES, and a tuple exposes Item1/Item2 as fields. Binding a
+    /// tuple threw at render time and surfaced as Blazor's "An unhandled error has occurred".
+    /// </para>
+    /// </summary>
+    private sealed record LimitOption(string Value, string Text);
+
+    private static readonly LimitOption[] _limitOptions =
+    [
+        new("10", "Top 10"),
+        new("25", "Top 25"),
+        new("50", "Top 50"),
+    ];
+
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private string selectedRegion = "US";
     private int limit = 10;
@@ -151,6 +174,46 @@
     private bool isLoading = false;
     private string? shareToast;
     private System.Threading.Timer? shareToastTimer;
+
+    private ElementReference _shelfHost;
+    private bool _shelfStarted;
+    private string? _shelfBuiltForRegion;
+
+    /// <summary>
+    /// Starts the shelf once entries exist, and rebuilds it when the region changes. Three.js is
+    /// ~171KB gzipped and is dynamically imported here — a visitor who never opens the Hall of
+    /// Fame never downloads it.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (leaderboardEntries is not { Count: > 0 })
+        {
+            return;
+        }
+
+        if (_shelfStarted && _shelfBuiltForRegion == selectedRegion)
+        {
+            return;
+        }
+
+        if (_shelfStarted)
+        {
+            await Fx.StopHallShelfAsync();
+        }
+
+        _shelfStarted = true;
+        _shelfBuiltForRegion = selectedRegion;
+        await Fx.StartHallShelfAsync(_shelfHost, leaderboardEntries);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        shareToastTimer?.Dispose();
+        if (_shelfStarted)
+        {
+            await Fx.StopHallShelfAsync();
+        }
+    }
     protected override async Task OnInitializedAsync()
     {
         await LoadLeaderboardAsync();
@@ -271,5 +334,5 @@
         }, null, 3000, System.Threading.Timeout.Infinite);
     }
 
-    public void Dispose() => shareToastTimer?.Dispose();
+
 }

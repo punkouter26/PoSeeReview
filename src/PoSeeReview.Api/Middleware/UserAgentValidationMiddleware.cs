@@ -56,6 +56,17 @@ public sealed class UserAgentValidationMiddleware
 
         var userAgent = context.Request.Headers.UserAgent.ToString();
 
+        // Link-preview bots do not look like browsers and would otherwise be rejected at 400,
+        // which is exactly why a shared comic used to unfurl as an empty card. They are allowed
+        // through for page routes only — never for /api, which is where the paid AI calls and
+        // the Google Maps quota live, and where a scraper actually costs something.
+        if (SocialCrawlers.IsSocialCrawler(userAgent)
+            && !path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(context);
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(userAgent) || IsBlocked(userAgent))
         {
             _logger.LogWarning("Blocked request with suspicious User-Agent: {UserAgent}", string.IsNullOrWhiteSpace(userAgent) ? "<empty>" : userAgent);

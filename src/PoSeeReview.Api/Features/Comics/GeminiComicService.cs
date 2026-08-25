@@ -8,14 +8,21 @@ using Microsoft.Extensions.Logging;
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Google Gemini image generation service using Imagen 4.
+/// Google Gemini image generation service (generateContent image models).
 /// Uses the Generative Language REST API.
 /// Requires <c>Google:GeminiApiKey</c> in configuration (stored as "PoSeeReview--Google--GeminiApiKey" in Key Vault).
+/// Model must expose <c>generateContent</c>; the Imagen <c>predict</c> family is not available on this key.
 /// </summary>
 public sealed class GeminiComicService : IImageGenerationService
 {
-    // Imagen 4 Fast: good quality, lower latency, uses :predict endpoint
-    private const string DefaultModel = "imagen-4.0-fast-generate-001";
+    // Verified against ListModels for this project's key on 2026-08-25: NO model exposes the
+    // Imagen ":predict" method any more, which is why every generation was failing with
+    //   404 "models/imagen-4.0-fast-generate-001 is not found for API version v1beta,
+    //        or is not supported for predict"
+    // The six image-capable models all expose ":generateContent" instead, returning the image as
+    // inline base64 in a candidate part. Overridable via Google:GeminiModel — but any replacement
+    // must also be a generateContent image model, not an Imagen predict model.
+    private const string DefaultModel = "gemini-2.5-flash-image";
     private const string ApiBase = "https://generativelanguage.googleapis.com/v1beta/models";
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -41,7 +48,7 @@ public sealed class GeminiComicService : IImageGenerationService
 
         _model = configuration["Google:GeminiModel"] ?? DefaultModel;
 
-        _logger.LogInformation("GeminiComicService initialised. Model: {Model} (using Imagen :predict endpoint)", _model);
+        _logger.LogInformation("GeminiComicService initialised. Model: {Model} (generateContent image API)", _model);
     }
 
     /// <inheritdoc />
@@ -84,63 +91,100 @@ public sealed class GeminiComicService : IImageGenerationService
     }
 
     /// <summary>
-    /// Calls the Imagen :predict API and extracts the base64 image bytes from the response.
-    /// Compatible with imagen-3.0-generate-002, imagen-4.0-fast-generate-001, imagen-4.0-generate-001, etc.
+    /// Calls <c>:generateContent</c> and extracts the inline image bytes from the first image
+    /// part of the first candidate.
+    /// <para>
+    /// The response shape is a candidate list rather than Imagen's <c>predictions</c> array, and
+    /// a candidate can legitimately come back with only text parts (the model explaining why it
+    /// declined) — so the part loop looks for <c>inlineData</c> specifically instead of assuming
+    /// position 0 is the image.
+    /// </para>
     /// </summary>
     private async Task<byte[]> GenerateAsync(string prompt, CancellationToken cancellationToken)
     {
         var body = new
         {
-            instances = new[] { new { prompt } },
-            parameters = new
+            contents = new[]
             {
-                sampleCount = 1,
-                aspectRatio = "1:1",
-                safetyFilterLevel = "block_some",
-                personGeneration = "allow_adult"
+                new { role = "user", parts = new[] { new { text = prompt } } }
+            },
+            generationConfig = new
+            {
+                // Without this the model may answer with prose about the picture it would draw.
+                responseModalities = new[] { "IMAGE" }
             }
         };
 
         var client = _httpClientFactory.CreateClient("GeminiApi");
-        var url = $"{ApiBase}/{_model}:predict";
+        var url = $"{ApiBase}/{_model}:generateContent";
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Add("x-goog-api-key", _apiKey);
         request.Content = JsonContent.Create(body);
 
-        _logger.LogDebug("Calling Imagen API: {Url}", url);
+        _logger.LogDebug("Calling Gemini image API: {Url}", url);
 
         using var response = await client.SendAsync(request, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogError("Imagen API error {Status}: {Body}", (int)response.StatusCode, errorBody);
+            _logger.LogError("Gemini image API error {Status}: {Body}", (int)response.StatusCode, errorBody);
             throw new InvalidOperationException(
-                $"Imagen API returned {(int)response.StatusCode}: {errorBody}");
+                $"Gemini image API returned {(int)response.StatusCode}: {errorBody}");
         }
 
         using var json = await JsonDocument.ParseAsync(
             await response.Content.ReadAsStreamAsync(cancellationToken),
             cancellationToken: cancellationToken);
 
-        var prediction = json.RootElement
-            .GetProperty("predictions")
-            .EnumerateArray()
-            .FirstOrDefault();
+        var root = json.RootElement;
 
-        if (prediction.ValueKind == JsonValueKind.Undefined)
+        // A prompt rejected outright never reaches the candidate list — it comes back as a
+        // promptFeedback block. Surface it with the word "blocked" so the caller's safety
+        // fallback in GenerateComicImageAsync recognises it and retries with a generic prompt.
+        if (root.TryGetProperty("promptFeedback", out var feedback)
+            && feedback.TryGetProperty("blockReason", out var blockReason))
         {
-            var rawJson = json.RootElement.GetRawText();
-            _logger.LogWarning("Imagen returned empty predictions. Raw response: {Response}", rawJson);
             throw new InvalidOperationException(
-                "Imagen returned no predictions. The prompt may have been filtered.");
+                $"Gemini blocked the prompt: {blockReason.GetString()}");
         }
 
-        var imageBase64 = prediction.GetProperty("bytesBase64Encoded").GetString()
-            ?? throw new InvalidOperationException("Imagen response missing bytesBase64Encoded field");
+        if (!root.TryGetProperty("candidates", out var candidates)
+            || candidates.ValueKind != JsonValueKind.Array
+            || candidates.GetArrayLength() == 0)
+        {
+            _logger.LogWarning("Gemini returned no candidates. Raw response: {Response}", root.GetRawText());
+            throw new InvalidOperationException("Gemini returned no candidates. The prompt may have been filtered.");
+        }
 
-        return Convert.FromBase64String(imageBase64);
+        var candidate = candidates[0];
+
+        if (candidate.TryGetProperty("finishReason", out var finishReason)
+            && finishReason.GetString() is { } reason
+            && reason is not ("STOP" or "MAX_TOKENS"))
+        {
+            // SAFETY / PROHIBITED_CONTENT / IMAGE_SAFETY all land here.
+            throw new InvalidOperationException($"Gemini declined to draw the image: {reason}");
+        }
+
+        if (candidate.TryGetProperty("content", out var content)
+            && content.TryGetProperty("parts", out var parts)
+            && parts.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var part in parts.EnumerateArray())
+            {
+                if (part.TryGetProperty("inlineData", out var inlineData)
+                    && inlineData.TryGetProperty("data", out var data)
+                    && data.GetString() is { Length: > 0 } base64)
+                {
+                    return Convert.FromBase64String(base64);
+                }
+            }
+        }
+
+        _logger.LogWarning("Gemini returned a candidate with no image part. Raw response: {Response}", root.GetRawText());
+        throw new InvalidOperationException("Gemini returned no image data for this prompt.");
     }
 
     private static string SanitizeNarrative(string narrative)

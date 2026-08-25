@@ -8,8 +8,8 @@
 .app-header {
     text-align: center;
     padding: clamp(2.5rem, 5vw, 3.5rem) clamp(1rem, 3vw, 2rem);
-    background: linear-gradient(160deg, #5B21B6 0%, #7C3AED 40%, #be185d 100%);
-    color: white;
+    background: var(--gradient-hero);
+    color: var(--color-on-dark);
     border-radius: var(--radius-card);
     margin-bottom: 2rem;
     position: relative;
@@ -22,7 +22,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background-image: radial-gradient(circle, rgba(255,255,255,0.12) 1px, transparent 1px);
+    background-image: radial-gradient(circle, var(--overlay-on-dark) 1px, transparent 1px);
     background-size: 20px 20px;
     pointer-events: none;
     z-index: 0;
@@ -33,7 +33,7 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.3) 100%);
+    background: var(--hero-scrim);
     pointer-events: none;
     z-index: 0;
 }
@@ -50,7 +50,7 @@
     margin: 0 0 0.5rem 0;
     font-weight: 400;
     line-height: 1.1;
-    text-shadow: 0 2px 12px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    text-shadow: var(--text-shadow-on-dark);
 }
 
 .tagline {
@@ -65,7 +65,7 @@
     max-width: 30rem;
     font-size: 0.95rem;
     line-height: 1.5;
-    color: rgba(255, 255, 255, 0.82);
+    color: var(--color-on-dark-secondary);
 }
 
 .leaderboard-hero-link {
@@ -73,10 +73,10 @@
     align-items: center;
     gap: 0.4rem;
     padding: 0.6rem 1.5rem;
-    background: rgba(255,255,255,0.12);
-    border: 1.5px solid rgba(255,255,255,0.3);
+    background: var(--overlay-on-dark);
+    border: 1.5px solid var(--border-on-dark);
     border-radius: 999px;
-    color: white;
+    color: var(--color-on-dark);
     text-decoration: none;
     font-size: 0.9rem;
     font-weight: 600;
@@ -86,9 +86,9 @@
 }
 
 .leaderboard-hero-link:hover {
-    background: rgba(255,255,255,0.2);
-    border-color: rgba(255,255,255,0.5);
-    color: white;
+    background: color-mix(in srgb, var(--color-on-dark) 20%, transparent);
+    border-color: color-mix(in srgb, var(--color-on-dark) 50%, transparent);
+    color: var(--color-on-dark);
     text-decoration: none;
     transform: translateY(-1px);
     box-shadow: 0 4px 16px rgba(0,0,0,0.2);
@@ -111,10 +111,10 @@
     border-radius: 16px;
     padding: clamp(1.5rem, 4vw, 2.25rem);
     text-align: center;
-    box-shadow: 0 4px 32px rgba(124,58,237,0.1), 0 1px 4px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 32px color-mix(in srgb, var(--color-brand) 10%, transparent), 0 1px 4px rgba(0,0,0,0.06);
     max-width: 520px;
     width: 100%;
-    border: 1px solid rgba(124,58,237,0.1);
+    border: 1px solid color-mix(in srgb, var(--color-brand) 10%, transparent);
 }
 
 .prompt-eyebrow {
@@ -122,7 +122,7 @@
     padding: 0.3rem 0.7rem;
     margin-bottom: 0.8rem;
     border-radius: 999px;
-    background: rgba(124, 58, 237, 0.1);
+    background: color-mix(in srgb, var(--color-brand) 10%, transparent);
     color: var(--color-brand);
     font-size: 0.78rem;
     font-weight: 700;
@@ -144,9 +144,9 @@
     line-height: 1.6;
 }
 
-/* .location-btn sizing lives in global app.css: FluentButton renders a child-component
-   <fluent-button> whose root never receives this component's scoped-CSS attribute, so a
-   scoped rule here silently does nothing. See app.css ".location-btn". */
+/* .location-btn sizing lives in global app.css. Radzen renders plain DOM (unlike Fluent's web
+   components), so a scoped rule here would work now — but the class is shared, so it stays in
+   the shared layer where nothing can fork it. */
 
 .divider-or {
     display: flex;
@@ -201,7 +201,7 @@
 }
 
 .retry-link:hover {
-    background: rgba(245, 158, 11, 0.14);
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }
 
 .restaurants-grid {
@@ -228,14 +228,40 @@
 
 .search-row {
     display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-    align-items: flex-end;
+    gap: var(--space-sm);
+    align-items: stretch;
 }
 
-.search-row fluent-text-field {
-    --neutral-fill-input-rest: #f8f9fa;
-    min-width: 220px;
+/* The field has to be allowed to grow. Without flex:1 it sat at its intrinsic width in the
+   middle of the card while the button hugged it — the row read as an afterthought rather than
+   as the equal alternative to "Use My Location" that it is.
+   Radzen's RadzenTextBox renders a real <input>, so this reaches it directly; the equivalent
+   Fluent rule needed ::part() to cross a shadow boundary. */
+.search-row ::deep .search-field,
+.search-row ::deep input {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    min-height: var(--tap-target);
+    padding: var(--space-sm) var(--space-md);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-card);
+    color: var(--color-text-primary);
+    font-size: var(--text-md);
+}
+
+.search-row ::deep .search-field:focus,
+.search-row ::deep input:focus {
+    border-color: var(--color-brand);
+    outline: none;
+}
+
+/* Below the small breakpoint the two controls stack, so neither is squeezed under ~44px. */
+@media (max-width: 40rem) {
+    .search-row {
+        flex-direction: column;
+    }
 }
 
 .hint-text {
@@ -302,7 +328,7 @@
     height: 1.5rem;
     border: none;
     border-radius: 50%;
-    background: rgba(124, 58, 237, 0.08);
+    background: color-mix(in srgb, var(--color-brand) 8%, transparent);
     color: var(--color-brand);
     cursor: pointer;
     font-size: 1rem;
@@ -389,8 +415,8 @@
         align-items: stretch;
     }
 
-    .search-row fluent-text-field,
-    .search-row fluent-button {
+    .search-row ::deep .search-field,
+    .search-row ::deep .btn {
         width: 100%;
     }
 

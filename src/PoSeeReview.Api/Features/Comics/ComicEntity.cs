@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using PoSeeReview.Shared.Contracts;
@@ -38,6 +39,13 @@ public class ComicEntity : ITableEntity
     public string RequestedByUserId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Strangeness receipts as a JSON array. Table Storage has no collection column type, so the
+    /// list is flattened here — the same primitives-only constraint that forces the id unwrapping
+    /// above. Empty string for rows written before receipts existed.
+    /// </summary>
+    public string ReceiptsJson { get; set; } = string.Empty;
+
+    /// <summary>
     /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
     public static ComicEntity FromDomain(Comic comic)
@@ -54,7 +62,10 @@ public class ComicEntity : ITableEntity
             StrangenessScore = comic.StrangenessScore,
             ExpiresAt = comic.ExpiresAt,
             CreatedAt = comic.CreatedAt,
-            RequestedByUserId = comic.RequestedByUserId.Value
+            RequestedByUserId = comic.RequestedByUserId.Value,
+            ReceiptsJson = comic.Receipts.Count == 0
+                ? string.Empty
+                : JsonSerializer.Serialize(comic.Receipts, ReceiptsJsonOptions)
         };
     }
 
@@ -74,8 +85,32 @@ public class ComicEntity : ITableEntity
             ExpiresAt = ExpiresAt,
             CreatedAt = CreatedAt,
             RequestedByUserId = UserId.From(RequestedByUserId),
+            Receipts = DeserializeReceipts(ReceiptsJson),
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated
         };
+    }
+
+    private static readonly JsonSerializerOptions ReceiptsJsonOptions = new(JsonSerializerDefaults.Web);
+
+    /// <summary>
+    /// A malformed receipts column must not make an otherwise-good comic unreadable: the comic
+    /// itself is the product, receipts are supporting detail. Bad JSON degrades to no receipts.
+    /// </summary>
+    private static IReadOnlyList<StrangenessReceipt> DeserializeReceipts(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<StrangenessReceipt>>(json, ReceiptsJsonOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 }

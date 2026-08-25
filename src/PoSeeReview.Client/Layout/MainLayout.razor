@@ -1,4 +1,15 @@
 ﻿@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@using PoSeeReview.Client.Services
+@inject FxService Fx
+@inject IJSRuntime JS
+
+@* Strangeness-reactive backdrop (FX #2). One canvas for the whole app rather than one per page,
+   so navigating does not tear down and rebuild a GL context. aria-hidden: it carries no
+   information, only mood. The CSS gradient on .fx-backdrop is what shows if the shader never
+   starts, so the page is never bare. *@
+<canvas @ref="_backdrop" class="fx-backdrop" aria-hidden="true"></canvas>
+
 <div class="page">
     <div class="shell-header">
         <NavMenu />
@@ -10,3 +21,75 @@
         </article>
     </main>
 </div>
+
+@code {
+    private ElementReference _backdrop;
+    private int _gradientHandle;
+    private IJSObjectReference? _scrollGuard;
+
+    /// <summary>
+    /// Cascaded so any page can tint the backdrop to the comic it is showing without each one
+    /// having to own a canvas.
+    /// </summary>
+    public static event Action<int>? ScoreChanged;
+
+    /// <summary>
+    /// Retunes the app-wide backdrop. Static because the backdrop canvas is owned by the layout,
+    /// which pages have no reference to — and giving every page its own GL context to avoid one
+    /// static event would be a far worse trade.
+    /// </summary>
+    public static void RaiseScoreChanged(int score) => ScoreChanged?.Invoke(score);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Every render of the layout body means the destination route has painted, so this is
+        // where an open view transition is released. Cheap no-op when none is pending.
+        await Fx.SettleViewTransitionAsync();
+
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _gradientHandle = await Fx.StartGradientAsync(_backdrop, 40);
+        ScoreChanged += OnScoreChanged;
+
+        // Drops backdrop-filter while a list is actually moving. Done in JS rather than through
+        // a Blazor scroll handler on purpose: routing every scroll event through interop into
+        // .NET and back is itself enough work to cause the jank this is meant to prevent.
+        _scrollGuard = await SafeImportScrollGuardAsync();
+    }
+
+    private async Task<IJSObjectReference?> SafeImportScrollGuardAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<IJSObjectReference>("import", "./js/scroll-guard.js");
+        }
+        catch (JSException)
+        {
+            return null;   // Glass simply keeps its blur while scrolling.
+        }
+    }
+
+    private void OnScoreChanged(int score) =>
+        _ = Fx.SetGradientScoreAsync(_gradientHandle, score);
+
+    public async ValueTask DisposeAsync()
+    {
+        ScoreChanged -= OnScoreChanged;
+        await Fx.StopGradientAsync(_gradientHandle);
+
+        if (_scrollGuard is not null)
+        {
+            try
+            {
+                await _scrollGuard.DisposeAsync();
+            }
+            catch (JSException)
+            {
+                // Page is going away anyway.
+            }
+        }
+    }
+}

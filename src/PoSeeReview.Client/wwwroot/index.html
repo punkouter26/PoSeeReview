@@ -7,10 +7,18 @@
     <title>PoSeeReview</title>
     <base href="/" />
     <link rel="stylesheet" href="fonts/fonts.css" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <!-- Bootstrap removed: 31KB gzipped for six classes, all of which app.css already redefined,
+         and whose duplicates were feeding the cascade conflicts the layer system now prevents.
+         app.css carries a minimal reset in @layer reset instead. -->
+    <!-- app.css @imports PoSeeReview.Client.styles.css (the Blazor scoped-CSS bundle) into
+         @layer page. That is the only way to put framework-generated CSS in a layer, and it is
+         what stops a scoped sheet from silently overriding a shared primitive. Do NOT re-add a
+         separate <link> for it — that would load it unlayered, where it beats every layer. -->
+    <!-- Radzen's stylesheet is NOT linked here. app.css @imports it into @layer vendor, because
+         unlayered CSS outranks every layer regardless of source order — a plain <link> would put
+         Radzen's Material defaults above the entire design system. -->
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <link href="PoSeeReview.Client.styles.css" rel="stylesheet" />
 
     <!-- Application Insights will be added when deployed to Azure -->
 </head>
@@ -31,6 +39,11 @@
     </div>
     <script src="geolocation.js"></script>
     <script src="share-utils.js"></script>
+    <!-- Graphics + audio. type="module" so the heavy scenes can be dynamically imported on
+         demand; nothing under lib/ is fetched until a page actually asks for it. Loaded before
+         Blazor so window.poseeFx exists by the time the first component calls into it. -->
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script type="module" src="js/fx.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
 </body>
 

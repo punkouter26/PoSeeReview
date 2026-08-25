@@ -64,11 +64,16 @@ public class ComicGenerationService : IComicGenerationService
     /// </summary>
     /// <param name="placeId">Google Maps place ID</param>
     /// <param name="forceRegenerate">If true, regenerates even if valid cache exists</param>
+    /// <param name="progress">Optional sink for the stage currently running; best-effort, never awaited</param>
     /// <param name="cancellationToken">Cancels the generation pipeline</param>
     /// <returns>Generated or cached Comic entity</returns>
     /// <exception cref="KeyNotFoundException">If restaurant not found</exception>
     /// <exception cref="InsufficientReviewsException">If restaurant has fewer than required reviews</exception>
-    public async Task<Comic> GenerateComicAsync(PlaceId placeId, bool forceRegenerate = false, CancellationToken cancellationToken = default)
+    public async Task<Comic> GenerateComicAsync(
+        PlaceId placeId,
+        bool forceRegenerate = false,
+        IProgress<ComicGenerationPhase>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         if (placeId.IsEmpty)
             throw new ArgumentException("PlaceId is required", nameof(placeId));
@@ -94,6 +99,7 @@ public class ComicGenerationService : IComicGenerationService
                 }
 
                 cachedComic.CacheState = ComicCacheState.Cached; // Mark provenance for the caller
+                progress?.Report(ComicGenerationPhase.CacheHit);
                 _telemetryClient.GetMetric("Comics.CacheHit").TrackValue(1);
                 overallStopwatch.Stop();
                 _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(overallStopwatch.Elapsed.TotalMilliseconds);
@@ -104,6 +110,7 @@ public class ComicGenerationService : IComicGenerationService
         _telemetryClient.GetMetric("Comics.CacheMiss").TrackValue(1);
 
         // Fetch restaurant details with reviews
+        progress?.Report(ComicGenerationPhase.FetchingReviews);
         Restaurant restaurant;
         try
         {
@@ -149,9 +156,14 @@ public class ComicGenerationService : IComicGenerationService
         _logger.LogInformation("Analyzing {Count} reviews for strangeness", reviewsForAnalysis.Count);
 
         // Analyze strangeness and generate narrative with panel count
+        progress?.Report(ComicGenerationPhase.AnalyzingStrangeness);
         var analysisStopwatch = Stopwatch.StartNew();
-        var (strangenessScore, panelCount, narrative) = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
+        var analysis = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
         analysisStopwatch.Stop();
+
+        var strangenessScore = analysis.StrangenessScore;
+        var panelCount = analysis.PanelCount;
+        var narrative = analysis.Narrative;
 
         // The analyser is an external AI call: an empty or absent narrative is a plausible
         // response, not a programming error. Dereferencing it unguarded turned that into a
@@ -180,7 +192,20 @@ public class ComicGenerationService : IComicGenerationService
             throw new InsufficientStrangenessException(strangenessScore, _options.MinimumStrangenessScore);
         }
 
+        // Verified against the reviews we actually sent, while we still hold them. Anything the
+        // model paraphrased or invented is discarded here rather than shown to a user as a
+        // quotation from a real restaurant's reviews.
+        var receipts = VerifyReceipts(analysis.Receipts, reviewsForAnalysis);
+        if (receipts.Count < analysis.Receipts.Count)
+        {
+            _logger.LogWarning(
+                "Dropped {DroppedCount} of {TotalCount} strangeness receipts for {PlaceId}: quote not found verbatim in the analysed reviews",
+                analysis.Receipts.Count - receipts.Count, analysis.Receipts.Count, placeId);
+            _telemetryClient.GetMetric("Comics.UnverifiedReceipts").TrackValue(analysis.Receipts.Count - receipts.Count);
+        }
+
         // Generate comic image (panel count capped at 2)
+        progress?.Report(ComicGenerationPhase.GeneratingArtwork);
         var imageStopwatch = Stopwatch.StartNew();
         var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount, cancellationToken);
         imageStopwatch.Stop();
@@ -189,6 +214,7 @@ public class ComicGenerationService : IComicGenerationService
         _telemetryClient.GetMetric("Comics.Generation.ImageDurationMs").TrackValue(imageStopwatch.Elapsed.TotalMilliseconds);
 
         // Add readable text caption overlays to each panel (replaces garbled AI-rendered text)
+        progress?.Report(ComicGenerationPhase.ComposingStrip);
         var overlayStopwatch = Stopwatch.StartNew();
         imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, narrative, panelCount, cancellationToken);
         overlayStopwatch.Stop();
@@ -197,6 +223,7 @@ public class ComicGenerationService : IComicGenerationService
         _telemetryClient.GetMetric("Comics.Generation.TextOverlayDurationMs").TrackValue(overlayStopwatch.Elapsed.TotalMilliseconds);
 
         // Upload to blob storage
+        progress?.Report(ComicGenerationPhase.Publishing);
         var comicId = ComicId.New();
         var blobUrl = await _blobStorageService.UploadComicImageAsync(comicId.Value, imageBytes);
 
@@ -213,7 +240,8 @@ public class ComicGenerationService : IComicGenerationService
             StrangenessScore = strangenessScore,
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
-            CacheState = ComicCacheState.Generated
+            CacheState = ComicCacheState.Generated,
+            Receipts = receipts
         };
 
         // Save to cache
@@ -257,6 +285,62 @@ public class ComicGenerationService : IComicGenerationService
 
         return comic;
     }
+
+    /// <summary>Receipts shown per comic. More than this is a wall of text, not evidence.</summary>
+    private const int MaxReceipts = 3;
+
+    /// <summary>Display cap for a single quote. Applied AFTER verification, so the kept prefix is still verbatim.</summary>
+    private const int MaxReceiptQuoteChars = 180;
+
+    /// <summary>
+    /// Keeps only the receipts whose quote genuinely appears in the reviews that were analysed.
+    /// The model is asked for verbatim fragments but is free to ignore that, and a fabricated
+    /// quote attributed to a named restaurant is a defamation problem rather than a cosmetic
+    /// one — so an unmatched quote is dropped, never repaired. Comparison normalises whitespace
+    /// runs and case only: those differ freely across JSON round-trips without changing what
+    /// the reviewer actually wrote.
+    /// </summary>
+    internal static List<StrangenessReceipt> VerifyReceipts(
+        IReadOnlyList<StrangenessReceipt> claimed,
+        List<string> analysedReviews)
+    {
+        if (claimed.Count == 0 || analysedReviews.Count == 0)
+        {
+            return [];
+        }
+
+        var haystack = NormalizeForQuoteMatch(string.Join("\n", analysedReviews));
+
+        var verified = new List<StrangenessReceipt>();
+        foreach (var receipt in claimed)
+        {
+            var needle = NormalizeForQuoteMatch(receipt.Quote);
+
+            // A one- or two-word "quote" matches almost any review by chance, which would let a
+            // paraphrase pass verification. Require enough text to be genuinely attributable.
+            if (needle.Length < 12 || !haystack.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var quote = receipt.Quote.Trim();
+            if (quote.Length > MaxReceiptQuoteChars)
+            {
+                quote = quote[..MaxReceiptQuoteChars].TrimEnd() + "…";
+            }
+
+            verified.Add(receipt with { Quote = quote });
+            if (verified.Count == MaxReceipts)
+            {
+                break;
+            }
+        }
+
+        return verified.OrderByDescending(r => r.Points).ToList();
+    }
+
+    private static string NormalizeForQuoteMatch(string text) =>
+        Regex.Replace(text, @"\s+", " ").Trim();
 
     /// <summary>
     /// FrozenSet of normalized profanity keywords — allocated once at startup,

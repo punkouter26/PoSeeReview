@@ -1,11 +1,36 @@
-@* Comic strip component for displaying 4-panel comic images *@
+@* Comic strip component for displaying the generated comic image. *@
+@implements IAsyncDisposable
+@using PoSeeReview.Client.Services
+@inject FxService Fx
 
+@*
+    The <img> is deliberately still the real element (FX #3).
+
+    The print post-process draws to the canvas layered over it, but the image itself stays in the
+    DOM, stays the accessible element, and stays saveable — long-press on mobile and right-click
+    save-image on desktop both keep working on the app's single most shareable artifact. If the
+    shader never attaches (no WebGL2, reduced motion, a downgraded tier, or a blob URL served
+    without CORS) the canvas simply stays transparent and the untouched image is what shows.
+*@
 <div class="comic-strip-container">
+    @*
+        No crossorigin attribute. Setting crossorigin="anonymous" turns this into a CORS request,
+        and Azure Blob Storage does not send Access-Control-Allow-Origin unless the account has a
+        CORS rule — so the browser discarded the image and the panel rendered broken. Displaying
+        the comic beats decorating it.
 
-    <img src="@ImageUrl" 
-         alt="Comic strip for @RestaurantName" 
+        The cost is that WebGL cannot read these pixels (a cross-origin texture upload taints the
+        canvas), so comic-fx.js catches the SecurityError and leaves the plain image. Once the
+        storage CORS rule in infra/modules/storage.bicep is deployed, the upload succeeds and the
+        print effect turns itself on with no client change.
+    *@
+    <img @ref="_image"
+         src="@ImageUrl"
+         alt="Comic strip for @RestaurantName"
          class="comic-strip-image"
-         loading="lazy" />
+         @onload="OnImageLoadedAsync" />
+
+    <canvas @ref="_canvas" class="fx-overlay fx-comic-canvas" aria-hidden="true"></canvas>
 </div>
 
 @code {
@@ -14,4 +39,50 @@
 
     [Parameter]
     public string RestaurantName { get; set; } = string.Empty;
+
+    private ElementReference _image;
+    private ElementReference _canvas;
+    private int _fxHandle;
+    private string? _attachedUrl;
+
+    /// <summary>
+    /// Attaching is driven by the image's own load event rather than OnAfterRender: WebGL cannot
+    /// upload a texture from an <c>&lt;img&gt;</c> whose decode has not finished, and doing it
+    /// early produces a black panel instead of a comic.
+    /// </summary>
+    private async Task OnImageLoadedAsync()
+    {
+        if (_attachedUrl == ImageUrl)
+        {
+            return;
+        }
+
+        await DetachAsync();
+        _fxHandle = await Fx.AttachComicFxAsync(_canvas, _image);
+        _attachedUrl = ImageUrl;
+    }
+
+    /// <summary>
+    /// A regenerate swaps the src on the same element, so the old texture has to go before the
+    /// new load event fires — otherwise the panel keeps rendering the previous comic.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_attachedUrl is not null && _attachedUrl != ImageUrl)
+        {
+            await DetachAsync();
+        }
+    }
+
+    private async Task DetachAsync()
+    {
+        if (_fxHandle != 0)
+        {
+            await Fx.DetachComicFxAsync(_fxHandle);
+            _fxHandle = 0;
+        }
+        _attachedUrl = null;
+    }
+
+    public async ValueTask DisposeAsync() => await DetachAsync();
 }

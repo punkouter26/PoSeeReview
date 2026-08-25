@@ -1,16 +1,22 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @using System.Threading
+@using PoSeeReview.Client.Services
+@inject FxService Fx
 
 <div class="loading-indicator" role="status" aria-live="polite" aria-busy="true">
     @if (Steps is { Length: > 0 })
     {
         <div class="progress-stepper">
             <div class="stepper-ring">
-                <svg viewBox="0 0 64 64" class="stepper-ring-svg" aria-hidden="true">
+                @* The SVG ring stays the source of truth. The shader ring (FX #7) is layered
+                   over it and only hidden once it confirms it is actually running, so a device
+                   without WebGL2 keeps the ring it always had rather than an empty circle. *@
+                <svg viewBox="0 0 64 64" class="stepper-ring-svg @(_ringHandle != 0 ? "fx-replaced" : "")" aria-hidden="true">
                     <circle class="stepper-ring-bg" cx="32" cy="32" r="28" />
                     <circle class="stepper-ring-fill" cx="32" cy="32" r="28"
                             style="stroke-dasharray: @DashArray" />
                 </svg>
+                <canvas @ref="_ringCanvas" class="fx-overlay stepper-ring-canvas" aria-hidden="true"></canvas>
                 <span class="stepper-ring-icon" aria-hidden="true">@Steps[_stepIndex % Steps.Length].Icon</span>
             </div>
             <p class="loading-message stepper-message">@Steps[_stepIndex % Steps.Length].Label</p>
@@ -24,7 +30,7 @@
     }
     else
     {
-        <FluentProgressRing aria-hidden="true" />
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" aria-hidden="true" />
         <p class="loading-message">@Message</p>
     }
 </div>
@@ -33,6 +39,14 @@
     [Parameter] public string Message { get; set; } = "Loading...";
 
     [Parameter] public (string Icon, string Label)[]? Steps { get; set; }
+
+    /// <summary>
+    /// Index of the step the caller knows is genuinely running. When supplied, the internal
+    /// timer never starts and the display follows the server instead of guessing — a timed
+    /// stepper that finishes before the work does is worse than no stepper, because it reads
+    /// as "finished, then hung".
+    /// </summary>
+    [Parameter] public int? ActiveStep { get; set; }
 
     /// <summary>Circumference of the r=28 progress circle: 2 * PI * 28.</summary>
     private const double RingCircumference = 175.93;
@@ -43,6 +57,13 @@
     private int _stepIndex;
     private double _stepProgress;
     private Timer? _timer;
+    private ElementReference _ringCanvas;
+    private int _ringHandle;
+    private int _lastReportedStep = -1;
+
+    /// <summary>Fraction of the pipeline complete, fed to the shader ring and the audio cue.</summary>
+    private double CompletedFraction =>
+        Steps is { Length: > 0 } ? (_stepIndex + 1) / (double)Steps.Length : 0;
 
     /// <summary>
     /// The filled arc must be expressed in user units along the circumference, not as a raw
@@ -52,9 +73,49 @@
     private string DashArray =>
         $"{(_stepProgress / 100.0 * RingCircumference).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} {RingCircumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}";
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Steps is { Length: > 0 })
+        {
+            _ringHandle = await Fx.StartLoadingRingAsync(_ringCanvas, CompletedFraction);
+            if (_ringHandle != 0)
+            {
+                // Re-render so the SVG picks up .fx-replaced now that the shader is confirmed.
+                StateHasChanged();
+            }
+        }
+
+        // Phase changes are pushed to the shader and sounded here rather than in OnParametersSet,
+        // because the handle only exists after the first render.
+        if (_ringHandle != 0)
+        {
+            await Fx.SetLoadingRingProgressAsync(_ringHandle, CompletedFraction);
+        }
+
+        if (ActiveStep is { } reported && reported != _lastReportedStep && Steps is { Length: > 0 })
+        {
+            _lastReportedStep = reported;
+            await Fx.PlayPhaseAsync(reported, Steps.Length);
+        }
+    }
+
     protected override void OnParametersSet()
     {
-        if (Steps is { Length: > 0 } && _timer == null)
+        if (Steps is not { Length: > 0 })
+        {
+            return;
+        }
+
+        if (ActiveStep is { } active)
+        {
+            // Server-driven: hold the reported step and fill the ring to the fraction of the
+            // pipeline actually completed.
+            _stepIndex = Math.Clamp(active, 0, Steps.Length - 1);
+            _stepProgress = (_stepIndex + 1) * 100.0 / Steps.Length;
+            return;
+        }
+
+        if (_timer == null)
         {
             _timer = new Timer(Tick, null, 0, TickIntervalMs);
         }
@@ -82,5 +143,9 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => _timer?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        await Fx.StopLoadingRingAsync(_ringHandle);
+    }
 }

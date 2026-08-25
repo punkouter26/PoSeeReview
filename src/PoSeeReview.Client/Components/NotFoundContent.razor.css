@@ -15,7 +15,7 @@
     font-family: var(--font-display, 'Bangers', cursive);
     font-size: 2rem;
     letter-spacing: 0.06em;
-    color: white;
+    color: var(--color-on-dark);
     margin: 0;
 }
 
@@ -118,7 +118,7 @@
     display: inline-block;
     padding: 0.75rem 2rem;
     background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
-    color: white;
+    color: var(--color-on-dark);
     border-radius: 8px;
     font-weight: 600;
     font-size: 1rem;
@@ -129,5 +129,5 @@
 .home-btn:hover {
     opacity: 0.9;
     transform: translateY(-1px);
-    color: white;
+    color: var(--color-on-dark);
 }

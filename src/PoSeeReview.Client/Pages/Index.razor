@@ -1,5 +1,6 @@
 @page "/"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @using Microsoft.JSInterop
@@ -7,6 +8,7 @@
 @inject IJSRuntime JS
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
+@inject FxService Fx
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
@@ -34,15 +36,15 @@
     @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied or LocationFlowState.Error)
     {
         <div class="location-prompt">
-            <FluentCard class="prompt-card">
+            <RadzenCard class="prompt-card glass">
                 <div class="prompt-eyebrow">Start here</div>
                 <h2>Find Nearby Restaurants</h2>
                 <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
                 @if (_flowState != LocationFlowState.Denied)
                 {
-                    <FluentButton Appearance="Appearance.Accent" @onclick="RequestLocationAsync" class="location-btn">
+                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary location-btn" Click="@(_ => RequestLocationAsync())">
                         Use My Location
-                    </FluentButton>
+                    </RadzenButton>
                     <div class="divider-or"><span>or</span></div>
                 }
                 @if (_flowState == LocationFlowState.Denied)
@@ -54,15 +56,16 @@
                 }
                 <div class="search-row">
                     <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
-                    <FluentTextField id="city-search-input" @bind-Value="_searchQuery" Immediate="true" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" />
-                    <FluentButton Appearance="Appearance.Neutral" @onclick="SearchByLocationAsync"
+                    <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
+                    <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary"
+                                  Click="@(_ => SearchByLocationAsync())"
                                   Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))"
                                   title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
                         Search
-                    </FluentButton>
+                    </RadzenButton>
                 </div>
                 <p class="hint-text">Comics are drawn from a place's recent public reviews — the more it has, the stranger the story.</p>
-            </FluentCard>
+            </RadzenCard>
         </div>
     }
 
@@ -91,7 +94,10 @@
 
     @if (_restaurants.Count > 0)
     {
-        <div class="restaurants-grid">
+        @* Rapier springs each card around its CSS layout position (FX #10). The grid is a normal
+           grid; physics only ever writes a transform offset, so if the ~580KB module never loads
+           — slow link, Save-Data, a downgraded tier — nothing here changes. *@
+        <div class="restaurants-grid" @ref="_gridContainer">
             <div class="results-chip-bar">
                 <span class="search-chip">
                     &#128205; @_lastSearch
@@ -103,10 +109,15 @@
             </div>
             @foreach (var restaurant in _restaurants)
             {
-                <RestaurantCard
-                    Restaurant="restaurant"
-                    IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
-                    OnRestaurantClick="HandleRestaurantClick" />
+                @* cq-card makes each slot a query container so the card inside can size itself
+                   from the room it actually has (see @container card in app.css). A container
+                   cannot query itself, hence the wrapper. *@
+                <div class="cq-card">
+                    <RestaurantCard
+                        Restaurant="restaurant"
+                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                        OnRestaurantClick="HandleRestaurantClick" />
+                </div>
             }
         </div>
     }
@@ -130,20 +141,105 @@
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
 
+    private ElementReference _gridContainer;
+    private bool _physicsRequested;
+
+    private const string LastSearchKey = "posee_last_search";
+    private const string DiscoveryModeKey = "posee_discovery_mode";
+    private const string LegacyLocationEnabledKey = "posee_location_enabled";
+    private const string GeoMode = "geo";
+    private const string ZipMode = "zip";
+
+    /// <summary>
+    /// Resumes whichever entry point the user last completed successfully. A remembered ZIP or
+    /// city is re-run and left in the box, so typing a location is a real alternative to sharing
+    /// GPS rather than something the app forgets between visits. With nothing remembered the page
+    /// stays Idle and requests no permission — the card is the first thing the user sees.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_last_search");
+        var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", LastSearchKey);
         if (!string.IsNullOrWhiteSpace(lastLocation))
         {
             _searchPlaceholder = $"Last: {lastLocation}";
         }
 
-        var storedValue = await JS.InvokeAsync<string?>("localStorage.getItem", "posee_location_enabled");
-        var locationEnabled = storedValue == "true";
-
-        if (locationEnabled)
+        switch (await ResolveDiscoveryModeAsync())
         {
-            await RequestLocationAsync();
+            case ZipMode when !string.IsNullOrWhiteSpace(lastLocation):
+                _searchQuery = lastLocation!;
+                await SearchByLocationAsync();
+                break;
+            case GeoMode:
+                await RequestLocationAsync();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Reads the remembered entry point, migrating the older <c>posee_location_enabled</c> boolean
+    /// forward. That flag could only express "auto-request geolocation", so a user who granted
+    /// location once and then switched to typing a ZIP still got the browser location prompt on
+    /// every visit, while their ZIP survived only as greyed-out placeholder text to retype.
+    /// </summary>
+    private async Task<string?> ResolveDiscoveryModeAsync()
+    {
+        var mode = await JS.InvokeAsync<string?>("localStorage.getItem", DiscoveryModeKey);
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            return mode;
+        }
+
+        if (await JS.InvokeAsync<string?>("localStorage.getItem", LegacyLocationEnabledKey) != "true")
+        {
+            return null;
+        }
+
+        await JS.InvokeVoidAsync("localStorage.setItem", DiscoveryModeKey, GeoMode);
+        return GeoMode;
+    }
+
+    private Task RememberDiscoveryModeAsync(string mode) =>
+        JS.InvokeVoidAsync("localStorage.setItem", DiscoveryModeKey, mode).AsTask();
+
+    /// <summary>
+    /// Disarms the geolocation entry point after a refusal so the next visit does not re-prompt
+    /// for a permission the browser already denied. A remembered ZIP is deliberately left intact:
+    /// the user declining GPS is not the user abandoning the location they typed.
+    /// </summary>
+    private async Task ForgetGeoPreferenceAsync()
+    {
+        var mode = await JS.InvokeAsync<string?>("localStorage.getItem", DiscoveryModeKey);
+        if (mode is null or GeoMode)
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", DiscoveryModeKey);
+        }
+
+        // The legacy boolean has to go as well, or the migration above re-arms geolocation.
+        await JS.InvokeVoidAsync("localStorage.removeItem", LegacyLocationEnabledKey);
+    }
+
+    /// <summary>
+    /// Physics is started only once results are actually on screen, and only once per visit. The
+    /// module itself then defers to requestIdleCallback, so the import never competes with the
+    /// restaurant fetch or the first paint.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_physicsRequested || _restaurants.Count == 0)
+        {
+            return;
+        }
+
+        _physicsRequested = true;
+        await Fx.StartGridPhysicsAsync(_gridContainer);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_physicsRequested)
+        {
+            await Fx.StopGridPhysicsAsync();
         }
     }
 
@@ -162,6 +258,11 @@
 
     private async Task RequestLocationAsync()
     {
+        // First trusted gesture on the landing page: the only moment a browser will let the
+        // AudioContext start.
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAsync();
+
         _lastAttempt = DiscoveryAttempt.Location;
         _flowState = LocationFlowState.Loading;
         _loadingMessage = "Getting your location...";
@@ -176,7 +277,7 @@
                 if (result.PermissionDenied)
                 {
                     _flowState = LocationFlowState.Denied;
-                    await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "false");
+                    await ForgetGeoPreferenceAsync();
                 }
                 else
                 {
@@ -187,7 +288,7 @@
                 return;
             }
 
-            await JS.InvokeVoidAsync("localStorage.setItem", "posee_location_enabled", "true");
+            await RememberDiscoveryModeAsync(GeoMode);
 
             _loadingMessage = "Finding nearby restaurants...";
             StateHasChanged();
@@ -277,6 +378,9 @@
 
         var searchTerm = _searchQuery.Trim();
 
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAsync();
+
         _lastAttempt = DiscoveryAttempt.Search;
         _lastSearch = searchTerm;
         _flowState = LocationFlowState.Loading;
@@ -314,7 +418,8 @@
 
             SetRestaurantResults(response.Restaurants, searchTerm);
             _flowState = LocationFlowState.Ready;
-            await JS.InvokeVoidAsync("localStorage.setItem", "posee_last_search", searchTerm);
+            await JS.InvokeVoidAsync("localStorage.setItem", LastSearchKey, searchTerm);
+            await RememberDiscoveryModeAsync(ZipMode);
             _searchQuery = searchTerm;
             _searchPlaceholder = $"Last: {searchTerm}";
         }
@@ -376,6 +481,7 @@
 
         _isNavigatingToComic = true;
         _activeComicPlaceId = restaurant.PlaceId;
+        await Fx.PlayTapAsync();
         StateHasChanged();
 
         await Task.Yield();
@@ -384,6 +490,10 @@
 
     private void ClearSearch()
     {
+        // New card set means new bodies; let OnAfterRenderAsync rebuild the world.
+        _ = Fx.StopGridPhysicsAsync();
+        _physicsRequested = false;
+
         _restaurants = new();
         _totalCount = 0;
         _lastSearch = string.Empty;

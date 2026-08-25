@@ -1,31 +1,31 @@
 /* Leaderboard Container */
+/* Width and inline padding now come from .page-shell / .page-shell--wide in the shared layer.
+   This rule only exists for page-specific overrides. */
 .leaderboard-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: clamp(1rem, 3vw, 2rem) 1rem;
+    /* intentionally empty of layout — see PageShell */
 }
 
 .leaderboard-header {
     text-align: center;
     margin-bottom: 2rem;
     padding: clamp(1.5rem, 4vw, 2.5rem) 1rem;
-    background: linear-gradient(160deg, #5B21B6 0%, #7C3AED 40%, #be185d 100%);
+    background: var(--gradient-hero);
     border-radius: 16px;
-    color: white;
+    color: var(--color-on-dark);
 }
 
 .leaderboard-header h1 {
     font-family: var(--font-display, 'Bangers', cursive);
     font-size: clamp(2.5rem, 6vw, 4rem);
     letter-spacing: 0.04em;
-    color: white;
+    color: var(--color-on-dark);
     margin-bottom: 0.5rem;
     text-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
 
 .subtitle {
     font-size: 1rem;
-    color: rgba(255,255,255,0.8);
+    color: color-mix(in srgb, var(--color-on-dark) 80%, transparent);
     margin: 0;
 }
 
@@ -75,8 +75,8 @@
 .region-chip.active {
     background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
     border-color: transparent;
-    color: white;
-    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.35);
+    color: var(--color-on-dark);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-brand) 35%, transparent);
 }
 
 .region-flag {
@@ -183,19 +183,19 @@
     display: inline-block;
     padding: 0.75rem 2rem;
     background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
-    color: white;
+    color: var(--color-on-dark);
     text-decoration: none;
     border-radius: 999px;
     font-weight: 600;
     font-size: 1rem;
     transition: transform 0.2s, box-shadow 0.2s;
-    box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--color-brand) 30%, transparent);
 }
 
 .empty-home-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45);
-    color: white;
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-brand) 45%, transparent);
+    color: var(--color-on-dark);
     text-decoration: none;
 }
 
@@ -217,12 +217,12 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     transition: transform 0.18s, box-shadow 0.18s;
     align-items: center;
-    border: 1px solid rgba(124,58,237,0.08);
+    border: 1px solid color-mix(in srgb, var(--color-brand) 8%, transparent);
 }
 
 .leaderboard-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(124,58,237,0.12);
+    box-shadow: 0 6px 20px color-mix(in srgb, var(--color-brand) 12%, transparent);
 }
 
 /* Medal badges — circular with gradient tints */
@@ -246,20 +246,20 @@
 }
 
 .medal-gold {
-    background: radial-gradient(circle at 35% 35%, #ffe066, #ffd700 60%, #b8860b 100%);
-    box-shadow: 0 4px 16px rgba(255, 215, 0, 0.5);
+    background: radial-gradient(circle at 35% 35%, var(--medal-gold-light), var(--medal-gold) 60%, var(--medal-gold-dark) 100%);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--medal-gold) 50%, transparent);
     font-size: 2rem;
 }
 
 .medal-silver {
-    background: radial-gradient(circle at 35% 35%, #f0f0f0, #c0c0c0 60%, #808080 100%);
-    box-shadow: 0 4px 12px rgba(192, 192, 192, 0.5);
+    background: radial-gradient(circle at 35% 35%, var(--medal-silver-light), var(--medal-silver) 60%, var(--medal-silver-dark) 100%);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--medal-silver) 50%, transparent);
     font-size: 2rem;
 }
 
 .medal-bronze {
-    background: radial-gradient(circle at 35% 35%, #f0c080, #cd7f32 60%, #8b4513 100%);
-    box-shadow: 0 4px 12px rgba(205, 127, 50, 0.4);
+    background: radial-gradient(circle at 35% 35%, var(--medal-bronze-light), var(--medal-bronze) 60%, var(--medal-bronze-dark) 100%);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--medal-bronze) 40%, transparent);
     font-size: 2rem;
 }
 
@@ -274,15 +274,15 @@
 
 /* Rank border accents */
 .rank-gold {
-    border-left: 5px solid #ffd700;
+    border-left: 5px solid var(--medal-gold);
 }
 
 .rank-silver {
-    border-left: 5px solid #c0c0c0;
+    border-left: 5px solid var(--medal-silver);
 }
 
 .rank-bronze {
-    border-left: 5px solid #cd7f32;
+    border-left: 5px solid var(--medal-bronze);
 }
 
 /* Top-3 row highlight. The fade MUST land on the card token, not a literal white — the
@@ -298,7 +298,7 @@
     height: 130px;
     overflow: hidden;
     border-radius: 10px;
-    border: 1px solid rgba(124,58,237,0.1);
+    border: 1px solid color-mix(in srgb, var(--color-brand) 10%, transparent);
     background: var(--color-surface-alt);
     box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
 }
@@ -319,7 +319,7 @@
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
-    background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(245,87,108,0.08));
+    background: linear-gradient(135deg, color-mix(in srgb, var(--color-brand) 8%, transparent), color-mix(in srgb, var(--color-brand-alt) 8%, transparent));
 }
 
 .comic-thumbnail-placeholder .placeholder-icon {
@@ -369,12 +369,12 @@
     align-items: baseline;
     gap: 0.4rem;
     padding: 0.3rem 0.6rem;
-    background: rgba(124,58,237,0.07);
+    background: color-mix(in srgb, var(--color-brand) 7%, transparent);
     color: var(--color-brand);
     border-radius: 8px;
     font-weight: 700;
     width: fit-content;
-    border: 1px solid rgba(124,58,237,0.1);
+    border: 1px solid color-mix(in srgb, var(--color-brand) 10%, transparent);
 }
 
 .score-label {
@@ -422,7 +422,7 @@
 
 .btn-share-small:hover {
     transform: scale(1.1);
-    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--color-brand) 35%, transparent);
 }
 
 /* Responsive Design */
@@ -499,3 +499,25 @@
     }
 }
     
+
+/* === Three.js shelf host (FX #8) ===
+   The canvas is appended here by hall-shelf.js and stretched over the list. The DOM cards
+   underneath stay the real, focusable leaderboard — see the comment in Leaderboard.razor. */
+.shelf-host {
+    position: relative;
+}
+
+.shelf-host > canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shelf-host > canvas {
+        display: none;
+    }
+}

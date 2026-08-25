@@ -45,6 +45,33 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
       enabled: true
       days: 7
     }
+    // CORS for the comic <img>. Without a rule here Azure Blob returns no
+    // Access-Control-Allow-Origin, so a crossorigin="anonymous" <img> is discarded by the
+    // browser and the comic panel renders broken. The client therefore does NOT set that
+    // attribute today; with this rule deployed, WebGL can read the pixels without tainting the
+    // canvas and the print post-process (js/comic-fx.js) starts working on its own.
+    // GET/HEAD only: the client never writes to storage, it only displays a SAS-signed read.
+    cors: {
+      corsRules: [
+        {
+          allowedOrigins: [
+            'https://app-poseereview.azurewebsites.net'
+          ]
+          allowedMethods: [
+            'GET'
+            'HEAD'
+          ]
+          allowedHeaders: [
+            '*'
+          ]
+          exposedHeaders: [
+            'Content-Length'
+            'Content-Type'
+          ]
+          maxAgeInSeconds: 3600
+        }
+      ]
+    }
   }
 }
 

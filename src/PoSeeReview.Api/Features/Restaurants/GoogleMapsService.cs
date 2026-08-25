@@ -159,6 +159,18 @@ public class GoogleMapsService
         {
             includedTypes = new[] { "restaurant" },
             maxResultCount = 20,
+            // DISTANCE, not the API's POPULARITY default.
+            //
+            // searchNearby ranks by prominence unless told otherwise, so within a 5km radius it
+            // returns the twenty most famous places — chains and landmarks with thousands of
+            // ratings. Sorting those by distance afterwards (which the endpoint does) cannot undo
+            // the selection, so every result came back 3.8-4.8 stars with 1000+ reviews.
+            //
+            // That fights the product on two fronts: the PRD asks for proximity-first serendipity
+            // rather than a "best of" list, and the comic pipeline mines ONE-STAR reviews — the
+            // places most likely to have interesting ones are precisely the ones prominence
+            // ranking filters out.
+            rankPreference = "DISTANCE",
             locationRestriction = new
             {
                 circle = new

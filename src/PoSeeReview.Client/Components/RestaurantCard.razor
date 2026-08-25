@@ -1,8 +1,9 @@
 @using PoSeeReview.Shared.Dtos
 
-<FluentCard Class="@($"restaurant-card {GetCardClass()}")" 
+<RadzenCard class="@($"restaurant-card {GetCardClass()}")" 
             title="@GetTooltipText()"
             data-testid="restaurant-card"
+            data-physics-card
             @onclick="OnClickIfEnabled">
     <div class="card-header">
         <div>
@@ -29,9 +30,9 @@
             @* The whole card is clickable too, so the button's click must not also bubble up
                to it. stopPropagation is only valid on an HTML element, hence the wrapper. *@
             <div class="cta-wrap" @onclick:stopPropagation="true">
-                <FluentButton Appearance="Appearance.Accent" class="cta-btn" Disabled="@IsLoading" @onclick="OnClickIfEnabled" data-testid="comic-generate-btn">
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary cta-btn" Disabled="@IsLoading" Click="@(_ => OnClickIfEnabled())" data-testid="comic-generate-btn">
                     @(IsLoading ? "Opening Comic..." : "Generate Comic")
-                </FluentButton>
+                </RadzenButton>
             </div>
         }
         else
@@ -39,7 +40,7 @@
             <p class="not-enough-hint">No reviews yet — nothing to draw from.</p>
         }
     </div>
-</FluentCard>
+</RadzenCard>
 
 @code {
     [Parameter]

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
 using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
 using Polly.Retry;
 using Polly;
 
@@ -63,9 +64,9 @@ public class AzureOpenAIService : IAzureOpenAIService
     /// </summary>
     /// <param name="reviews">List of review texts (5-10 reviews recommended)</param>
     /// <param name="cancellationToken">Cancels the (potentially slow) model call when the caller abandons the request</param>
-    /// <returns>Tuple of (StrangenessScore 0-100, PanelCount 1-4, Narrative paragraph)</returns>
+    /// <returns>Score, panel count, narrative, and unverified receipts for the score.</returns>
     /// <exception cref="ArgumentException">If reviews list is null or empty</exception>
-    public async Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default)
+    public async Task<StrangenessAnalysis> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default)
     {
         if (reviews == null || reviews.Count == 0)
             throw new ArgumentException("Reviews list cannot be empty", nameof(reviews));
@@ -137,7 +138,25 @@ public class AzureOpenAIService : IAzureOpenAIService
                 estimatedCost);
         }
 
-        return (score, panelCount, result.Narrative);
+        return new StrangenessAnalysis(score, panelCount, result.Narrative, MapReceipts(result.Receipts));
+    }
+
+    /// <summary>
+    /// Shapes the model's raw receipt array into domain records. Quotes are NOT verified here —
+    /// this class only knows what the model said. Verbatim verification against the source
+    /// reviews happens in <see cref="ComicGenerationService"/>, which still holds them.
+    /// </summary>
+    private static IReadOnlyList<StrangenessReceipt> MapReceipts(List<ReceiptResult>? receipts)
+    {
+        if (receipts is not { Count: > 0 })
+        {
+            return [];
+        }
+
+        return receipts
+            .Where(r => !string.IsNullOrWhiteSpace(r.Quote))
+            .Select(r => new StrangenessReceipt(r.Quote.Trim(), Math.Clamp(r.Points, 0, 100)))
+            .ToList();
     }
 
     /// <summary>
@@ -183,6 +202,10 @@ public class AzureOpenAIService : IAzureOpenAIService
 - 81-100: Extremely bizarre, dreamlike, or nonsensical content
 
 Also write a concise narrative paragraph (1-3 sentences) summarizing the strangest aspects for comic generation.
+List up to 3 ""receipts"": the specific review fragments that drove the score, each with the points it
+contributed. Every quote MUST be copied VERBATIM from inside a <review> tag — do not paraphrase,
+summarize, translate, or invent. Keep each quote under 140 characters. If nothing is quotable, return
+an empty receipts array rather than writing your own wording.
 Determine the optimal number of panels (1 or 2) for the comic based on narrative complexity:
 - 1 panel: Single moment, simple observation, or quick joke
 - 2 panels: Before/after, cause/effect, or simple contrast
@@ -197,7 +220,10 @@ Return JSON in this exact format:
 {{
   ""strangenessScore"": 75,
   ""panelCount"": 2,
-  ""narrative"": ""A concise summary of the strangest elements suitable for a comic strip.""
+  ""narrative"": ""A concise summary of the strangest elements suitable for a comic strip."",
+  ""receipts"": [
+    {{ ""quote"": ""an exact fragment copied from a review"", ""points"": 30 }}
+  ]
 }}";
     }
 
@@ -285,6 +311,18 @@ Return JSON in this exact format:
 
         [JsonPropertyName("narrative")]
         public string Narrative { get; set; } = string.Empty;
+
+        [JsonPropertyName("receipts")]
+        public List<ReceiptResult>? Receipts { get; set; }
+    }
+
+    private sealed class ReceiptResult
+    {
+        [JsonPropertyName("quote")]
+        public string Quote { get; set; } = string.Empty;
+
+        [JsonPropertyName("points")]
+        public int Points { get; set; }
     }
 
     private sealed class PanelCaptionsResult

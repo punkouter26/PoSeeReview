@@ -111,6 +111,39 @@ public sealed class DiscoveryUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
+    public async Task Home_WithRememberedZip_ResumesTextSearchWithoutAskingForLocation(string viewport)
+    {
+        var page = await HomeAsync(viewport);
+
+        // A returning user whose last successful discovery was a typed ZIP. The page must
+        // re-run that search and leave geolocation alone — the older posee_location_enabled
+        // flag could only say "auto-request GPS", so a ZIP user was re-prompted every visit.
+        await page.EvaluateAsync(
+            "() => { localStorage.setItem('posee_discovery_mode', 'zip');"
+            + " localStorage.setItem('posee_last_search', '10001'); }");
+
+        var nearbyCalls = new List<string>();
+        page.Request += (_, request) =>
+        {
+            if (request.Url.Contains("/api/restaurants/nearby", StringComparison.OrdinalIgnoreCase))
+            {
+                nearbyCalls.Add(request.Url);
+            }
+        };
+
+        var searchRequest = page.WaitForRequestAsync(
+            r => r.Url.Contains("/api/restaurants/search", StringComparison.OrdinalIgnoreCase),
+            new() { Timeout = RenderTimeout });
+
+        await page.ReloadAsync();
+
+        var resumed = await searchRequest;
+        Assert.Contains("location=10001", resumed.Url, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(nearbyCalls);
+    }
+
+    [Theory]
+    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
     public async Task RestaurantCards_WhenPresent_ExposeGenerateAction(string viewport)
     {
         var page = await HomeAsync(viewport);

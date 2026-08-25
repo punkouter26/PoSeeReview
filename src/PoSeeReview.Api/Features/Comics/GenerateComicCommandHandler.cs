@@ -12,9 +12,13 @@ public class GenerateComicCommandHandler(
     ICurrentRequestIdentityAccessor currentRequestIdentityAccessor,
     ILogger<GenerateComicCommandHandler> logger)
 {
-    public async Task<Comic> ExecuteAsync(PlaceId placeId, bool forceRegenerate, CancellationToken cancellationToken)
+    public async Task<Comic> ExecuteAsync(
+        PlaceId placeId,
+        bool forceRegenerate,
+        CancellationToken cancellationToken,
+        IProgress<ComicGenerationPhase>? progress = null)
     {
-        var comic = await comicGenerationService.GenerateComicAsync(placeId, forceRegenerate, cancellationToken);
+        var comic = await comicGenerationService.GenerateComicAsync(placeId, forceRegenerate, progress, cancellationToken);
         var currentUserId = currentRequestIdentityAccessor.GetCurrentUserId();
 
         if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)

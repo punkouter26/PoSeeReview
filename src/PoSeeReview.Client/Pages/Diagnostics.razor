@@ -1,28 +1,106 @@
 @page "/diagnostics"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @inject ApiClient ApiClient
 @inject DevSessionClient DevSessionClient
 @inject ILogger<Diagnostics> Logger
 @inject IJSRuntime JSRuntime
+@inject FxService Fx
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
 <PageTitle>Diagnostics - PoSeeReview</PageTitle>
 
 @if (HostEnvironment.Environment != "Development")
 {
-    <div class="diagnostics-container">
-        <h1>Diagnostics</h1>
+    <PageShell Title="Diagnostics" Width="PageShell.ShellWidth.Narrow" Class="diagnostics-container">
         <p>This page is only available in development environments.</p>
         <a href="/" class="btn btn-secondary">← Back to Home</a>
-    </div>
+    </PageShell>
 }
 else
 {
-<div class="diagnostics-container">
-    <h1>System Diagnostics</h1>
-    <p class="subtitle">Real-time health status of all application dependencies</p>
+<PageShell Title="System Diagnostics"
+           Subtitle="Real-time health status of all application dependencies"
+           Width="PageShell.ShellWidth.Wide"
+           Class="diagnostics-container">
+
+    @* ── Frame budget harness (FX #5) ─────────────────────────────────────────────────────
+       "Sustains 60+ FPS" is a claim, and this is the only thing in the app that can check it.
+       Numbers come from the one shared scheduler in gfx-core, so they cover every effect at
+       once rather than whichever one happens to be instrumented. *@
+    <section class="fx-panel glass">
+        <h2>Graphics &amp; audio</h2>
+
+        <div class="fx-stat-grid">
+            <div class="fx-stat @(_stats.Fps >= 58 ? "fx-good" : _stats.Fps >= 45 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.Fps.ToString("F0")</span>
+                <span class="fx-stat-label">FPS</span>
+            </div>
+            <div class="fx-stat @(_stats.FrameMs <= 20 ? "fx-good" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.FrameMs.ToString("F1")</span>
+                <span class="fx-stat-label">mean frame ms</span>
+            </div>
+            <div class="fx-stat @(_stats.WorstFrameMs <= 34 ? "fx-good" : "fx-warn")">
+                <span class="fx-stat-value">@_stats.WorstFrameMs.ToString("F1")</span>
+                <span class="fx-stat-label">worst frame ms</span>
+            </div>
+            <div class="fx-stat @(_stats.SampledFrames > 0 && _stats.DroppedFrames * 100.0 / _stats.SampledFrames > 5 ? "fx-bad" : "fx-good")">
+                <span class="fx-stat-value">@_stats.DroppedFrames</span>
+                <span class="fx-stat-label">over 20ms budget</span>
+            </div>
+            <div class="fx-stat">
+                <span class="fx-stat-value">@_stats.ActiveTasks</span>
+                <span class="fx-stat-label">active effects</span>
+            </div>
+            <div class="fx-stat">
+                <span class="fx-stat-value">@_stats.SampledFrames</span>
+                <span class="fx-stat-label">frames sampled</span>
+            </div>
+        </div>
+
+        <div class="fx-controls">
+            <div class="fx-control-row">
+                <span class="fx-control-label">Effects tier</span>
+                <div class="fx-tier-buttons" role="group" aria-label="Effects tier">
+                    @foreach (var tier in new[] { FxTier.Off, FxTier.Lite, FxTier.Full })
+                    {
+                        <button type="button"
+                                class="btn @(_caps.Tier == tier ? "btn-primary" : "btn-secondary")"
+                                disabled="@_caps.ReducedMotion"
+                                @onclick="() => SetTierAsync(tier)">
+                            @tier
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="fx-control-row">
+                <span class="fx-control-label">Sound</span>
+                <button type="button" class="btn @(_audioEnabled ? "btn-primary" : "btn-secondary")"
+                        @onclick="ToggleAudioAsync">
+                    @(_audioEnabled ? "On" : "Off")
+                </button>
+            </div>
+
+            <div class="fx-control-row">
+                <button type="button" class="btn btn-secondary" @onclick="ResetStatsAsync">Reset counters</button>
+            </div>
+        </div>
+
+        <ul class="fx-notes">
+            <li>WebGL2: <strong>@(_caps.WebGl2 ? "available" : "unavailable")</strong></li>
+            @if (_caps.ReducedMotion)
+            {
+                <li><strong>The OS asked for reduced motion.</strong> The tier is pinned to Off and the control above is disabled — offering a toggle that ignores the system preference would be worse than hiding it.</li>
+            }
+            @if (_caps.AutoDowngraded)
+            {
+                <li class="fx-bad"><strong>Auto-downgraded.</strong> Frame time stayed over budget for ~1.5s, so the watchdog dropped a tier. This is not persisted; a reload restores your choice.</li>
+            }
+        </ul>
+    </section>
 
     @if (isLoading)
     {
@@ -156,10 +234,62 @@ else
             <a href="/" class="btn btn-secondary">← Back to Home</a>
         </div>
     }
-</div>
+</PageShell>
 }
 
 @code {
+    private FxFrameStats _stats;
+    private FxCapabilities _caps;
+    private bool _audioEnabled;
+    private System.Threading.Timer? _statsTimer;
+
+    /// <summary>
+    /// Polls the scheduler four times a second. Deliberately not a per-frame push: an overlay
+    /// that re-rendered a Blazor component every frame would itself be a source of the jank it
+    /// is meant to measure.
+    /// </summary>
+    private async Task InitFxPanelAsync()
+    {
+        _caps = await Fx.GetCapabilitiesAsync();
+        _audioEnabled = await Fx.IsAudioEnabledAsync();
+
+        _statsTimer = new System.Threading.Timer(_ =>
+        {
+            InvokeAsync(async () =>
+            {
+                _stats = await Fx.GetFrameStatsAsync();
+                _caps = await Fx.GetCapabilitiesAsync();
+                StateHasChanged();
+            });
+        }, null, 250, 250);
+    }
+
+    private async Task SetTierAsync(FxTier tier)
+    {
+        // A button press is a trusted gesture, so this doubles as the audio unlock point.
+        await Fx.UnlockAudioAsync();
+        await Fx.SetTierAsync(tier);
+        _caps = await Fx.GetCapabilitiesAsync();
+        await Fx.ResetFrameStatsAsync();
+    }
+
+    private async Task ToggleAudioAsync()
+    {
+        _audioEnabled = await Fx.SetAudioEnabledAsync(!_audioEnabled);
+        if (_audioEnabled)
+        {
+            await Fx.PlayScoreLandAsync(72);   // Audible confirmation that it actually works.
+        }
+    }
+
+    private Task ResetStatsAsync() => Fx.ResetFrameStatsAsync();
+
+    public ValueTask DisposeAsync()
+    {
+        _statsTimer?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
     private bool isLoading = true;
     private HealthStatusDto? healthStatus;
     private DiagnosticsSnapshotDto? diagnosticsSnapshot;
@@ -170,6 +300,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         await LoadHealthStatus();
+        await InitFxPanelAsync();
     }
 
     private async Task LoadHealthStatus()

@@ -21,7 +21,14 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
+    <PackageReference Include="Radzen.Blazor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- So the unit suite can assert the source-generated JSON context round-trips what the API
+         actually writes. A naming or enum mismatch there does not throw — it deserializes into a
+         default-valued envelope — so it needs a test rather than a reviewer noticing. -->
+    <InternalsVisibleTo Include="PoSeeReview.Unit" />
   </ItemGroup>
 
   <ItemGroup>

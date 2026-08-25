@@ -1,9 +1,8 @@
 /* Inherits --font-body like every other page. This used to pin its own system font stack,
    which made Diagnostics the one page not rendering in the app's typeface. */
+/* Width and padding come from .page-shell--wide in the shared layer now. */
 .diagnostics-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
+    /* intentionally empty of layout — see PageShell */
 }
 
 .diagnostics-container h1 {
@@ -53,7 +52,7 @@
     padding: 2rem;
     border-radius: 12px;
     margin-bottom: 2rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-sm);
 }
 
 /* Status tints come from the semantic surface tokens so they flip with the theme. The old
@@ -166,7 +165,7 @@
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1rem;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow-xs);
     border-left: 4px solid var(--color-border);
 }
 
@@ -289,3 +288,91 @@
     }
 }
 
+
+/* === Frame budget harness (FX #5) ===
+   Colours are tokens only — a hardcoded surface here would render white-on-white in dark mode,
+   and the theme tests assert token values rather than rendered contrast, so nothing would catch
+   it. */
+.fx-panel {
+    margin: 1.5rem 0;
+    padding: 1.25rem;
+}
+
+.fx-panel h2 {
+    margin: 0 0 1rem;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    letter-spacing: 0.02em;
+    color: var(--color-text-primary);
+}
+
+.fx-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0.6rem;
+}
+
+.fx-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-card);
+}
+
+.fx-stat-value {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    line-height: 1.1;
+    color: var(--color-text-primary);
+}
+
+.fx-stat-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+}
+
+.fx-good .fx-stat-value { color: var(--color-success); }
+.fx-warn .fx-stat-value { color: var(--color-accent); }
+.fx-bad  .fx-stat-value { color: var(--color-danger); }
+
+.fx-controls {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7rem;
+}
+
+.fx-control-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.fx-control-label {
+    min-width: 100px;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.fx-tier-buttons {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.fx-notes {
+    margin: 1rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+}
+
+.fx-notes .fx-bad {
+    color: var(--color-danger);
+}

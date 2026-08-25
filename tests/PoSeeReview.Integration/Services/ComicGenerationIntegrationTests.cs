@@ -94,7 +94,8 @@ public class ComicGenerationIntegrationTests
         _output.WriteLine("");
 
         // Act - Analyze reviews using real Azure OpenAI
-        var (strangenessScore, panelCount, narrative) = await azureOpenAIService.AnalyzeStrangenessAsync(reviews);
+        var analysis = await azureOpenAIService.AnalyzeStrangenessAsync(reviews);
+        var (strangenessScore, panelCount, narrative) = (analysis.StrangenessScore, analysis.PanelCount, analysis.Narrative);
 
         // Assert - Verify narrative
         Assert.NotNull(narrative);

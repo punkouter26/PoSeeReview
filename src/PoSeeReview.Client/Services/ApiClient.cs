@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Client.Services;
 
@@ -80,6 +81,96 @@ public class ApiClient
 
         var comic = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");
+    }
+
+    /// <summary>
+    /// Generates a comic while reporting the pipeline stage the server is genuinely in.
+    /// <para>
+    /// Falls back to <see cref="GenerateComicAsync"/> only when the stream is refused before any
+    /// work could start — a non-success status on the request itself. Once the server has
+    /// answered 200 the paid pipeline is running, so a mid-stream failure is surfaced as an
+    /// error rather than retried: a retry there would pay for the same comic twice.
+    /// </para>
+    /// </summary>
+    public async Task<ComicDto> GenerateComicStreamAsync(
+        string placeId,
+        bool forceRegenerate,
+        IProgress<ComicGenerationPhase> progress,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"/api/comics/{placeId}/stream";
+        if (forceRegenerate)
+        {
+            url += "?forceRegenerate=true";
+        }
+
+        using var request = await CreateRequestAsync(HttpMethod.Post, url);
+        using var response = await _httpClient.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // 404 means this build of the API predates streaming; 405 that it is routed
+            // differently. Either way nothing was generated, so the plain POST is safe.
+            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
+                or System.Net.HttpStatusCode.MethodNotAllowed)
+            {
+                return await GenerateComicAsync(placeId, forceRegenerate, cancellationToken);
+            }
+
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var message = TryExtractProblemDetail(errorBody)
+                ?? $"Comic generation failed (HTTP {(int)response.StatusCode}). Please try again in a moment.";
+
+            throw new HttpRequestException(message, null, response.StatusCode);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream);
+
+        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        {
+            // Blank lines are SSE frame separators; anything that is not a data line is a
+            // comment or a field this client does not use.
+            if (!line.StartsWith("data:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var payload = line["data:".Length..].Trim();
+            if (payload.Length == 0)
+            {
+                continue;
+            }
+
+            var evt = JsonSerializer.Deserialize(payload, AppJsonContext.Default.ComicGenerationEventDto);
+            if (evt is null)
+            {
+                continue;
+            }
+
+            switch (evt.Kind)
+            {
+                case ComicGenerationEventDto.PhaseKind:
+                    progress.Report(evt.Phase);
+                    break;
+
+                case ComicGenerationEventDto.CompleteKind when evt.Comic is not null:
+                    return evt.Comic;
+
+                case ComicGenerationEventDto.ErrorKind:
+                    throw new HttpRequestException(
+                        evt.ErrorDetail ?? evt.ErrorTitle ?? "Comic generation failed.",
+                        null,
+                        (System.Net.HttpStatusCode)evt.ErrorStatus);
+            }
+        }
+
+        // A 200 that ends without a terminal event means the connection dropped mid-pipeline.
+        throw new HttpRequestException(
+            "The connection dropped while the comic was being drawn. Please try again.",
+            null,
+            System.Net.HttpStatusCode.ServiceUnavailable);
     }
 
     /// <summary>

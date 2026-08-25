@@ -49,7 +49,7 @@ public sealed class HuggingFaceChatService : IAzureOpenAIService
     }
 
     /// <inheritdoc />
-    public async Task<(int StrangenessScore, int PanelCount, string Narrative)> AnalyzeStrangenessAsync(
+    public async Task<StrangenessAnalysis> AnalyzeStrangenessAsync(
         List<string> reviews, CancellationToken cancellationToken = default)
     {
         if (reviews == null || reviews.Count == 0)
@@ -81,7 +81,10 @@ public sealed class HuggingFaceChatService : IAzureOpenAIService
 
         var score = Math.Clamp(result.StrangenessScore, 0, 100);
         var panelCount = Math.Clamp(result.PanelCount, 1, 2);
-        return (score, panelCount, result.Narrative);
+        // No receipts from this provider: the cheap-tier chat model is not reliable enough at
+        // copying verbatim, and a receipt that fails verification is dropped anyway. Shipping
+        // an empty list keeps the UI honest instead of showing paraphrases as quotes.
+        return new StrangenessAnalysis(score, panelCount, result.Narrative);
     }
 
     /// <inheritdoc />

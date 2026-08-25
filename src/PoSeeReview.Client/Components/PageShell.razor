@@ -1,0 +1,71 @@
+@*
+    One page container and header, replacing five hand-rolled ones.
+
+    Before this, `.app-header` was defined in five scoped stylesheets and `.subtitle` in two, each
+    with its own max-width, padding and heading size — which is why the Hall of Fame, Diagnostics
+    and the discovery page never quite lined up with each other.
+
+    Deliberately small. The pages genuinely differ (Login is a centred card, Diagnostics is dense,
+    discovery leads with a gradient hero), so this covers the part they actually share — width,
+    inline padding, title and subtitle — and gets out of the way via `Header` for anything else.
+    A shell with a flag per page would be worse than five honest copies.
+*@
+<div class="page-shell @WidthClass @Class">
+    @if (!string.IsNullOrWhiteSpace(Title) || Header is not null)
+    {
+        <header class="@(Hero ? "page-hero" : "page-shell-header")">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <h1 class="@(Hero ? "page-hero-title" : "page-shell-title")">@Title</h1>
+            }
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p class="@(Hero ? "page-hero-subtitle" : "page-shell-subtitle")">@Subtitle</p>
+            }
+            @Header
+        </header>
+    }
+
+    @ChildContent
+</div>
+
+@code {
+    public enum ShellWidth
+    {
+        /// <summary>Reading width — forms and single-column content.</summary>
+        Narrow,
+
+        /// <summary>Default. Card grids and lists.</summary>
+        Standard,
+
+        /// <summary>Dense data views that genuinely benefit from the extra room.</summary>
+        Wide
+    }
+
+    [Parameter] public string? Title { get; set; }
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    [Parameter] public ShellWidth Width { get; set; } = ShellWidth.Standard;
+
+    /// <summary>
+    /// Renders the header as the brand gradient banner. Index and the Hall of Fame had byte-identical
+    /// gradient headers in two separate stylesheets; this is the one implementation.
+    /// </summary>
+    [Parameter] public bool Hero { get; set; }
+
+    /// <summary>Extra header content (region chips, a refresh control) below the title.</summary>
+    [Parameter] public RenderFragment? Header { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional classes, so a page can still attach its own scoped styling.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private string WidthClass => Width switch
+    {
+        ShellWidth.Narrow => "page-shell--narrow",
+        ShellWidth.Wide => "page-shell--wide",
+        _ => string.Empty
+    };
+}

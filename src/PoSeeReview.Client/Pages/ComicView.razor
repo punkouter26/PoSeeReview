@@ -1,12 +1,14 @@
 @page "/comic/{PlaceId}"
 @attribute [Authorize]
-@implements IDisposable
+@implements IAsyncDisposable
 @using PoSeeReview.Shared.Dtos
+@using PoSeeReview.Shared.Enums
 @using PoSeeReview.Client.Services
 @using System.Threading
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject ShareService ShareService
+@inject FxService Fx
 @inject ILogger<ComicView> Logger
 
 <PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
@@ -14,40 +16,42 @@
 <div class="comic-view">
     @if (_isLoading)
     {
-        <LoadingIndicator Message="Reading the weird stuff..." Steps="@(_isRegenerating ? _regenerateSteps : _comicSteps)" />
+        <LoadingIndicator Message="Reading the weird stuff..."
+                          Steps="@(_isRegenerating ? _regenerateSteps : _comicSteps)"
+                          ActiveStep="@_activeStepIndex" />
     }
     else if (_error != null)
     {
-        <FluentCard class="error-container">
+        <RadzenCard class="error-container glass">
             <div class="error-icon">🤷</div>
             <h2>@_errorTitle</h2>
             <p class="error-message">@_error</p>
             <div class="error-actions">
-                <FluentButton Appearance="Appearance.Accent" @onclick="GoBack">
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Click="@(_ => GoBack())">
                     &#8592; @BackLabel
-                </FluentButton>
+                </RadzenButton>
             </div>
-        </FluentCard>
+        </RadzenCard>
     }
     else if (_needsGeneration)
     {
-        <FluentCard class="error-container">
+        <RadzenCard class="error-container glass">
             <div class="error-icon">🎨</div>
             <h2>No Comic Here Yet</h2>
             <p class="error-message">This place doesn't have an active comic — it may have expired. Generating a fresh one takes about 10 seconds.</p>
             <div class="error-actions">
-                <FluentButton Appearance="Appearance.Accent" @onclick="GenerateFromPromptAsync">
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Click="@(_ => GenerateFromPromptAsync())">
                     Generate Comic
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack">
+                </RadzenButton>
+                <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary" Click="@(_ => GoBack())">
                     &#8592; @BackLabel
-                </FluentButton>
+                </RadzenButton>
             </div>
-        </FluentCard>
+        </RadzenCard>
     }
     else if (_comic != null)
     {
-        <FluentCard class="comic-container">
+        <RadzenCard class="comic-container glass">
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
                 <div class="strangeness-ring-wrap">
@@ -65,20 +69,39 @@
                                 style="stroke-dasharray: @RingDashArray" />
                     </svg>
                     <div class="ring-label">
-                        <span class="ring-score">@_comic.StrangenessScore</span>
+                        <span class="ring-score" aria-label="@($"Strangeness {_comic.StrangenessScore} out of 100")">@_revealedScore</span>
                         <span class="ring-text">Weird</span>
                     </div>
+                    @* Ink-splatter burst (FX #4), fired when the count lands. Sized to the score. *@
+                    <canvas @ref="_burstCanvas" class="fx-overlay fx-burst-canvas" aria-hidden="true"></canvas>
                 </div>
             </div>
 
             <ComicStrip ImageUrl="@_comic.BlobUrl"
                         RestaurantName="@_comic.RestaurantName" />
 
+            @if (_comic.Receipts.Count > 0)
+            {
+                <section class="receipts @(_receiptsVisible ? "receipts-visible" : "")" aria-live="polite">
+                    <h2 class="receipts-title">Why @_comic.StrangenessScore?</h2>
+                    <ul class="receipt-list">
+                        @foreach (var receipt in _comic.Receipts)
+                        {
+                            <li class="receipt">
+                                <blockquote class="receipt-quote">@receipt.Quote</blockquote>
+                                <span class="receipt-points">+@receipt.Points</span>
+                            </li>
+                        }
+                    </ul>
+                    <p class="receipt-note">Quoted verbatim from public Google reviews.</p>
+                </section>
+            }
+
             <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
             <p class="comic-source-note">Drawn from a small sample of recent public Google reviews — not the restaurant's full history.</p>
 
             <div class="action-buttons">
-                <FluentButton Appearance="Appearance.Accent" @onclick="ShareComic" Disabled="@(_isSharing || _isRegenerating)">
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Disabled="@(_isSharing || _isRegenerating)" Click="@(_ => ShareComic())">
                     @if (_isSharing)
                     {
                         <text>Sharing...</text>
@@ -91,22 +114,22 @@
                     {
                         <text>Copy Link</text>
                     }
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Neutral" @onclick="GoBack" Disabled="@(_isSharing || _isRegenerating)">
+                </RadzenButton>
+                <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary" Disabled="@(_isSharing || _isRegenerating)" Click="@(_ => GoBack())">
                     &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Find Another")
-                </FluentButton>
-                <FluentButton Appearance="Appearance.Outline" @onclick="RegenerateComic" Disabled="@(_isRegenerating || _isSharing)">
+                </RadzenButton>
+                <RadzenButton ButtonStyle="ButtonStyle.Base" Variant="Variant.Outlined" class="btn btn-secondary" Disabled="@(_isRegenerating || _isSharing)" Click="@(_ => RegenerateComic())">
                     Try Another Version
-                </FluentButton>
+                </RadzenButton>
             </div>
             
             @if (_showCopiedMessage)
             {
-                <FluentMessageBar Intent="MessageIntent.Success" class="copied-message">
+                <div class="alert alert-success copied-message" role="status">
                     &#10003; Link copied to clipboard!
-                </FluentMessageBar>
+                </div>
             }
-        </FluentCard>
+        </RadzenCard>
     }
 </div>
 
@@ -132,21 +155,45 @@
     private string? _error;
     private string _errorTitle = "Oops!";
     private Timer? _copiedMessageTimer;
+    private Timer? _scoreRevealTimer;
+
+    /// <summary>Score currently painted in the ring while it counts up to the real one.</summary>
+    private int _revealedScore;
+    private bool _receiptsVisible;
+
+    /// <summary>Pipeline stage the server last reported, as an index into the step arrays.</summary>
+    private int _activeStepIndex;
+
+    private ElementReference _burstCanvas;
+    private bool _burstFired;
+
+    // Aligned one-to-one with the phases the API streams. The order here IS the progress
+    // order, so a new pipeline phase must be added in both places or the stepper misreports.
+    private static readonly ComicGenerationPhase[] _phaseOrder =
+    [
+        ComicGenerationPhase.FetchingReviews,
+        ComicGenerationPhase.AnalyzingStrangeness,
+        ComicGenerationPhase.GeneratingArtwork,
+        ComicGenerationPhase.ComposingStrip,
+        ComicGenerationPhase.Publishing,
+    ];
 
     private static readonly (string Icon, string Label)[] _comicSteps =
     [
-        ("🔍", "Finding reviews..."),
-        ("🧠", "Analyzing weirdness..."),
-        ("🎨", "Drawing panels..."),
-        ("✨", "Almost done!"),
+        ("🔍", "Reading the reviews..."),
+        ("🧠", "Scoring the strangeness..."),
+        ("🎨", "Drawing the panels..."),
+        ("✍️", "Lettering the captions..."),
+        ("📮", "Publishing your strip..."),
     ];
 
     private static readonly (string Icon, string Label)[] _regenerateSteps =
     [
-        ("🗑️", "Discarding the old take..."),
+        ("🔍", "Re-reading the reviews..."),
         ("🧠", "Finding a new angle..."),
-        ("🎨", "Redrawing panels..."),
-        ("✨", "Almost done!"),
+        ("🎨", "Redrawing the panels..."),
+        ("✍️", "Re-lettering the captions..."),
+        ("📮", "Publishing the new take..."),
     ];
 
     // Both recovery cards leave the comic entirely, so they must name the same destination
@@ -160,7 +207,7 @@
     {
         get
         {
-            var filled = (_comic?.StrangenessScore ?? 0) / 100.0 * RingCircumference;
+            var filled = _revealedScore / 100.0 * RingCircumference;
             return $"{filled.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} "
                  + RingCircumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
         }
@@ -195,9 +242,84 @@
         else
         {
             _isLoading = false;
+            StartScoreReveal();
         }
 
         _shareSupported = await ShareService.IsShareSupportedAsync();
+    }
+
+    /// <summary>
+    /// Counts the ring up to the real score instead of printing it. The score is the payoff of
+    /// a ten-second wait; landing it as a static integer wastes the only dramatic beat the app
+    /// has. Receipts fade in once the count lands, so the number arrives before its evidence.
+    /// </summary>
+    private void StartScoreReveal()
+    {
+        var target = _comic?.StrangenessScore ?? 0;
+
+        _scoreRevealTimer?.Dispose();
+        _revealedScore = 0;
+        _receiptsVisible = false;
+        _burstFired = false;
+
+        if (target <= 0)
+        {
+            _receiptsVisible = true;
+            return;
+        }
+
+        // Fixed duration rather than fixed step size, so a 12 and a 97 both take ~900ms.
+        var step = Math.Max(1, (int)Math.Ceiling(target / (RevealDurationMs / (double)RevealTickMs)));
+
+        _scoreRevealTimer = new Timer(_ =>
+        {
+            _revealedScore = Math.Min(target, _revealedScore + step);
+            var landed = _revealedScore >= target;
+
+            if (landed)
+            {
+                _receiptsVisible = true;
+                _scoreRevealTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            }
+
+            InvokeAsync(async () =>
+            {
+                StateHasChanged();
+
+                // Interop must run on the renderer's context, not the timer thread.
+                if (landed)
+                {
+                    await OnScoreLandedAsync(target);
+                }
+                else
+                {
+                    await Fx.PlayScoreTickAsync(_revealedScore, target);
+                }
+            });
+        }, null, RevealTickMs, RevealTickMs);
+    }
+
+    private const int RevealDurationMs = 900;
+    private const int RevealTickMs = 30;
+
+    /// <summary>
+    /// The payoff beat: resolving chord voiced by score, an ink splatter sized to it, and the
+    /// backdrop retuned to match. Guarded by <c>_burstFired</c> so a re-render cannot replay it.
+    /// </summary>
+    private async Task OnScoreLandedAsync(int score)
+    {
+        if (_burstFired)
+        {
+            return;
+        }
+        _burstFired = true;
+
+        await Fx.PlayScoreLandAsync(score);
+        await Fx.PlaySplatAsync(score / 100.0);
+        await Fx.BurstParticlesAsync(_burstCanvas, score);
+
+        // Tint the app-wide backdrop to this comic (FX #2).
+        Layout.MainLayout.RaiseScoreChanged(score);
     }
 
     private async Task GenerateFromPromptAsync()
@@ -206,20 +328,37 @@
         await LoadComic(forceRegenerate: false);
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         _copiedMessageTimer?.Dispose();
+        _scoreRevealTimer?.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private async Task LoadComic(bool forceRegenerate)
     {
         _isLoading = true;
         _error = null;
+        _activeStepIndex = 0;
         StateHasChanged();
 
         try
         {
-            _comic = await ApiClient.GenerateComicAsync(PlaceId, forceRegenerate: forceRegenerate);
+            // Streamed so the stepper reflects the stage the pipeline is genuinely in. The
+            // reported phase is mapped through _phaseOrder rather than cast, so an unknown
+            // phase from a newer API leaves the stepper where it is instead of jumping.
+            var progress = new Progress<ComicGenerationPhase>(phase =>
+            {
+                var index = Array.IndexOf(_phaseOrder, phase);
+                if (index >= 0)
+                {
+                    _activeStepIndex = index;
+                    StateHasChanged();
+                }
+            });
+
+            _comic = await ApiClient.GenerateComicStreamAsync(PlaceId, forceRegenerate, progress);
+            StartScoreReveal();
         }
         catch (HttpRequestException ex)
         {
@@ -259,6 +398,10 @@
         finally
         {
             _isLoading = false;
+            if (_error is not null)
+            {
+                await Fx.PlayErrorAsync();
+            }
             StateHasChanged();
         }
     }
@@ -270,6 +413,11 @@
 
     private async Task RegenerateComic()
     {
+        // Every button press is a trusted gesture, which is the only context in which a browser
+        // will let an AudioContext leave 'suspended'.
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAsync();
+
         _isRegenerating = true;
         StateHasChanged();
         try
@@ -307,6 +455,12 @@
                     Logger.LogWarning("Web Share unavailable at call time, copying link instead");
                     await CopyLinkToClipboard(currentUrl);
                 }
+                else if (outcome == ShareOutcome.Shared)
+                {
+                    // Only on a real completion. Sounding a cancel would reward the one outcome
+                    // the user chose against, and the sheet is still animating away on mobile.
+                    await Fx.PlayShareStingerAsync();
+                }
             }
             else
             {
@@ -331,6 +485,7 @@
         try
         {
             await ShareService.CopyToClipboardAsync(url);
+            await Fx.PlayShareStingerAsync();
             _showCopiedMessage = true;
             StateHasChanged();
 

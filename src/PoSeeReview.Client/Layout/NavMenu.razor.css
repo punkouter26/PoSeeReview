@@ -1,7 +1,7 @@
 .top-row {
-    background: rgba(20, 10, 40, 0.92);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: 0 1px 0 rgba(255,255,255,0.05), 0 4px 24px rgba(0, 0, 0, 0.3);
+    background: var(--surface-inverse-veil);
+    border-bottom: 1px solid var(--border-on-dark-subtle);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-on-dark) 5%, transparent), 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .nav-shell {
@@ -30,20 +30,20 @@
     font-family: var(--font-display, 'Bangers', cursive);
     font-size: 1.4rem;
     letter-spacing: 0.05em;
-    color: white;
+    color: var(--color-on-dark);
     line-height: 1;
     transition: text-shadow 0.2s;
 }
 
 .navbar-brand:hover .brand-name {
-    text-shadow: 0 0 12px rgba(245,87,108,0.7), 0 0 24px rgba(124,58,237,0.5);
+    text-shadow: 0 0 12px color-mix(in srgb, var(--color-brand-alt) 70%, transparent), 0 0 24px color-mix(in srgb, var(--color-brand) 50%, transparent);
 }
 
 .brand-tagline {
     display: block;
     font-family: var(--font-body, 'DM Sans', sans-serif);
     font-size: 0.72rem;
-    color: rgba(255,255,255,0.7);
+    color: var(--color-on-dark-muted);
     letter-spacing: 0.04em;
 }
 
@@ -56,8 +56,8 @@
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #140a28;
-    background: linear-gradient(135deg, #f5576c, #f093fb);
+    color: var(--surface-inverse);
+    background: linear-gradient(135deg, var(--color-brand-alt), var(--color-brand-alt-soft));
     border-radius: 0.25rem;
     vertical-align: middle;
     line-height: 1.4;
@@ -101,7 +101,7 @@
 }
 
 .nav-item ::deep a {
-    color: rgba(255, 255, 255, 0.82);
+    color: var(--color-on-dark-secondary);
     border-radius: 999px;
     min-height: 2.75rem;
     display: inline-flex;
@@ -112,14 +112,14 @@
 }
 
 .nav-item ::deep a.active {
-    background: rgba(255,255,255,0.14);
-    color: white;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+    background: var(--overlay-on-dark-strong);
+    color: var(--color-on-dark);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-on-dark) 12%, transparent);
 }
 
 .nav-item ::deep a:hover {
-    background-color: rgba(255,255,255,0.1);
-    color: white;
+    background-color: var(--overlay-on-dark);
+    color: var(--color-on-dark);
 }
 
 /* ── Inline user zone ─────────────────────────────────────── */
@@ -137,23 +137,23 @@
     gap: 0.45rem;
     padding: 0.3rem 0.7rem;
     border-radius: 999px;
-    border: 1px solid rgba(255,255,255,0.15);
+    border: 1px solid var(--border-on-dark);
     font-size: 0.8rem;
     font-weight: 600;
-    color: rgba(255,255,255,0.7);
+    color: var(--color-on-dark-muted);
     max-width: 180px;
     overflow: hidden;
     white-space: nowrap;
 }
 
 .nav-user-badge--anon {
-    border-color: rgba(34,197,94,0.4);
-    color: #86efac;
+    border-color: var(--status-on-dark-ok-border);
+    color: var(--status-on-dark-ok);
 }
 
 .nav-user-badge--user {
-    border-color: rgba(99,179,237,0.4);
-    color: #bae6fd;
+    border-color: var(--status-on-dark-info-border);
+    color: var(--status-on-dark-info);
 }
 
 .nav-user-dot {
@@ -175,9 +175,9 @@
     min-height: 2.75rem;
     padding: 0.3rem 0.9rem;
     border-radius: 999px;
-    border: 1px solid rgba(248,113,113,0.5);
-    background: rgba(153,27,27,0.35);
-    color: rgba(255,255,255,0.95);
+    border: 1px solid var(--status-on-dark-danger);
+    background: var(--status-on-dark-danger-surface);
+    color: var(--color-on-dark);
     font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
@@ -187,9 +187,9 @@
 }
 
 .nav-logout-btn:hover {
-    background: rgba(153,27,27,0.45);
-    border-color: rgba(248,113,113,0.6);
-    color: white;
+    background: var(--status-on-dark-danger-surface);
+    border-color: var(--status-on-dark-danger);
+    color: var(--color-on-dark);
 }
 
 @media (max-width: 640px) {

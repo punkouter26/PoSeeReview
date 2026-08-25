@@ -49,4 +49,11 @@ public class ComicDto
     /// True if returned from cache, false if newly generated
     /// </summary>
     public bool IsCached { get; set; }
+
+    /// <summary>
+    /// Why the score is what it is: the review fragments the analyser weighted, highest first.
+    /// May be empty — comics cached before receipts existed have none, and a run whose quotes
+    /// failed verbatim verification deliberately ships none rather than invented ones.
+    /// </summary>
+    public List<StrangenessReceiptDto> Receipts { get; set; } = [];
 }

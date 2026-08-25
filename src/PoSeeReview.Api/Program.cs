@@ -5,6 +5,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using PoSeeReview.Api.Features.Auth;
+using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features;
 using PoSeeReview.Api.Health;
 using PoSeeReview.Api.HostedServices;
@@ -148,6 +149,12 @@ try
             ctx => !ctx.Request.Path.StartsWithSegments("/health"),
             branch => branch.UseHttpsRedirection());
     }
+
+    // Link-preview crawlers on /comic/{placeId} get a real Open Graph document; everyone else
+    // falls through to the SPA. Sits after the HTTPS branch so the canonical URL it emits is
+    // https, and before UseRateLimiter/UseAuthentication because a 429 or 401 on a preview fetch
+    // unfurls as the same blank card as no tags at all.
+    app.UseSocialPreview();
 
     app.UseBlazorFrameworkFiles();
     app.UseStaticFiles();
