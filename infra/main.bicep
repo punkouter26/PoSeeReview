@@ -21,18 +21,7 @@ param budgetContactEmails array = []
 // Service names
 param apiServiceName string = 'api'
 
-// Hosting mode — 'containerapp' (default, current azd path) or 'appservice'
-// (matches the GitHub Actions deploy target in .github/workflows/deploy.yml).
-// Production currently runs on App Service but azd provision would still
-// create a Container App. Set this to 'appservice' to provision the
-// App Service target via the existing appservice.bicep module.
-@allowed([
-  'containerapp'
-  'appservice'
-])
-param hostingMode string = 'appservice'
-
-// App Service Plan SKU when hostingMode == 'appservice'
+// App Service Plan SKU
 @description('App Service Plan SKU (B1 Basic recommended for production)')
 param appServicePlanSku string = 'B1'
 
@@ -77,19 +66,6 @@ module storage './modules/storage.bicep' = {
   }
 }
 
-// Container Apps Environment — only when hostingMode == 'containerapp'
-module containerAppsEnvironment './modules/containerappenv.bicep' = if (hostingMode == 'containerapp') {
-  name: 'containerAppsEnvironment'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    resourceToken: resourceToken
-    logAnalyticsWorkspaceCustomerId: monitoring.outputs.logAnalyticsCustomerId
-    logAnalyticsWorkspaceSharedKey: monitoring.outputs.logAnalyticsSharedKey
-  }
-}
-
 // Key Vault - Secrets Management (created first without access policies)
 module keyVault './modules/keyvault.bicep' = {
   name: 'keyvault'
@@ -102,28 +78,8 @@ module keyVault './modules/keyvault.bicep' = {
   }
 }
 
-// API hosting — one or the other based on hostingMode
-module apiContainerApp './modules/containerapp.bicep' = if (hostingMode == 'containerapp') {
-  name: 'api-containerapp'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    serviceName: apiServiceName
-    resourceToken: resourceToken
-    containerAppsEnvironmentId: containerAppsEnvironment.outputs.id
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-    keyVaultEndpoint: keyVault.outputs.endpoint
-    storageTableEndpoint: storage.outputs.tableEndpoint
-    storageBlobEndpoint: storage.outputs.blobEndpoint
-    appSettings: {
-      ASPNETCORE_ENVIRONMENT: environmentName == 'prod' ? 'Production' : 'Development'
-    }
-  }
-}
-
-// App Service target — matches the GitHub Actions deploy.yml target.
-module apiAppService './modules/appservice.bicep' = if (hostingMode == 'appservice') {
+// App Service — the only hosting target. Matches .github/workflows/deploy.yml.
+module apiAppService './modules/appservice.bicep' = {
   name: 'api-appservice'
   scope: rg
   params: {
@@ -145,7 +101,7 @@ module keyVaultAccess './modules/keyvaultaccess.bicep' = {
   scope: rg
   params: {
     keyVaultName: keyVault.outputs.name
-    principalId: hostingMode == 'appservice' ? apiAppService.outputs.identityPrincipalId : apiContainerApp.outputs.identityPrincipalId
+    principalId: apiAppService.outputs.identityPrincipalId
   }
 }
 
@@ -178,14 +134,9 @@ module budget './modules/budget.bicep' = {
 output AZURE_LOCATION string = location
 output AZURE_TENANT_ID string = tenant().tenantId
 output AZURE_RESOURCE_GROUP string = rg.name
-output HOSTING_MODE string = hostingMode
 
-output API_SERVICE_NAME string = hostingMode == 'appservice' ? apiAppService.outputs.appName : apiContainerApp.outputs.name
-output API_URL string = hostingMode == 'appservice' ? 'https://${apiAppService.outputs.hostName}' : 'https://${apiContainerApp.outputs.fqdn}'
-
-output AZURE_CONTAINER_REGISTRY_NAME string = hostingMode == 'containerapp' ? apiContainerApp.outputs.acrName : ''
-output AZURE_CONTAINER_REGISTRY_ENDPOINT string = hostingMode == 'containerapp' ? apiContainerApp.outputs.acrLoginServer : ''
-output AZURE_CONTAINER_APPS_ENVIRONMENT_NAME string = hostingMode == 'containerapp' ? containerAppsEnvironment.outputs.name : ''
+output API_SERVICE_NAME string = apiAppService.outputs.appName
+output API_URL string = 'https://${apiAppService.outputs.hostName}'
 
 output APPLICATION_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.applicationInsightsConnectionString
 output APPLICATION_INSIGHTS_INSTRUMENTATION_KEY string = monitoring.outputs.applicationInsightsInstrumentationKey

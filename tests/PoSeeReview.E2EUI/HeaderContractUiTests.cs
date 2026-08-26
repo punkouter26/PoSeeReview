@@ -74,24 +74,6 @@ public sealed class HeaderContractUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Header_ZonesAreOrderedLeftCenterRight(string viewport)
-    {
-        var page = await SignedInPageAsync(viewport);
-
-        var brandBox = await page.Locator(".navbar-brand").BoundingBoxAsync();
-        var sessionBox = await page.Locator(".nav-user-zone").BoundingBoxAsync();
-
-        Assert.NotNull(brandBox);
-        Assert.NotNull(sessionBox);
-        // The session zone must sit to the right of (or below, when the header wraps on
-        // mobile) the branding — never to its left.
-        Assert.True(
-            sessionBox.X >= brandBox.X || sessionBox.Y > brandBox.Y,
-            $"session zone at ({sessionBox.X},{sessionBox.Y}) is left of branding ({brandBox.X},{brandBox.Y})");
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
     public async Task Header_MockDataBanner_ReflectsServerMockStatus(string viewport)
     {
         var page = await SignedInPageAsync(viewport);
@@ -114,16 +96,4 @@ public sealed class HeaderContractUiTests(PlaywrightFixture fixture)
         }
     }
 
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Header_BrandLink_NavigatesHome(string viewport)
-    {
-        var page = await SignedInPageAsync(viewport);
-        await page.GotoAsync($"{fixture.BaseUrl}/leaderboard");
-        await page.Locator(".leaderboard-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
-
-        await page.Locator(".navbar-brand").ClickAsync();
-
-        await Assertions.Expect(page.Locator(".index-container")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-    }
 }

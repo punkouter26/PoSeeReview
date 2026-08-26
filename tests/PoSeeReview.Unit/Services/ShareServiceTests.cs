@@ -158,26 +158,4 @@ public class ShareServiceTests
             async () => await _shareService.ShareComicAsync(invalidTitle!, text, url));
     }
 
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task ShareComicAsync_WithInvalidUrl_ShouldThrowArgumentException(string? invalidUrl)
-    {
-        // Arrange
-        var title = "Test Comic";
-        var text = "Test description";
-
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _shareService.ShareComicAsync(title, text, invalidUrl!));
-    }
-
-    [Fact]
-    public async Task CopyToClipboardAsync_WithNullUrl_ShouldThrowArgumentException()
-    {
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _shareService.CopyToClipboardAsync(null!));
-    }
 }

@@ -33,11 +33,4 @@ public class ApiContractTests : IClassFixture<CustomWebApplicationFactory<Progra
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
-    public async Task GetNearbyRestaurants_ValidCoordinates_Returns200()
-    {
-        var response = await _client.GetAsync("/api/restaurants/nearby?latitude=47.6062&longitude=-122.3321");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-    }
 }

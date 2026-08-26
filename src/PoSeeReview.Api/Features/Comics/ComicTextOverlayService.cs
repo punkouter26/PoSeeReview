@@ -17,14 +17,14 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </summary>
 public class ComicTextOverlayService : IComicTextOverlayService
 {
-    private readonly IAzureOpenAIService _azureOpenAIService;
+    private readonly IChatCompletionService _chatService;
     private readonly ILogger<ComicTextOverlayService> _logger;
 
     public ComicTextOverlayService(
-        IAzureOpenAIService azureOpenAIService,
+        IChatCompletionService chatService,
         ILogger<ComicTextOverlayService> logger)
     {
-        _azureOpenAIService = azureOpenAIService ?? throw new ArgumentNullException(nameof(azureOpenAIService));
+        _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -45,7 +45,7 @@ public class ComicTextOverlayService : IComicTextOverlayService
         try
         {
             // Use GPT to generate unique, naturally flowing English for each panel
-            var dialogues = await _azureOpenAIService.GeneratePanelDialogueAsync(narrative, panelCount, cancellationToken);
+            var dialogues = await _chatService.GeneratePanelDialogueAsync(narrative, panelCount, cancellationToken);
 
             using var image = Image.Load<Rgba32>(imageBytes);
             var panelBounds = GetPanelBounds(image.Width, image.Height, panelCount);

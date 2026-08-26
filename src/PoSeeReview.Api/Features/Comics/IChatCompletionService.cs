@@ -5,7 +5,7 @@ namespace PoSeeReview.Api.Features.Comics;
 /// (the sole deployment in the shared AI Foundry resource, verified 2026-06-14).
 /// Calculates strangeness scores and generates narrative summaries.
 /// </summary>
-public interface IAzureOpenAIService
+public interface IChatCompletionService
 {
     /// <summary>
     /// Analyzes a list of restaurant reviews to determine strangeness and create a narrative

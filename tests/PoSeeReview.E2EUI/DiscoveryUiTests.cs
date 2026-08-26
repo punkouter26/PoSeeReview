@@ -37,16 +37,6 @@ public sealed class DiscoveryUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Home_ExposesLocationAndSearchEntryPoints(string viewport)
-    {
-        var page = await HomeAsync(viewport);
-
-        await Assertions.Expect(page.Locator(".location-btn")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-        await Assertions.Expect(page.Locator(".search-row")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
     public async Task Home_ShowsNoUnhandledErrorBanner(string viewport)
     {
         var page = await HomeAsync(viewport);

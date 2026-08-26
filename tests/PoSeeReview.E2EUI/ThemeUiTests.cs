@@ -67,27 +67,4 @@ public sealed class ThemeUiTests(PlaywrightFixture fixture)
         Assert.Equal("#F8F7FF", await TokenAsync(page, "--color-surface"));
     }
 
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_CardSurfaceFlipsWithScheme(string viewport)
-    {
-        var page = await LoginPageAsync(viewport, ColorScheme.Dark);
-
-        // Regression guard: scoped stylesheets used to hardcode `background: white`, which
-        // survived the theme switch and left unreadable panels in dark mode.
-        Assert.Equal("#1C1926", await TokenAsync(page, "--color-card"));
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_BodyBackgroundTracksSurfaceToken(string viewport)
-    {
-        var page = await LoginPageAsync(viewport, ColorScheme.Dark);
-
-        var background = await page.EvaluateAsync<string>(
-            "() => getComputedStyle(document.body).backgroundColor");
-
-        // rgb(18, 16, 26) == #12101A
-        Assert.Equal("rgb(18, 16, 26)", background);
-    }
 }

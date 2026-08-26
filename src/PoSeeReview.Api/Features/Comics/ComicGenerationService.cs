@@ -21,7 +21,7 @@ namespace PoSeeReview.Api.Features.Comics;
 public class ComicGenerationService : IComicGenerationService
 {
     private readonly IRestaurantService _restaurantService;
-    private readonly IAzureOpenAIService _azureOpenAIService;
+    private readonly IChatCompletionService _chatService;
     private readonly IImageGenerationService _imageGenerationService;
     private readonly IComicTextOverlayService _comicTextOverlayService;
     private readonly IBlobStorageService _blobStorageService;
@@ -35,7 +35,7 @@ public class ComicGenerationService : IComicGenerationService
 
     public ComicGenerationService(
         IRestaurantService restaurantService,
-        IAzureOpenAIService azureOpenAIService,
+        IChatCompletionService chatService,
         IImageGenerationService imageGenerationService,
         IComicTextOverlayService comicTextOverlayService,
         IBlobStorageService blobStorageService,
@@ -47,7 +47,7 @@ public class ComicGenerationService : IComicGenerationService
         TimeProvider? timeProvider = null)
     {
         _restaurantService = restaurantService ?? throw new ArgumentNullException(nameof(restaurantService));
-        _azureOpenAIService = azureOpenAIService ?? throw new ArgumentNullException(nameof(azureOpenAIService));
+        _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
         _imageGenerationService = imageGenerationService ?? throw new ArgumentNullException(nameof(imageGenerationService));
         _comicTextOverlayService = comicTextOverlayService ?? throw new ArgumentNullException(nameof(comicTextOverlayService));
         _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
@@ -158,7 +158,7 @@ public class ComicGenerationService : IComicGenerationService
         // Analyze strangeness and generate narrative with panel count
         progress?.Report(ComicGenerationPhase.AnalyzingStrangeness);
         var analysisStopwatch = Stopwatch.StartNew();
-        var analysis = await _azureOpenAIService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
+        var analysis = await _chatService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
         analysisStopwatch.Stop();
 
         var strangenessScore = analysis.StrangenessScore;

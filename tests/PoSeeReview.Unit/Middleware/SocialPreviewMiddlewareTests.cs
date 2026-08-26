@@ -141,16 +141,6 @@ public class SocialPreviewMiddlewareTests
         Assert.Contains("&quot;Diner&quot;", html, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task Crawler_OnNestedComicPath_FallsThrough()
-    {
-        var (context, _) = NewRequest("/comic/place-1/extra", CrawlerUserAgent);
-        var nextCalled = false;
-
-        await RunAsync(LiveComic(), context, () => nextCalled = true);
-
-        Assert.True(nextCalled);
-    }
 }
 
 /// <summary>

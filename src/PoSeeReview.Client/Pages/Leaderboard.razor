@@ -96,7 +96,7 @@
            stays the real leaderboard: focusable, in reading order, and announced. A canvas-only
            3D list would be unreachable by keyboard and invisible to a screen reader, which is
            not a trade a leaderboard is worth. *@
-        <div class="leaderboard-list shelf-host cq-list" @ref="_shelfHost">
+        <div class="leaderboard-list cq-list">
             @foreach (var entry in leaderboardEntries)
             {
                 <div class="leaderboard-card glass @GetRankClass(entry.Rank)">
@@ -195,10 +195,6 @@
     private string? shareToast;
     private System.Threading.Timer? shareToastTimer;
 
-    private ElementReference _shelfHost;
-    private bool _shelfStarted;
-    private string? _shelfBuiltForRegion;
-
     /// <summary>
     /// Starts the shelf once entries exist, and rebuilds it when the region changes. Three.js is
     /// ~171KB gzipped and is dynamically imported here — a visitor who never opens the Hall of
@@ -211,28 +207,12 @@
             return;
         }
 
-        if (_shelfStarted && _shelfBuiltForRegion == selectedRegion)
-        {
-            return;
-        }
-
-        if (_shelfStarted)
-        {
-            await Fx.StopHallShelfAsync();
-        }
-
-        _shelfStarted = true;
-        _shelfBuiltForRegion = selectedRegion;
-        await Fx.StartHallShelfAsync(_shelfHost, leaderboardEntries);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         shareToastTimer?.Dispose();
-        if (_shelfStarted)
-        {
-            await Fx.StopHallShelfAsync();
-        }
+        return ValueTask.CompletedTask;
     }
     protected override async Task OnInitializedAsync()
     {

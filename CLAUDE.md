@@ -45,6 +45,9 @@ one E2E UI suite — the C# Playwright project. Playwright browsers install via
 
 ```powershell
 docker compose up -d azurite    # container name is "PoSeeReview", ports 10000-10002
+# Uses the official mcr.microsoft.com/azure-storage/azurite image. The hand-rolled
+# Dockerfile.azurite it replaced only ran `npm install -g azurite`, and had been deleted
+# while docker-compose.yml still pointed at it — `docker compose up` failed on a clean clone.
 ```
 
 Set `"Storage:UseAzurite": true` in `appsettings.Development.json` — without it local dev
@@ -254,18 +257,25 @@ Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/
 
 - **One `requestAnimationFrame` loop** for every effect. Never start a private rAF — N loops
   means N wake-ups per frame and no single place that can measure or stop the work.
-- **A 20ms frame budget with automatic downgrade.** ~1.5s of sustained overrun steps the tier
-  down. This is what makes "sustains 60 FPS" a mechanism rather than a hope. The downgrade is
-  deliberately *not* persisted — one heavy page shouldn't become a permanent setting.
+- **A 20ms frame budget with automatic downgrade.** 1500ms of sustained overrun steps the tier
+  down. The threshold is **milliseconds, not frames** — it used to be `90 frames`, commented as
+  "~1.5s", which holds only at 60 FPS. At the 60ms frames that actually trip it, 90 frames is
+  5.4s, so the guard fired slowest exactly when the device most needed it; measured live it had
+  still not fired after 76 consecutive over-budget frames. The downgrade is deliberately *not*
+  persisted — one heavy page shouldn't become a permanent setting.
 - **Tiers** `off` / `lite` / `full`, stamped onto `<html data-fx-tier>` so CSS can respond.
   `off` is forced by `prefers-reduced-motion` or missing WebGL2 and cannot be overridden;
   Save-Data, low `deviceMemory`, or few cores default to `lite`.
 
 Effect modules: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`, `comic-fx.js`,
-`particles.js`, `loading-ring.js`, `scroll-guard.js`, plus two lazily imported heavies —
-`hall-shelf.js` (Three.js, ~171KB gz) and `grid-physics.js` (Rapier, **~580KB gz**, additionally
-deferred to `requestIdleCallback` and skipped on Save-Data). Neither is on the first-load path;
-`SCRIPTS/fx-perf-check.mjs` asserts that.
+`particles.js`, `loading-ring.js`, `scroll-guard.js`.
+
+**The two heavy scenes were removed.** `hall-shelf.js` (Three.js) and `grid-physics.js` (Rapier)
+cost ~2.4 MB of vendored library for decoration layered over a DOM list and a card grid that
+already worked without them. Gone with them: `wwwroot/lib/three`, `wwwroot/lib/rapier`, the
+`startHallShelf`/`startGridPhysics` interop on `FxService`, and the lazy-import assertions in
+`SCRIPTS/fx-perf-check.mjs` that existed only to keep them off the first-load path.
+`wwwroot/lib/bootstrap` went too — 228 KB nothing had referenced since Bootstrap was dropped.
 
 Rules that are load-bearing, not stylistic:
 
@@ -297,9 +307,10 @@ check walks `/`, `/leaderboard` and `/diagnostics` at 320px and 390px — it use
 whichever page happened to be loaded, which is how `/diagnostics` shipped a 628px-wide document
 inside a 390px viewport.
 
-Measured floor under forced software rendering (no GPU in headless Chromium): 60 FPS mean with
-gradient + 400-particle burst + 3D shelf active. Worst-frame spikes of 380-630ms do occur, from
-shader compilation and the Three.js module parse — one-off, not steady state.
+Measured under forced software rendering (no GPU in headless Chromium), with the 3D shelf and
+Rapier grid now removed: the gradient alone still runs ~17-19 FPS at 53-60ms per frame, so the
+`full` tier auto-downgrades to `lite` within 1.5s, as designed. Treat these numbers as a
+software-rendering floor, not a device measurement — a real GPU is far faster.
 
 ### Link previews
 
@@ -319,7 +330,9 @@ the one place in the app that emits raw HTML.
 
 `/health` (+ `/live`, `/ready`), and `/diag` — masked keys plus integration statuses, active in Dev
 **and** Prod; `/diag/mock-status` reports active `IMockable` registrations and drives the client's
-"USING MOCK DATA" banner. `/diagnostics` has no nav entry; reach it by URL. Note `/diag` sits behind
+"USING MOCK DATA" banner. `/diagnostics` has no nav entry; reach it by URL. It was briefly added to the primary nav, which
+both put ops tooling (machine name, .NET version, masked config) into a consumer app's main
+navigation and broke `HeaderContractUiTests`, which asserts exactly two nav items. Note `/diag` sits behind
 `UserAgentValidationMiddleware`, so anonymous scripted fetches get a 400 — that is why the smoke
 script no longer asserts on it.
 
@@ -327,10 +340,9 @@ script no longer asserts on it.
 
 - Minimal APIs only, no controllers: one `MapGroup()` extension per slice, registered via
   `MapFeatureEndpoints()`.
-- Known-broken on `master`: `dotnet build PoSeeReview.sln` fails `NU1903` on `SSH.NET` 2025.1.0
-  (transitive via `Testcontainers.Azurite`), which blocks the Integration and E2EAPI projects.
-  It is a NuGet advisory, not a code change — audit warnings are never suppressed here, so the fix
-  is a package bump.
+- `Testcontainers.Azurite` is pinned at 4.14.0 specifically to clear `NU1903` on the `SSH.NET`
+  2025.1.0 it used to drag in transitively. Do not downgrade it: with `TreatWarningsAsErrors`
+  that advisory breaks the whole solution build, not just the test projects.
 - C# 14 density — primary constructors, collection expressions, pattern matching; minimal comments.
 - Client + Shared are `EnableTrimAnalyzer`; JSON is source-generated — **add every new DTO to
   `AppJsonContext`**. The Client deliberately does *not* set `IsTrimmable` (Router/LayoutView use

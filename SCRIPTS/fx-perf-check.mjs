@@ -3,11 +3,12 @@
 // Run against a live app, the same way SCRIPTS/post-deploy-smoke.mjs is run:
 //     $env:BASE_URL = "https://localhost:5001"; node SCRIPTS/fx-perf-check.mjs
 //
-// It asserts the two things that cannot be established by reading the source:
-//   * three.js and rapier are absent from the first-load path, and three.js is fetched only
-//     when something actually asks for the 3D shelf;
-//   * the shared frame scheduler holds 60 FPS with the gradient, a 400-particle burst and the
-//     3D shelf all running at once.
+// It asserts the thing that cannot be established by reading the source: the shared frame
+// scheduler holds 60 FPS with the gradient and a 400-particle burst running at once.
+//
+// The Three.js shelf and Rapier grid-physics scenes were removed along with their ~2.4 MB of
+// vendored libraries, so the first-load and lazy-import assertions that guarded them are gone
+// too — there is no longer a heavy module that could reach the first-load path.
 //
 // CAVEAT ON THE NUMBERS: headless Chromium here has no GPU, so this forces ANGLE/SwiftShader.
 // The FPS figures are therefore a SOFTWARE-RENDERING FLOOR, not a device measurement. A real GPU
@@ -55,11 +56,6 @@ record('fx.js bootstrapped', caps !== null, caps ? JSON.stringify(caps) : 'windo
 const tierAttr = await page.getAttribute('html', 'data-fx-tier');
 record('tier reflected onto <html> for CSS', !!tierAttr, `data-fx-tier="${tierAttr}"`);
 
-// ── 2. Heavy libraries are NOT on the first-load path ───────────────────────────────────
-const heavyOnLoad = requested.filter((u) => /three\.module|rapier2d-compat/.test(u));
-record('three.js + rapier absent from first load', heavyOnLoad.length === 0,
-    heavyOnLoad.length ? heavyOnLoad.join(', ') : 'neither requested');
-
 // ── 3. Force the full tier and measure the real frame budget ────────────────────────────
 await page.evaluate(() => window.poseeFx.setTier('full'));
 
@@ -100,27 +96,6 @@ const audioState = await page.evaluate(async () => {
 });
 record('audio defaults to off (no unrequested sound)', audioState.before === false,
     `audioEnabled=${audioState.before}`);
-
-// ── 5. Lazy import on demand: Three.js is fetched only when the shelf is asked for ──────
-const beforeShelf = requested.filter((u) => /three\.module/.test(u)).length;
-const shelfOk = await page.evaluate(async () => {
-    const host = document.createElement('div');
-    host.style.cssText = 'position:relative;width:600px;height:400px;';
-    document.body.appendChild(host);
-    return window.poseeFx.startHallShelf(host, [
-        { restaurantName: 'The Owl Cafe', strangenessScore: 87 },
-        { restaurantName: 'Diner Zero', strangenessScore: 61 }
-    ]);
-});
-const afterShelf = requested.filter((u) => /three\.module/.test(u)).length;
-record('three.js lazily imported only on demand', beforeShelf === 0 && afterShelf > 0 && shelfOk === true,
-    `requests before=${beforeShelf} after=${afterShelf}, started=${shelfOk}`);
-
-await page.waitForTimeout(1500);
-const shelfStats = await page.evaluate(() => window.poseeFx.stats());
-console.log('    with 3D shelf:', JSON.stringify(shelfStats));
-record('frame budget held with the 3D shelf added', shelfStats.fps >= 50,
-    `${shelfStats.fps.toFixed(1)} fps, ${shelfStats.activeTasks} active effects`);
 
 // ── 6. Reduced motion pins the tier to off ──────────────────────────────────────────────
 const reducedContext = await browser.newContext({ ignoreHTTPSErrors: true, reducedMotion: 'reduce' });

@@ -11,13 +11,13 @@ namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// HuggingFace chat backend for strangeness analysis + panel captions, used in place of
-/// <see cref="AzureOpenAIService"/> when <c>Ai:ImageProvider</c> is <c>HuggingFace</c>. HF's chat router is
+/// <see cref="AzureOpenAIChatService"/> when <c>Ai:ImageProvider</c> is <c>HuggingFace</c>. HF's chat router is
 /// OpenAI-wire-compatible, so this reuses the OpenAI SDK's <see cref="ChatClient"/> pointed at
-/// <c>router.huggingface.co/v1</c>. The prompts mirror <see cref="AzureOpenAIService"/> so both
+/// <c>router.huggingface.co/v1</c>. The prompts mirror <see cref="AzureOpenAIChatService"/> so both
 /// providers produce the same JSON contract; open models are a bit looser about JSON, so parsing
 /// here also tolerates markdown code fences.
 /// </summary>
-public sealed class HuggingFaceChatService : IAzureOpenAIService
+public sealed class HuggingFaceChatService : IChatCompletionService
 {
     private const int MaxReviewCharsPerEntry = 500;
 

@@ -16,8 +16,6 @@ import * as viewTransitions from './view-transitions.js';
 
 // The two heavy modules are NOT imported statically — that would defeat the lazy loading they
 // were written for. They are pulled in on first use.
-let hallShelfModule = null;
-let gridPhysicsModule = null;
 
 function guard(fn, fallback = null) {
     try {
@@ -92,29 +90,8 @@ export const fx = {
     // ── Route transitions ────────────────────────────────────────────────────────────────
     viewTransitionsEnabled: () => transitionInfo.enabled,
     /** Called after the destination route renders, to close the open transition. */
-    settleViewTransition: () => guard(() => viewTransitions.settle()),
+    settleViewTransition: () => guard(() => viewTransitions.settle())
 
-    // ── Heavy, lazily imported ───────────────────────────────────────────────────────────
-
-    /** Three.js Hall of Fame shelf. Imports ~171KB gz on first call only. */
-    async startHallShelf(container, entries) {
-        if (!gfx.allows('full')) return false;
-        return guardAsync(async () => {
-            hallShelfModule ??= await import('./hall-shelf.js');
-            return hallShelfModule.start(container, entries ?? []);
-        }, false);
-    },
-    stopHallShelf: () => guard(() => hallShelfModule?.stop()),
-
-    /** Rapier grid physics. Imports ~580KB gz, idle-deferred, on first call only. */
-    async startGridPhysics(container) {
-        if (!gfx.allows('full')) return false;
-        return guardAsync(async () => {
-            gridPhysicsModule ??= await import('./grid-physics.js');
-            return gridPhysicsModule.start(container);
-        }, false);
-    },
-    stopGridPhysics: () => guard(() => gridPhysicsModule?.stop())
 };
 
 window.poseeFx = fx;

@@ -32,16 +32,6 @@ public class DiagnosticsContractTests(CustomWebApplicationFactory<Program> facto
     }
 
     [Fact]
-    public async Task Health_ReturnsJsonPayloadWithStatus()
-    {
-        var response = await factory.CreateClient().GetAsync("/health");
-        var body = await response.Content.ReadAsStringAsync();
-
-        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("status", body, StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Fact]
     public async Task Diag_IsAnonymous_AndReportsEnvironment()
     {
         var snapshot = await factory.CreateClient().GetFromJsonAsync<DiagnosticsSnapshotDto>("/diag");

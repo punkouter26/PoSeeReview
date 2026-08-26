@@ -33,26 +33,6 @@ public class BlobStorageServiceTests
     }
 
     [Fact]
-    public async Task UploadComicImageAsync_ShouldUseComicContainerName()
-    {
-        // Arrange
-        var comicId = Guid.NewGuid().ToString();
-        var imageBytes = new byte[] { 1, 2, 3, 4 };
-
-        // TODO: Mock Azure Blob Storage client
-        // var service = CreateService();
-
-        // Act
-        // await service.UploadComicImageAsync(comicId, imageBytes);
-
-        // Assert
-        // Verify blob was uploaded to "comics" container
-        // _mockBlobClient.Verify(x => x.GetBlobContainerClient("comics"), Times.Once);
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
     public async Task UploadComicImageAsync_WithEmptyImage_ShouldThrowArgumentException()
     {
         // Arrange
@@ -93,29 +73,6 @@ public class BlobStorageServiceTests
     }
 
     [Fact]
-    public async Task UploadComicImageAsync_ShouldOverwriteExistingBlob()
-    {
-        // Arrange
-        var comicId = Guid.NewGuid().ToString();
-        var imageBytes = new byte[] { 1, 2, 3, 4 };
-
-        // TODO: Mock Azure Blob Storage client
-        // var service = CreateService();
-
-        // Act
-        // await service.UploadComicImageAsync(comicId, imageBytes);
-
-        // Assert
-        // Verify upload is called with overwrite = true
-        // _mockBlobClient.Verify(x => x.UploadAsync(
-        //     It.IsAny<Stream>(),
-        //     overwrite: true),
-        //     Times.Once);
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
     public async Task UploadComicImageAsync_WithInvalidComicId_ShouldThrowArgumentException()
     {
         // Arrange
@@ -128,26 +85,6 @@ public class BlobStorageServiceTests
         // Act & Assert
         // await Assert.ThrowsAsync<ArgumentException>(() =>
         //     service.UploadComicImageAsync(comicId, imageBytes));
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
-    public async Task UploadComicImageAsync_ShouldUseBlobNameWithComicId()
-    {
-        // Arrange
-        _ = "test-comic-123"; // comicId
-        var imageBytes = new byte[] { 1, 2, 3, 4 };
-
-        // TODO: Mock Azure Blob Storage client
-        // var service = CreateService();
-
-        // Act
-        // await service.UploadComicImageAsync(comicId, imageBytes);
-
-        // Assert
-        // Verify blob name is "{comicId}.png"
-        // _mockBlobClient.Verify(x => x.GetBlobClient($"{comicId}.png"), Times.Once);
 
         await Task.CompletedTask; // Placeholder
     }

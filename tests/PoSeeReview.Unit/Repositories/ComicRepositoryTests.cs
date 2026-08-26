@@ -115,69 +115,6 @@ public class ComicRepositoryTests
     }
 
     [Fact]
-    public async Task UpsertAsync_ShouldUseCorrectPartitionKey()
-    {
-        // Arrange
-        var comic = new Comic
-        {
-            Id = ComicId.New(),
-            PlaceId = PlaceId.From("test-place-123"),
-            RestaurantName = "Test Restaurant",
-            ImageUrl = "https://example.com/comic.png",
-            Narrative = "Narrative",
-            StrangenessScore = 60,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(24)
-        };
-
-        // TODO: Mock Table Storage client
-        // var repository = CreateRepository();
-
-        // Act
-        // await repository.UpsertAsync(comic);
-
-        // Assert
-        // Verify partition key follows convention (e.g., "COMIC")
-        // _mockTableClient.Verify(x => x.UpsertEntityAsync(
-        //     It.Is<ComicEntity>(e => e.PartitionKey == "COMIC"),
-        //     It.IsAny<TableUpdateMode>()),
-        //     Times.Once);
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
-    public async Task UpsertAsync_ShouldUsePlaceIdAsRowKey()
-    {
-        // Arrange
-        var placeId = "test-place-123";
-        var comic = new Comic
-        {
-            Id = ComicId.New(),
-            PlaceId = PlaceId.From(placeId),
-            RestaurantName = "Test Restaurant",
-            ImageUrl = "https://example.com/comic.png",
-            Narrative = "Narrative",
-            StrangenessScore = 70,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(24)
-        };
-
-        // TODO: Mock Table Storage client
-        // var repository = CreateRepository();
-
-        // Act
-        // await repository.UpsertAsync(comic);
-
-        // Assert
-        // Verify row key is the placeId
-        // _mockTableClient.Verify(x => x.UpsertEntityAsync(
-        //     It.Is<ComicEntity>(e => e.RowKey == placeId),
-        //     It.IsAny<TableUpdateMode>()),
-        //     Times.Once);
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
     public async Task GetByPlaceIdAsync_WithExpiredComic_ShouldStillReturnIt()
     {
         // Arrange

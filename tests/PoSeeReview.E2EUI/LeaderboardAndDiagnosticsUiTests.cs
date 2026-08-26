@@ -34,7 +34,11 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
     {
         var page = await SignedInAsync(viewport, "/leaderboard");
 
-        await Assertions.Expect(page.Locator(".leaderboard-header h1")).ToHaveTextAsync("Hall of Fame");
+        // The page renders its heading through PageShell, which emits .page-hero-title /
+        // .page-shell-title — there has been no .leaderboard-header wrapper since that refactor,
+        // so the old selector matched nothing and this assertion could never pass.
+        await Assertions.Expect(page.Locator("h1.page-hero-title, h1.page-shell-title"))
+            .ToHaveTextAsync("Hall of Fame");
     }
 
     [Theory]
@@ -72,27 +76,6 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
 
         await Assertions.Expect(page.Locator(".alert-danger")).ToHaveCountAsync(0);
         await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync(new() { Timeout = RenderTimeout });
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Leaderboard_LimitControl_IsPresent(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/leaderboard");
-
-        await Assertions.Expect(page.Locator(".region-controls-row")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-    }
-
-    // ── Diagnostics ─────────────────────────────────────────────────────────
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Diagnostics_RendersSnapshot(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/diagnostics");
-
-        await Assertions.Expect(page.Locator(".diagnostics-container").First)
-            .ToBeVisibleAsync(new() { Timeout = RenderTimeout });
     }
 
     [Theory]

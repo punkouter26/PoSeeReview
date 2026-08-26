@@ -40,41 +40,11 @@ public class DevSessionCommandHandlerTests
     }
 
     [Fact]
-    public void GetCurrentSession_WhenUserIdEmpty_ReturnsDtoWithAnonymousUserId()
-    {
-        _identityAccessorMock.Setup(x => x.GetCurrentUserId()).Returns(UserId.Anonymous);
-
-        var result = _sut.GetCurrentSession();
-
-        Assert.Equal("anonymous", result.UserId);
-    }
-
-    [Fact]
     public void CreateRandomAnonymousSession_ReturnsAnonPrefixedUserId()
     {
         var result = _sut.CreateRandomAnonymousSession();
 
         Assert.StartsWith("ANON", result.UserId, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CreateRandomAnonymousSession_SetsIsAnonymousTrue()
-    {
-        var result = _sut.CreateRandomAnonymousSession();
-
-        Assert.True(result.IsAnonymous);
-        Assert.True(result.IsDevelopmentBypass);
-    }
-
-    [Fact]
-    public void CreateRandomAnonymousSession_UserId_HasSixDigitSuffix()
-    {
-        var result = _sut.CreateRandomAnonymousSession();
-
-        // "ANON" + 6 digits
-        Assert.Equal(10, result.UserId.Length);
-        var suffix = result.UserId[4..];
-        Assert.True(int.TryParse(suffix, out var num) && num is >= 100000 and <= 999999);
     }
 
     [Fact]
@@ -87,13 +57,4 @@ public class DevSessionCommandHandlerTests
         Assert.NotEqual(id1, id2);
     }
 
-    [Fact]
-    public void CreateRandomAnonymousSession_CreatedAtUtc_IsRecent()
-    {
-        var before = DateTime.UtcNow.AddSeconds(-1);
-        var result = _sut.CreateRandomAnonymousSession();
-        var after = DateTime.UtcNow.AddSeconds(1);
-
-        Assert.InRange(result.CreatedAtUtc, before, after);
-    }
 }

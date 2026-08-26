@@ -174,9 +174,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         // Chat provider (strangeness analysis + panel captions): Azure OpenAI, or Qwen via HF.
         if (useHuggingFace)
-            services.AddScoped<IAzureOpenAIService, HuggingFaceChatService>();
+            services.AddScoped<IChatCompletionService, HuggingFaceChatService>();
         else
-            services.AddScoped<IAzureOpenAIService, AzureOpenAIService>();
+            services.AddScoped<IChatCompletionService, AzureOpenAIChatService>();
 
         // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
         // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.

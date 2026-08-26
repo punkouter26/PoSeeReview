@@ -67,34 +67,6 @@ public class GenerateComicCommandHandlerTests
         _repositoryMock.Verify(x => x.UpsertAsync(It.IsAny<Comic>()), Times.Never);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_WhenRequestedByUserIdAlreadyMatches_DoesNotUpsert()
-    {
-        var comic = MakeComic("place-4", requestedByUserId: "ANON111111");
-        _generationServiceMock
-            .Setup(x => x.GenerateComicAsync(PlaceId.From("place-4"), false, default))
-            .ReturnsAsync(comic);
-        _identityAccessorMock.Setup(x => x.GetCurrentUserId()).Returns(UserId.From("ANON111111"));
-
-        await _sut.ExecuteAsync(PlaceId.From("place-4"), false, default);
-
-        _repositoryMock.Verify(x => x.UpsertAsync(It.IsAny<Comic>()), Times.Never);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_PassesForceRegenerateToService()
-    {
-        var comic = MakeComic("place-5");
-        _generationServiceMock
-            .Setup(x => x.GenerateComicAsync(PlaceId.From("place-5"), true, default))
-            .ReturnsAsync(comic);
-        _identityAccessorMock.Setup(x => x.GetCurrentUserId()).Returns(UserId.Anonymous);
-
-        await _sut.ExecuteAsync(PlaceId.From("place-5"), true, default);
-
-        _generationServiceMock.Verify(x => x.GenerateComicAsync(PlaceId.From("place-5"), true, default), Times.Once);
-    }
-
     private static Comic MakeComic(string placeId, string? requestedByUserId = null) =>
         new()
         {

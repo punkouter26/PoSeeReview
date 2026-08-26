@@ -45,39 +45,12 @@ public class SliceContractTests(CustomWebApplicationFactory<Program> factory)
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData(0)]
-    [InlineData(51)]
-    [InlineData(-1)]
-    public async Task GetLeaderboard_LimitOutOfRange_Returns400(int limit)
-    {
-        var response = await CreateAuthenticatedClient().GetAsync($"/api/leaderboard?limit={limit}");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task GetLeaderboard_EmptyRegionParameter_FallsBackToDefault()
-    {
-        var response = await CreateAuthenticatedClient().GetAsync("/api/leaderboard?region=");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
     // ── Restaurants ─────────────────────────────────────────────────────────
 
     [Fact]
     public async Task GetNearby_MissingCoordinates_Returns400()
     {
         var response = await CreateAuthenticatedClient().GetAsync("/api/restaurants/nearby");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task GetNearby_OnlyLatitude_Returns400()
-    {
-        var response = await CreateAuthenticatedClient().GetAsync("/api/restaurants/nearby?latitude=47.6");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

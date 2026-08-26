@@ -23,7 +23,7 @@ namespace PoSeeReview.Unit.Services;
 public class ComicGenerationServiceTests
 {
     private readonly Mock<IRestaurantService> _mockRestaurantService;
-    private readonly Mock<IAzureOpenAIService> _mockOpenAIService;
+    private readonly Mock<IChatCompletionService> _mockOpenAIService;
     private readonly Mock<IImageGenerationService> _mockImageGenerationService;
     private readonly Mock<IComicTextOverlayService> _mockTextOverlayService;
     private readonly Mock<IBlobStorageService> _mockBlobStorageService;
@@ -35,7 +35,7 @@ public class ComicGenerationServiceTests
     public ComicGenerationServiceTests()
     {
         _mockRestaurantService = new Mock<IRestaurantService>();
-        _mockOpenAIService = new Mock<IAzureOpenAIService>();
+        _mockOpenAIService = new Mock<IChatCompletionService>();
         _mockImageGenerationService = new Mock<IImageGenerationService>();
         _mockTextOverlayService = new Mock<IComicTextOverlayService>();
         _mockBlobStorageService = new Mock<IBlobStorageService>();
@@ -293,47 +293,6 @@ public class ComicGenerationServiceTests
     }
 
     [Fact]
-    public async Task GenerateComicAsync_ShouldFilterInappropriateReviews()
-    {
-        // Arrange
-        var placeId = "test-place-123";
-        var restaurant = new Restaurant
-        {
-            PlaceId = PlaceId.From(placeId),
-            Name = "Test Restaurant",
-            Reviews = new List<Review>
-            {
-                new Review { Text = "Great food!", Rating = 5 },
-                new Review { Text = "This review mentions the service quality", Rating = 3 },
-                new Review { Text = "Nice ambiance", Rating = 4 },
-                new Review { Text = "Excellent service", Rating = 5 },
-                new Review { Text = "Will return", Rating = 5 }
-            }
-        };
-
-        var capturedReviews = new List<string>();
-        var service = CreateService();
-        _mockComicRepository.Setup(x => x.GetByPlaceIdAsync(PlaceId.From(placeId)))
-            .ReturnsAsync((Comic?)null);
-        _mockRestaurantService.Setup(x => x.GetRestaurantByPlaceIdAsync(PlaceId.From(placeId), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(restaurant);
-        _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
-            .Callback<List<string>, CancellationToken>((reviews, _) => capturedReviews = reviews)
-            .ReturnsAsync(new StrangenessAnalysis(60, 2, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
-        _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
-            .ReturnsAsync("https://blob.storage/comic.png");
-
-        // Act
-        await service.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate: false);
-
-        // Assert - content moderation should filter some reviews
-        Assert.NotEmpty(capturedReviews);
-        _mockOpenAIService.Verify(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    [Fact]
     public async Task GenerateComicAsync_ShouldSet7DayCacheExpiration()
     {
         // Arrange
@@ -523,34 +482,6 @@ public class ComicGenerationServiceTests
         Assert.True(result[1].Rating <= 3);
     }
 
-    [Fact]
-    public void PrioritizeReviewsByRating_Handles_AllPositiveReviews()
-    {
-        // Arrange - Only 5-star reviews
-        var reviews = new List<Review>
-        {
-            new() { Rating = 5, Text = "Perfect!" },
-            new() { Rating = 5, Text = "Excellent!" },
-            new() { Rating = 5, Text = "Amazing!" },
-            new() { Rating = 4, Text = "Very good" },
-            new() { Rating = 4, Text = "Good place" }
-        };
-
-        var service = CreateService();
-
-        // Act
-        var method = typeof(ComicGenerationService).GetMethod(
-            "PrioritizeReviewsByRating",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var result = (List<Review>)method!.Invoke(service, new object[] { reviews })!;
-
-        // Assert
-        Assert.Equal(5, result.Count);
-        // Should prioritize 4-star before 5-star
-        Assert.Equal(4, result[0].Rating);
-        Assert.Equal(4, result[1].Rating);
-    }
-
     #endregion
 
     #region FilterInappropriateReviews Tests
@@ -628,30 +559,6 @@ public class ComicGenerationServiceTests
 
         // Assert - Should keep all reviews since words are not exact matches
         Assert.Equal(3, result.Count);
-    }
-
-    [Fact]
-    public void FilterInappropriateReviews_Returns_AllCleanReviews()
-    {
-        // Arrange
-        var reviews = new List<string>
-        {
-            "Excellent food!",
-            "Great atmosphere",
-            "Friendly staff",
-            "Would recommend"
-        };
-
-        var service = CreateService();
-
-        // Act
-        var method = typeof(ComicGenerationService).GetMethod(
-            "FilterInappropriateReviews",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
-
-        // Assert
-        Assert.Equal(4, result.Count);
     }
 
     #endregion

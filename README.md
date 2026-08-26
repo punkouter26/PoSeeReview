@@ -191,8 +191,8 @@ After deploying with `azd up`, discover the live URL:
 # Show all environment values including the deployed URL
 azd env show
 
-# Or list Container App endpoints via Azure CLI
-az containerapp list --query "[].{name:name, fqdn:properties.configuration.ingress.fqdn}" -o table
+# Or show the App Service hostname via Azure CLI
+az webapp show --name app-poseereview --resource-group PoSeeReview --query defaultHostName -o tsv
 ```
 
 The base URL will be printed as `SERVICE_WEB_URL` or `SERVICE_API_URL` in the `azd env show` output.

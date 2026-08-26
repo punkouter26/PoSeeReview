@@ -138,7 +138,9 @@ internal static class RestaurantsEndpoints
     }
 
     private static async Task<IResult> SearchRestaurantsByLocation(
-        string location,
+        // Nullable so an absent ?location= reaches the 400 guard below. Bound as non-nullable,
+        // minimal APIs threw BadHttpRequestException first and the caller saw a 500.
+        string? location,
         IRestaurantService restaurantService,
         ILogger<IRestaurantService> logger,
         IWebHostEnvironment env,

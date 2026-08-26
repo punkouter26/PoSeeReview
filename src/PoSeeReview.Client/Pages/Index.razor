@@ -1,6 +1,5 @@
 @page "/"
 @attribute [Authorize]
-@implements IAsyncDisposable
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @using Microsoft.JSInterop
@@ -56,7 +55,7 @@
                 }
                 <div class="search-row">
                     <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
-                    <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
+                    <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @oninput="HandleSearchInput" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
                     <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary"
                                   Click="@(_ => SearchByLocationAsync())"
                                   Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))"
@@ -97,7 +96,7 @@
         @* Rapier springs each card around its CSS layout position (FX #10). The grid is a normal
            grid; physics only ever writes a transform offset, so if the ~580KB module never loads
            — slow link, Save-Data, a downgraded tier — nothing here changes. *@
-        <div class="restaurants-grid" @ref="_gridContainer">
+        <div class="restaurants-grid">
             <div class="results-chip-bar">
                 <span class="search-chip">
                     &#128205; @_lastSearch
@@ -140,9 +139,6 @@
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
-
-    private ElementReference _gridContainer;
-    private bool _physicsRequested;
 
     private const string LastSearchKey = "posee_last_search";
     private const string DiscoveryModeKey = "posee_discovery_mode";
@@ -217,30 +213,6 @@
 
         // The legacy boolean has to go as well, or the migration above re-arms geolocation.
         await JS.InvokeVoidAsync("localStorage.removeItem", LegacyLocationEnabledKey);
-    }
-
-    /// <summary>
-    /// Physics is started only once results are actually on screen, and only once per visit. The
-    /// module itself then defers to requestIdleCallback, so the import never competes with the
-    /// restaurant fetch or the first paint.
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_physicsRequested || _restaurants.Count == 0)
-        {
-            return;
-        }
-
-        _physicsRequested = true;
-        await Fx.StartGridPhysicsAsync(_gridContainer);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_physicsRequested)
-        {
-            await Fx.StopGridPhysicsAsync();
-        }
     }
 
     private string RetryLabel => _lastAttempt == DiscoveryAttempt.Search
@@ -445,6 +417,12 @@
         };
 
 
+    // Radzen's TextBox commits @bind-Value on change (blur), so the Search button's Disabled
+    // state stayed true while the user was still typing — it read as "nothing entered yet".
+    // Mirroring the raw input event keeps the button in step with what is on screen.
+    private void HandleSearchInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+        => _searchQuery = e.Value?.ToString() ?? string.Empty;
+
     private async Task HandleSearchKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
@@ -471,10 +449,6 @@
 
     private void ClearSearch()
     {
-        // New card set means new bodies; let OnAfterRenderAsync rebuild the world.
-        _ = Fx.StopGridPhysicsAsync();
-        _physicsRequested = false;
-
         _restaurants = new();
         _totalCount = 0;
         _lastSearch = string.Empty;

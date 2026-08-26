@@ -196,18 +196,6 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task SettleViewTransitionAsync() => SafeVoidAsync("poseeFx.settleViewTransition");
 
-    // ── Heavy scenes. Both lazily import their library on first call. ────────────────────
-
-    public Task<bool> StartHallShelfAsync(ElementReference container, object entries) =>
-        SafeAsync("poseeFx.startHallShelf", false, container, entries);
-
-    public Task StopHallShelfAsync() => SafeVoidAsync("poseeFx.stopHallShelf");
-
-    public Task<bool> StartGridPhysicsAsync(ElementReference container) =>
-        SafeAsync("poseeFx.startGridPhysics", false, container);
-
-    public Task StopGridPhysicsAsync() => SafeVoidAsync("poseeFx.stopGridPhysics");
-
     private sealed class CapabilitiesPayload
     {
         public string? Tier { get; set; }

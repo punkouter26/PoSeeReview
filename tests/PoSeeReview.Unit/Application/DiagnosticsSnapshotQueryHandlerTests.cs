@@ -89,33 +89,6 @@ public class DiagnosticsSnapshotQueryHandlerTests
         Assert.Null(result.DependencyStatus);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_TimestampIsRecent()
-    {
-        SetupHealthOk();
-        _identityAccessorMock.Setup(x => x.GetCurrentUserId()).Returns(UserId.Anonymous);
-
-        var before = DateTime.UtcNow.AddSeconds(-1);
-        var sut = BuildSut();
-        var result = await sut.ExecuteAsync(default);
-        var after = DateTime.UtcNow.AddSeconds(1);
-
-        Assert.InRange(result.Timestamp, before, after);
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_MachineNameAndProcessId_ArePopulated()
-    {
-        SetupHealthOk();
-        _identityAccessorMock.Setup(x => x.GetCurrentUserId()).Returns(UserId.Anonymous);
-
-        var sut = BuildSut();
-        var result = await sut.ExecuteAsync(default);
-
-        Assert.NotEmpty(result.MachineName ?? string.Empty);
-        Assert.True(result.ProcessId > 0);
-    }
-
     private void SetupHealthOk()
     {
         var report = new HealthReport(

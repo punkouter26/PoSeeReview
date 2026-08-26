@@ -22,18 +22,18 @@ namespace PoSeeReview.Api.Features.Comics;
 /// Uses the Azure.AI.OpenAI SDK to connect to Azure AI Foundry (Cognitive Services).
 /// Returns strangeness score (0-100) and narrative paragraph for comic generation.
 /// </summary>
-public class AzureOpenAIService : IAzureOpenAIService
+public class AzureOpenAIChatService : IChatCompletionService
 {
     private readonly AzureOpenAIClient _openAIClient;
     private readonly string _deploymentName;
-    private readonly ILogger<AzureOpenAIService> _logger;
+    private readonly ILogger<AzureOpenAIChatService> _logger;
     private readonly TelemetryClient _telemetryClient;
     private readonly AsyncRetryPolicy<ClientResult<ChatCompletion>> _chatRetryPolicy;
 
-    public AzureOpenAIService(
+    public AzureOpenAIChatService(
         AzureOpenAIClient openAIClient,
         IConfiguration configuration,
-        ILogger<AzureOpenAIService> logger,
+        ILogger<AzureOpenAIChatService> logger,
         TelemetryClient telemetryClient)
     {
         _deploymentName = configuration["AzureOpenAI:DeploymentName"]

@@ -78,12 +78,12 @@ public class ComicGenerationIntegrationTests
             return;
         }
 
-        var logger = new Mock<ILogger<AzureOpenAIService>>();
+        var logger = new Mock<ILogger<AzureOpenAIChatService>>();
         var telemetryClient = new Microsoft.ApplicationInsights.TelemetryClient(new Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration());
         var openAiClient = new Azure.AI.OpenAI.AzureOpenAIClient(
             new Uri(openAiOptions.Endpoint!),
             new Azure.AzureKeyCredential(openAiOptions.ApiKey!));
-        var azureOpenAIService = new AzureOpenAIService(openAiClient, configuration, logger.Object, telemetryClient);
+        var chatService = new AzureOpenAIChatService(openAiClient, configuration, logger.Object, telemetryClient);
 
         _output.WriteLine("📝 Input Reviews:");
         foreach (var review in reviews)
@@ -94,7 +94,7 @@ public class ComicGenerationIntegrationTests
         _output.WriteLine("");
 
         // Act - Analyze reviews using real Azure OpenAI
-        var analysis = await azureOpenAIService.AnalyzeStrangenessAsync(reviews);
+        var analysis = await chatService.AnalyzeStrangenessAsync(reviews);
         var (strangenessScore, panelCount, narrative) = (analysis.StrangenessScore, analysis.PanelCount, analysis.Narrative);
 
         // Assert - Verify narrative

@@ -8,12 +8,18 @@
     <div class="card-header">
         <div>
             <h3 class="restaurant-name">@Restaurant.Name</h3>
-            <p class="card-meta">@FormatDistance(Restaurant.Distance)</p>
+            @if (Restaurant.Distance > 0)
+            {
+                <p class="card-meta">@FormatDistance(Restaurant.Distance)</p>
+            }
         </div>
-        <div class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
-            <span class="rating-chip-label">Rated</span>
-            <span class="rating-chip-value">@Restaurant.AverageRating.ToString("F1")</span>
-        </div>
+        @if (Restaurant.AverageRating > 0)
+        {
+            <div class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
+                <span class="rating-chip-label">Rated</span>
+                <span class="rating-chip-value">@Restaurant.AverageRating.ToString("F1")</span>
+            </div>
+        }
     </div>
     
     <p class="address">@Restaurant.Address</p>
@@ -87,6 +93,9 @@
         _      => "tier-low"
     };
 
+    // A location search has no user coordinates, so Distance comes back 0 for every result.
+    // Rendering that as "0m away" claimed the restaurant was underfoot; callers suppress it
+    // entirely instead. Same for a 0 rating, which means "unrated", not "rated 0.0".
     private string FormatDistance(double kilometers)
     {
         if (kilometers < 1.0)

@@ -4,9 +4,9 @@ using Xunit;
 namespace PoSeeReview.Unit.Services;
 
 /// <summary>
-/// Unit tests for AzureOpenAIService - strangeness scoring and narrative generation using GPT-4o-mini
+/// Unit tests for AzureOpenAIChatService - strangeness scoring and narrative generation using GPT-4o-mini
 /// </summary>
-public class AzureOpenAIServiceTests
+public class AzureOpenAIChatServiceTests
 {
     [Fact]
     public async Task AnalyzeStrangenessAsync_WithStrangeReviews_ShouldReturnHighScore()
@@ -62,32 +62,6 @@ public class AzureOpenAIServiceTests
     }
 
     [Fact]
-    public async Task AnalyzeStrangenessAsync_WithModeratelyStrangeReviews_ShouldReturnMidRangeScore()
-    {
-        // Arrange
-        var reviews = new List<string>
-        {
-            "Good food but the decor is a bit quirky with all the vintage typewriters.",
-            "Service was fine, though the waiter spoke only in riddles.",
-            "Decent meal, unusual that they only serve food shaped like animals.",
-            "Nice place, weird that there's a live parrot commentating on your meal.",
-            "Food was good, odd choice to have all tables shaped like puzzle pieces."
-        };
-
-        // TODO: Mock Azure OpenAI client
-        // var service = CreateService();
-
-        // Act
-        // var (score, narrative) = await service.AnalyzeStrangenessAsync(reviews);
-
-        // Assert
-        // Assert.InRange(score, 40, 70); // Moderately strange
-        // Assert.NotEmpty(narrative);
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
     public async Task AnalyzeStrangenessAsync_WithEmptyReviews_ShouldThrowArgumentException()
     {
         // Arrange
@@ -99,29 +73,6 @@ public class AzureOpenAIServiceTests
         // Act & Assert
         // await Assert.ThrowsAsync<ArgumentException>(() =>
         //     service.AnalyzeStrangenessAsync(reviews));
-
-        await Task.CompletedTask; // Placeholder
-    }
-
-    [Fact]
-    public async Task AnalyzeStrangenessAsync_ShouldReturnScoreBetween0And100()
-    {
-        // Arrange
-        var reviews = new List<string>
-        {
-            "Test review 1",
-            "Test review 2",
-            "Test review 3"
-        };
-
-        // TODO: Mock Azure OpenAI client
-        // var service = CreateService();
-
-        // Act
-        // var (score, narrative) = await service.AnalyzeStrangenessAsync(reviews);
-
-        // Assert
-        // Assert.InRange(score, 0, 100);
 
         await Task.CompletedTask; // Placeholder
     }
@@ -150,28 +101,4 @@ public class AzureOpenAIServiceTests
         await Task.CompletedTask; // Placeholder
     }
 
-    [Fact]
-    public async Task AnalyzeStrangenessAsync_ShouldGenerateComicNarrativeStyle()
-    {
-        // Arrange
-        var reviews = new List<string>
-        {
-            "The ceiling dripped honey and the walls were covered in bubble wrap.",
-            "Every dish came with a riddle you had to solve before eating.",
-            "The waiters walk on their hands and the chef never speaks."
-        };
-
-        // TODO: Mock Azure OpenAI client
-        // var service = CreateService();
-
-        // Act
-        // var (score, narrative) = await service.AnalyzeStrangenessAsync(reviews);
-
-        // Assert
-        // Narrative should be suitable for comic strip context
-        // Assert.NotEmpty(narrative);
-        // Assert.True(narrative.Split(' ').Length >= 10, "Narrative should be descriptive enough for comic generation");
-
-        await Task.CompletedTask; // Placeholder
-    }
 }

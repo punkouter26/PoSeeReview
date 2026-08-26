@@ -4,11 +4,11 @@ name: poseereview
 metadata:
   template: poseereview@0.0.1-beta
 
+# Hosting is App Service, matching .github/workflows/deploy.yml — the only path that
+# actually deploys this app. The Container Apps variant (azure.yaml host: containerapp,
+# a Dockerfile, and two bicep modules) was removed: nothing built or deployed it.
 services:
   api:
     project: ./src/PoSeeReview.Api
     language: csharp
-    host: containerapp
-    docker:
-      path: ./src/PoSeeReview.Api/Dockerfile
-      context: .
+    host: appservice

@@ -22,7 +22,12 @@ const TIERS = ['off', 'lite', 'full'];
 // 60 FPS is 16.67ms. Budget the frame at 20ms so an occasional GC pause is not treated as a
 // regression, but a genuinely overloaded device still trips the downgrade.
 const FRAME_BUDGET_MS = 20;
-const OVER_BUDGET_FRAMES_BEFORE_DOWNGRADE = 90; // ~1.5s of sustained overrun
+
+// Measured in MILLISECONDS of sustained overrun, not frames. A frame count cannot express
+// "1.5 seconds": 90 frames is 1.5s only at 60 FPS, and by the time this guard matters the
+// frames are slow — at 60ms each, 90 frames is 5.4s. The guard was therefore slowest to fire
+// exactly when the device most needed it. Timing the streak makes the delay constant.
+const OVER_BUDGET_MS_BEFORE_DOWNGRADE = 1500;
 
 const state = {
     tier: 'off',
@@ -161,9 +166,9 @@ function recordFrame(elapsedMs, workMs, now) {
 
     if (elapsedMs > FRAME_BUDGET_MS) {
         stats.droppedFrames++;
-        state.overBudgetStreak++;
+        state.overBudgetStreak += elapsedMs;
 
-        if (state.overBudgetStreak >= OVER_BUDGET_FRAMES_BEFORE_DOWNGRADE) {
+        if (state.overBudgetStreak >= OVER_BUDGET_MS_BEFORE_DOWNGRADE) {
             autoDowngrade();
         }
     } else {

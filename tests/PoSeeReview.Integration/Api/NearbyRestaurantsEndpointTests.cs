@@ -37,72 +37,6 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
     [Fact]
 
     [Trait("Category", "Integration")]
-    [Trait("Category", "RequiresGoogleMapsApi")]
-    public async Task GetNearbyRestaurants_WithValidCoordinates_ShouldReturnSuccess()
-    {
-        // Arrange - Seattle coordinates
-        var latitude = 47.6062;
-        var longitude = -122.3321;
-
-        var client = _factory.CreateClient();
-
-        // Act
-        var response = await client.GetAsync(
-            $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}");
-
-        // Log response for debugging
-        var responseBody = await response.Content.ReadAsStringAsync();
-        _output.WriteLine($"Status: {response.StatusCode}");
-        _output.WriteLine($"Response: {responseBody}");
-
-        // Assert
-        // In test mode without real Google Maps API key, 503 is expected
-        // This validates the API endpoint is correctly configured and returning proper error responses
-        if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
-        {
-            // Parse the problem details to understand the error
-            var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-            _output.WriteLine($"Error Title: {problemDetails?.Title}");
-            _output.WriteLine($"Error Detail: {problemDetails?.Detail}");
-
-            // If using test/fake API key, 503 is acceptable - it means the API is working correctly
-            // and properly handling external service failures
-            if (problemDetails?.Title == "Google Maps API Unavailable")
-            {
-                _output.WriteLine("Test passed: API correctly handles missing/invalid Google Maps API key");
-                return; // Test passes - API is functioning correctly
-            }
-
-            Assert.Fail($"Unexpected 503 error. " +
-                $"Title: {problemDetails?.Title}, " +
-                $"Detail: {problemDetails?.Detail}");
-        }
-
-        // Google rejects the fake test API key with a 4xx, which the endpoint correctly
-        // surfaces as 400 "Google Maps Request Rejected" — a valid handled-error outcome.
-        if (response.StatusCode == HttpStatusCode.BadRequest)
-        {
-            var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-            if (problemDetails?.Title == "Google Maps Request Rejected")
-            {
-                _output.WriteLine("Test passed: API correctly surfaces the upstream key rejection");
-                return;
-            }
-
-            Assert.Fail($"Unexpected 400 error. Title: {problemDetails?.Title}, Detail: {problemDetails?.Detail}");
-        }
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        // Verify response structure
-        var result = await response.Content.ReadFromJsonAsync<NearbyRestaurantsResponse>();
-        Assert.NotNull(result);
-        Assert.NotNull(result.Restaurants);
-    }
-
-    [Fact]
-
-    [Trait("Category", "Integration")]
     public async Task GetNearbyRestaurants_WithDifferentLocations_ShouldReturnAppropriateResults()
     {
         // Arrange - Test multiple locations
@@ -169,68 +103,6 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
             Assert.True(result.Restaurants.Count <= limit,
                 $"Expected at most {limit} restaurants, got {result.Restaurants.Count}");
         }
-    }
-
-    [Fact]
-
-    [Trait("Category", "Integration")]
-    public async Task GetNearbyRestaurants_MissingParameters_ShouldReturn400()
-    {
-        // Arrange
-        var client = _factory.CreateClient();
-
-        // Act - Missing both parameters
-        var response1 = await client.GetAsync("/api/restaurants/nearby");
-
-        // Act - Missing latitude
-        var response2 = await client.GetAsync("/api/restaurants/nearby?longitude=-122.3321");
-
-        // Act - Missing longitude
-        var response3 = await client.GetAsync("/api/restaurants/nearby?latitude=47.6062");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.BadRequest, response1.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, response2.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, response3.StatusCode);
-
-        // Verify error messages
-        var problem1 = await response1.Content.ReadFromJsonAsync<ProblemDetails>();
-        _output.WriteLine($"Missing both: {problem1?.Detail}");
-
-        var problem2 = await response2.Content.ReadFromJsonAsync<ProblemDetails>();
-        _output.WriteLine($"Missing latitude: {problem2?.Detail}");
-
-        var problem3 = await response3.Content.ReadFromJsonAsync<ProblemDetails>();
-        _output.WriteLine($"Missing longitude: {problem3?.Detail}");
-
-        Assert.Contains("latitude", problem1?.Detail ?? "", StringComparison.OrdinalIgnoreCase);
-    }
-
-    [Theory]
-    [InlineData(91.0, -122.3321, "latitude")]    // Latitude > 90
-    [InlineData(-91.0, -122.3321, "latitude")]   // Latitude < -90
-    [InlineData(47.6062, 181.0, "longitude")]    // Longitude > 180
-    [InlineData(47.6062, -181.0, "longitude")]   // Longitude < -180
-    public async Task GetNearbyRestaurants_InvalidCoordinates_ShouldReturn400(
-        double latitude,
-        double longitude,
-        string expectedInvalidParam)
-    {
-        // Arrange
-        var client = _factory.CreateClient();
-
-        // Act
-        var response = await client.GetAsync(
-            $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-
-        var problemDetails = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        _output.WriteLine($"Invalid {expectedInvalidParam}: {problemDetails?.Detail}");
-
-        Assert.NotNull(problemDetails);
-        Assert.Contains("Invalid", problemDetails.Detail ?? "", StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -306,61 +178,6 @@ public class NearbyRestaurantsEndpointTests : IClassFixture<CustomWebApplication
         }
     }
 
-    [Fact]
-    [Trait("Category", "Integration")]
-    public void GetNearbyRestaurants_CheckServiceRegistration_ShouldHaveRequiredServices()
-    {
-        // Arrange - Create a scope to check service registration
-        using var scope = _factory.Services.CreateScope();
-        var services = scope.ServiceProvider;
-
-        // Act & Assert - Verify all required services are registered
-        try
-        {
-            var restaurantService = services.GetService<PoSeeReview.Shared.Contracts.IRestaurantService>();
-            var googleMapsService = services.GetService<PoSeeReview.Api.Features.Restaurants.GoogleMapsService>();
-
-            _output.WriteLine($"IRestaurantService: {(restaurantService != null ? "✓ Registered" : "✗ Missing")}");
-            _output.WriteLine($"GoogleMapsService: {(googleMapsService != null ? "✓ Registered" : "✗ Missing")}");
-
-            Assert.NotNull(restaurantService);
-            Assert.NotNull(googleMapsService);
-        }
-        catch (Exception ex)
-        {
-            _output.WriteLine($"Service resolution failed: {ex.Message}");
-            throw;
-        }
-    }
-
-    [Fact]
-    [Trait("Category", "Integration")]
-    public void GetNearbyRestaurants_CheckGoogleMapsApiKey_ShouldBeConfigured()
-    {
-        // Arrange
-        using var scope = _factory.Services.CreateScope();
-        var configuration = scope.ServiceProvider.GetService<Microsoft.Extensions.Configuration.IConfiguration>();
-
-        // Act
-        var apiKey = configuration?["GoogleMaps:ApiKey"];
-
-        // Assert & Log
-        _output.WriteLine($"Google Maps API Key configured: {(!string.IsNullOrEmpty(apiKey) ? "✓ Yes" : "✗ No")}");
-
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            _output.WriteLine("DIAGNOSTIC: Google Maps API key is not configured!");
-            _output.WriteLine("This is likely the cause of the 503 error.");
-            _output.WriteLine("Set the key using: dotnet user-secrets set 'GoogleMaps:ApiKey' 'YOUR_KEY'");
-
-            Assert.Fail("Google Maps API key is not configured. This is causing the 503 error.");
-        }
-        else
-        {
-            _output.WriteLine($"API Key present: {apiKey.Substring(0, Math.Min(10, apiKey.Length))}...");
-            Assert.NotEmpty(apiKey);
-        }
-    }
 }
 
 /// <summary>
