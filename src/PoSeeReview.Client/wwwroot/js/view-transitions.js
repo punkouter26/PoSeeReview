@@ -46,6 +46,17 @@ function clearMorphTags() {
     }
 }
 
+/** Paths served by the Blazor router rather than by an API endpoint or a static file. */
+const NON_SPA_PREFIXES = ['/auth', '/api', '/health', '/diag', '/_framework', '/_content'];
+
+function isSpaRoute(pathname) {
+    if (NON_SPA_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + '/'))) {
+        return false;
+    }
+    // A trailing extension means a static asset, not a route.
+    return !/\.[a-z0-9]{2,5}$/i.test(pathname);
+}
+
 function onDocumentClick(event) {
     if (!enabled || event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -60,6 +71,13 @@ function onDocumentClick(event) {
     if (anchor.target && anchor.target !== '_self') return;
     if (anchor.hasAttribute('download')) return;
     if (url.pathname === location.pathname) return;
+
+    // Only routes the Blazor router owns. A link to a server endpoint (/auth/login/microsoft,
+    // /api/..., a static file) causes a FULL document navigation, and a transition opened for
+    // one snapshots a document that is about to be destroyed — Blazor never renders, so nothing
+    // ever calls settle(). The timeout would eventually release it, but for those hundreds of
+    // milliseconds the page is frozen under a stale image for no benefit at all.
+    if (!isSpaRoute(url.pathname)) return;
 
     // Card -> comic gets the shared-element morph; everything else is a plain cross-fade.
     const card = event.target.closest('[data-physics-card], .leaderboard-card');
@@ -100,10 +118,19 @@ function beginTransition() {
     }).catch(() => { /* skipTransition or an interrupted navigation */ });
 }
 
+/**
+ * A full-page navigation destroys the document mid-transition. Releasing the gate here means the
+ * outgoing page is never left frozen under a snapshot while the browser tears it down.
+ */
+function onPageHide() {
+    pending?.settle();
+}
+
 export function init() {
     enabled = SUPPORTED && !reducedMotion();
     if (enabled) {
         document.addEventListener('click', onDocumentClick, true);
+        window.addEventListener('pagehide', onPageHide);
         document.documentElement.dataset.viewTransitions = 'on';
     }
     return { supported: SUPPORTED, enabled };
@@ -116,6 +143,7 @@ export function settle() {
 
 export function dispose() {
     document.removeEventListener('click', onDocumentClick, true);
+    window.removeEventListener('pagehide', onPageHide);
     pending?.settle();
     enabled = false;
     delete document.documentElement.dataset.viewTransitions;

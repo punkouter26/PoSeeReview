@@ -1,9 +1,20 @@
 services:
   azurite:
-    build:
-      context: .
-      dockerfile: Dockerfile.azurite
+    # Official image — replaces a hand-rolled Dockerfile that only ran `npm install -g azurite`.
+    image: mcr.microsoft.com/azure-storage/azurite:latest
     container_name: PoSeeReview
+    command:
+      - azurite
+      - --blobHost
+      - 0.0.0.0
+      - --queueHost
+      - 0.0.0.0
+      - --tableHost
+      - 0.0.0.0
+      - --location
+      - /data
+      - --silent
+      - --skipApiVersionCheck
     ports:
       - "10000:10000" # Blob service
       - "10001:10001" # Queue service

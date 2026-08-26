@@ -24,7 +24,7 @@
     {
         <RadzenCard class="error-container glass">
             <div class="error-icon">🤷</div>
-            <h2>@_errorTitle</h2>
+            <h1>@_errorTitle</h1>
             <p class="error-message">@_error</p>
             <div class="error-actions">
                 <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Click="@(_ => GoBack())">
@@ -37,7 +37,7 @@
     {
         <RadzenCard class="error-container glass">
             <div class="error-icon">🎨</div>
-            <h2>No Comic Here Yet</h2>
+            <h1>No Comic Here Yet</h1>
             <p class="error-message">This place doesn't have an active comic — it may have expired. Generating a fresh one takes about 10 seconds.</p>
             <div class="error-actions">
                 <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Click="@(_ => GenerateFromPromptAsync())">
@@ -79,23 +79,6 @@
 
             <ComicStrip ImageUrl="@_comic.BlobUrl"
                         RestaurantName="@_comic.RestaurantName" />
-
-            @if (_comic.Receipts.Count > 0)
-            {
-                <section class="receipts @(_receiptsVisible ? "receipts-visible" : "")" aria-live="polite">
-                    <h2 class="receipts-title">Why @_comic.StrangenessScore?</h2>
-                    <ul class="receipt-list">
-                        @foreach (var receipt in _comic.Receipts)
-                        {
-                            <li class="receipt">
-                                <blockquote class="receipt-quote">@receipt.Quote</blockquote>
-                                <span class="receipt-points">+@receipt.Points</span>
-                            </li>
-                        }
-                    </ul>
-                    <p class="receipt-note">Quoted verbatim from public Google reviews.</p>
-                </section>
-            }
 
             <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
             <p class="comic-source-note">Drawn from a small sample of recent public Google reviews — not the restaurant's full history.</p>
@@ -159,7 +142,6 @@
 
     /// <summary>Score currently painted in the ring while it counts up to the real one.</summary>
     private int _revealedScore;
-    private bool _receiptsVisible;
 
     /// <summary>Pipeline stage the server last reported, as an index into the step arrays.</summary>
     private int _activeStepIndex;
@@ -251,7 +233,7 @@
     /// <summary>
     /// Counts the ring up to the real score instead of printing it. The score is the payoff of
     /// a ten-second wait; landing it as a static integer wastes the only dramatic beat the app
-    /// has. Receipts fade in once the count lands, so the number arrives before its evidence.
+    /// has.
     /// </summary>
     private void StartScoreReveal()
     {
@@ -259,12 +241,10 @@
 
         _scoreRevealTimer?.Dispose();
         _revealedScore = 0;
-        _receiptsVisible = false;
         _burstFired = false;
 
         if (target <= 0)
         {
-            _receiptsVisible = true;
             return;
         }
 
@@ -278,7 +258,6 @@
 
             if (landed)
             {
-                _receiptsVisible = true;
                 _scoreRevealTimer?.Change(Timeout.Infinite, Timeout.Infinite);
             }
 

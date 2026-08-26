@@ -11,7 +11,7 @@ namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// HuggingFace chat backend for strangeness analysis + panel captions, used in place of
-/// <see cref="AzureOpenAIService"/> when <c>UseHuggingFace</c> is on. HF's chat router is
+/// <see cref="AzureOpenAIService"/> when <c>Ai:ImageProvider</c> is <c>HuggingFace</c>. HF's chat router is
 /// OpenAI-wire-compatible, so this reuses the OpenAI SDK's <see cref="ChatClient"/> pointed at
 /// <c>router.huggingface.co/v1</c>. The prompts mirror <see cref="AzureOpenAIService"/> so both
 /// providers produce the same JSON contract; open models are a bit looser about JSON, so parsing
@@ -81,9 +81,6 @@ public sealed class HuggingFaceChatService : IAzureOpenAIService
 
         var score = Math.Clamp(result.StrangenessScore, 0, 100);
         var panelCount = Math.Clamp(result.PanelCount, 1, 2);
-        // No receipts from this provider: the cheap-tier chat model is not reliable enough at
-        // copying verbatim, and a receipt that fails verification is dropped anyway. Shipping
-        // an empty list keeps the UI honest instead of showing paraphrases as quotes.
         return new StrangenessAnalysis(score, panelCount, result.Narrative);
     }
 

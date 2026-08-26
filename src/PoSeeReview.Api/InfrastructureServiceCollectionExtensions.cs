@@ -26,6 +26,13 @@ namespace PoSeeReview.Api;
 public static class InfrastructureServiceCollectionExtensions
 {
     /// <summary>
+    /// Configuration path for <see cref="AiImageProvider"/>. A constant because the deploy
+    /// workflow and appsettings must agree with this file exactly, and a typo in a raw string
+    /// would silently select the default provider.
+    /// </summary>
+    public const string AiProviderConfigurationKey = "Ai:ImageProvider";
+
+    /// <summary>
     /// Registers all infrastructure services and Azure clients
     /// </summary>
     public static IServiceCollection AddInfrastructure(
@@ -44,10 +51,23 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<HuggingFaceOptions>(
             configuration.GetSection(HuggingFaceOptions.SectionName));
 
-        // Master switch: when on, HuggingFace replaces BOTH AI providers — chat (Azure OpenAI
-        // → Qwen) and image generation (Google Imagen → FLUX). Off by default; Google Maps
-        // (restaurant data) is unaffected either way. See the AI-provider blocks below.
-        var useHuggingFace = configuration.GetValue<bool>("UseHuggingFace");
+        // Master switch: selects BOTH AI providers together — chat (Azure OpenAI → Qwen) and
+        // image generation (Google Imagen → FLUX). Gemini by default; Google Maps (restaurant
+        // data) is unaffected either way. See the AI-provider blocks below.
+        //
+        // Bound from the AiImageProvider enum rather than the former UseHuggingFace boolean.
+        // An unparseable value is a startup failure, not a silent fall back to the default:
+        // quietly running the wrong (paid) provider is worse than refusing to start.
+        var providerSetting = configuration[AiProviderConfigurationKey];
+        var imageProvider = string.IsNullOrWhiteSpace(providerSetting)
+            ? AiImageProvider.Gemini
+            : Enum.TryParse<AiImageProvider>(providerSetting, ignoreCase: true, out var parsed)
+                ? parsed
+                : throw new InvalidOperationException(
+                    $"'{providerSetting}' is not a valid {AiProviderConfigurationKey}. " +
+                    $"Valid values: {string.Join(", ", Enum.GetNames<AiImageProvider>())}.");
+
+        var useHuggingFace = imageProvider == AiImageProvider.HuggingFace;
 
         // Storage clients: cloud resolves via System-assigned Managed Identity against the
         // account endpoints (NET_RULES 5.4); connection strings remain only for local Azurite.
@@ -96,8 +116,8 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
         }
 
-        // Register Azure OpenAI client — only when Azure is the active chat provider. When
-        // UseHuggingFace is on, the chat path is Qwen (below) and Azure config may be absent,
+        // Register Azure OpenAI client — only when Azure is the active chat provider. Under
+        // the HuggingFace provider the chat path is Qwen (below) and Azure config may be absent,
         // so we must not fail-fast on missing AzureOpenAI settings.
         if (!useHuggingFace)
         {

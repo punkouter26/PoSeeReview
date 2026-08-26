@@ -48,7 +48,7 @@ public class ComicGenerationStreamContractTests
     }
 
     [Fact]
-    public void CompleteEvent_CarriesTheComicAndItsReceipts()
+    public void CompleteEvent_CarriesTheComic()
     {
         var parsed = RoundTrip(new ComicGenerationEventDto
         {
@@ -60,12 +60,7 @@ public class ComicGenerationStreamContractTests
                 RestaurantName = "The Owl Cafe",
                 Narrative = "An owl judged the soup.",
                 StrangenessScore = 87,
-                BlobUrl = "https://example.invalid/comic.png",
-                Receipts =
-                [
-                    new StrangenessReceiptDto { Quote = "the owl watched me eat", Points = 45 },
-                    new StrangenessReceiptDto { Quote = "never felt so judged", Points = 25 }
-                ]
+                BlobUrl = "https://example.invalid/comic.png"
             }
         });
 
@@ -73,9 +68,8 @@ public class ComicGenerationStreamContractTests
         Assert.NotNull(parsed.Comic);
         Assert.Equal("The Owl Cafe", parsed.Comic.RestaurantName);
         Assert.Equal(87, parsed.Comic.StrangenessScore);
-        Assert.Equal(2, parsed.Comic.Receipts.Count);
-        Assert.Equal("the owl watched me eat", parsed.Comic.Receipts[0].Quote);
-        Assert.Equal(45, parsed.Comic.Receipts[0].Points);
+        Assert.Equal("An owl judged the soup.", parsed.Comic.Narrative);
+        Assert.Equal("https://example.invalid/comic.png", parsed.Comic.BlobUrl);
     }
 
     [Fact]

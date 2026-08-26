@@ -16,12 +16,8 @@ public sealed class AiMockDelegatingHandler : DelegatingHandler, IMockable
 {
     // Superset JSON: satisfies both StrangenessAnalysisResult (score/panel/narrative)
     // and PanelCaptionsResult (captions) — unknown members are ignored by each parser.
-    // The receipt here is deliberately NOT a quote from any real review: the pipeline's verbatim
-    // check should drop it. That is the behaviour worth exercising by default — a mock that
-    // handed back pre-verified quotes would make the gate look like it works when it never ran.
     private const string OpenAiChatJson =
         "{\"strangenessScore\":42,\"panelCount\":2,\"narrative\":\"A mock narrative for tests.\","
-        + "\"receipts\":[{\"quote\":\"a mock receipt quote that matches nothing\",\"points\":42}],"
         + "\"captions\":[\"Scene one.\",\"Scene two.\"]}";
 
     // 1x1 transparent PNG — valid image bytes for the overlay pipeline.

@@ -52,7 +52,11 @@
 .region-chip {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
+    /* The app declares a 44px --tap-target and these measured 35px. Padding alone could not
+       reach it without making the chips look like buttons twice their content. */
+    min-height: var(--tap-target);
     padding: 0.4rem 0.85rem;
     border-radius: 999px;
     border: 1.5px solid var(--color-border);

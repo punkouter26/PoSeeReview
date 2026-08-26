@@ -18,6 +18,9 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    /* Measured 28px tall against the app's 44px --tap-target. It is the "go home" affordance on
+       every page, so it is one of the most-tapped things in the app. */
+    min-height: var(--tap-target);
     text-decoration: none !important;
 }
 

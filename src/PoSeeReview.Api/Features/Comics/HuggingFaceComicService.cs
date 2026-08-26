@@ -10,7 +10,7 @@ namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// HuggingFace Inference Providers image generation (FLUX by default), used in place of
-/// <see cref="GeminiComicService"/> when <c>UseHuggingFace</c> is on.
+/// <see cref="GeminiComicService"/> when <c>Ai:ImageProvider</c> is <c>HuggingFace</c>.
 ///
 /// The key advantage over Imagen: FLUX accepts a <c>negative_prompt</c>. Imagen has no
 /// negative channel and bakes garbled pseudo-English into speech bubbles and narration boxes

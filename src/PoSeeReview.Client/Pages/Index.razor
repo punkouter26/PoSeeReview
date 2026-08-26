@@ -4,6 +4,7 @@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @using Microsoft.JSInterop
+@using System.Net
 @inject GeolocationService GeolocationService
 @inject IJSRuntime JS
 @inject ApiClient ApiClient
@@ -17,7 +18,6 @@
         <h1>PoSeeReview</h1>
         <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
         <p class="hero-kicker">Built for quick mobile discovery and instant sharing.</p>
-        <a href="/leaderboard" class="leaderboard-hero-link">🏆 Hall of Fame — See the Weirdest Stories</a>
     </header>
 
     @* The error banner renders ABOVE the prompt card, and the prompt card stays mounted in
@@ -281,8 +281,7 @@
                 }
                 else
                 {
-                    _errorMessage = result.ErrorMessage;
-                    _flowState = LocationFlowState.Error;
+                    Fail(result.ErrorMessage);
                 }
 
                 return;
@@ -297,8 +296,7 @@
         }
         catch (Exception)
         {
-            _errorMessage = "Unable to access your location. Please try again.";
-            _flowState = LocationFlowState.Error;
+            Fail("Unable to access your location. Please try again.");
         }
         finally
         {
@@ -316,58 +314,31 @@
 
             if (response == null)
             {
-                _errorMessage = "No restaurants found nearby. Try a different location.";
-                _flowState = LocationFlowState.Error;
+                Fail("No restaurants found nearby. Try a different location.");
                 return;
             }
 
             if (response.Stale)
             {
                 // Dev short-circuit or upstream unavailable — explain the why instead of "no results".
-                _errorMessage = response.StaleReason
+                Fail(response.StaleReason
                     ?? "Restaurant search is temporarily unavailable. " +
-                       "Add a real Google Maps API key to appsettings.Development.json to enable nearby search.";
-                _flowState = LocationFlowState.Error;
+                       "Add a real Google Maps API key to appsettings.Development.json to enable nearby search.");
                 return;
             }
 
             if (response.Restaurants.Count == 0)
             {
-                _errorMessage = "No restaurants found nearby. Try a different location.";
-                _flowState = LocationFlowState.Error;
+                Fail("No restaurants found nearby. Try a different location.");
                 return;
             }
 
             SetRestaurantResults(response.Restaurants, "Nearby");
             _flowState = LocationFlowState.Ready;
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
-            || ex.StatusCode == System.Net.HttpStatusCode.BadGateway)
+        catch (Exception ex)
         {
-            _errorMessage = "The restaurant search service is temporarily unavailable. Please try again in a few minutes.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-        {
-            _errorMessage = "Too many requests. Please wait a moment before trying again.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (HttpRequestException ex)
-        {
-            _errorMessage = string.IsNullOrWhiteSpace(ex.Message)
-                ? "Failed to load restaurants. Please try again later."
-                : ex.Message;
-            _flowState = LocationFlowState.Error;
-        }
-        catch (TaskCanceledException)
-        {
-            _errorMessage = "The request timed out. Please check your connection and try again.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (Exception)
-        {
-            _errorMessage = "Failed to load restaurants. Please try again later.";
-            _flowState = LocationFlowState.Error;
+            Fail(DescribeFailure(ex, DiscoveryAttempt.Location, string.Empty));
         }
     }
 
@@ -393,8 +364,7 @@
 
             if (response == null)
             {
-                _errorMessage = "No restaurants found for that location. Try a different city or ZIP code.";
-                _flowState = LocationFlowState.Error;
+                Fail("No restaurants found for that location. Try a different city or ZIP code.");
                 return;
             }
 
@@ -403,16 +373,14 @@
             // problem that has nothing to do with their query.
             if (response.Stale)
             {
-                _errorMessage = response.StaleReason
-                    ?? "Restaurant search is temporarily unavailable. Please try again later.";
-                _flowState = LocationFlowState.Error;
+                Fail(response.StaleReason
+                    ?? "Restaurant search is temporarily unavailable. Please try again later.");
                 return;
             }
 
             if (response.Restaurants.Count == 0)
             {
-                _errorMessage = "No restaurants found for that location. Try a different city or ZIP code.";
-                _flowState = LocationFlowState.Error;
+                Fail("No restaurants found for that location. Try a different city or ZIP code.");
                 return;
             }
 
@@ -423,38 +391,9 @@
             _searchQuery = searchTerm;
             _searchPlaceholder = $"Last: {searchTerm}";
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (Exception ex)
         {
-            _errorMessage = $"No restaurants found near \u201c{searchTerm}\u201d. Try a more specific city name or ZIP code.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
-            || ex.StatusCode == System.Net.HttpStatusCode.BadGateway)
-        {
-            _errorMessage = "The restaurant search service is temporarily unavailable. Please try again in a few minutes.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-        {
-            _errorMessage = "Too many requests. Please wait a moment before trying again.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (HttpRequestException ex)
-        {
-            _errorMessage = string.IsNullOrWhiteSpace(ex.Message)
-                ? "Failed to search restaurants. Please try again later."
-                : ex.Message;
-            _flowState = LocationFlowState.Error;
-        }
-        catch (TaskCanceledException)
-        {
-            _errorMessage = "The request timed out. Please check your connection and try again.";
-            _flowState = LocationFlowState.Error;
-        }
-        catch (Exception)
-        {
-            _errorMessage = "Failed to search restaurants. Please try again later.";
-            _flowState = LocationFlowState.Error;
+            Fail(DescribeFailure(ex, DiscoveryAttempt.Search, searchTerm));
         }
         finally
         {
@@ -463,6 +402,48 @@
             StateHasChanged();
         }
     }
+
+    /// <summary>
+    /// Moves the page into the Error state with a message. Every failure path set the same two
+    /// fields, and forgetting the state assignment left the banner invisible behind a spinner.
+    /// </summary>
+    private void Fail(string message)
+    {
+        _errorMessage = message;
+        _flowState = LocationFlowState.Error;
+    }
+
+    /// <summary>
+    /// One exception-to-copy map for both discovery paths. Nearby and search previously carried
+    /// near-identical catch ladders — about seventy duplicated lines that had already drifted
+    /// (only search handled 404) and would drift again on the next change.
+    /// <para>
+    /// Note what is deliberately absent: the old generic <c>HttpRequestException</c> arm fell back
+    /// to <c>ex.Message</c>, which put raw transport exception text on screen. That is neither
+    /// useful to a user nor safe to show, so every arm now returns copy this app wrote.
+    /// </para>
+    /// </summary>
+    private static string DescribeFailure(Exception exception, DiscoveryAttempt attempt, string searchTerm) =>
+        exception switch
+        {
+            HttpRequestException { StatusCode: HttpStatusCode.NotFound } when attempt == DiscoveryAttempt.Search =>
+                $"No restaurants found near “{searchTerm}”. Try a more specific city name or ZIP code.",
+
+            HttpRequestException { StatusCode: HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway } =>
+                "The restaurant search service is temporarily unavailable. Please try again in a few minutes.",
+
+            HttpRequestException { StatusCode: HttpStatusCode.TooManyRequests } =>
+                "Too many requests. Please wait a moment before trying again.",
+
+            TaskCanceledException =>
+                "The request timed out. Please check your connection and try again.",
+
+            _ when attempt == DiscoveryAttempt.Search =>
+                "Failed to search restaurants. Please try again later.",
+
+            _ => "Failed to load restaurants. Please try again later."
+        };
+
 
     private async Task HandleSearchKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
@@ -516,8 +497,7 @@
 
         if (_restaurants.Count == 0)
         {
-            _errorMessage = "We couldn't find any restaurants there. Try a busier area.";
-            _flowState = LocationFlowState.Error;
+            Fail("We couldn't find any restaurants there. Try a busier area.");
         }
     }
 

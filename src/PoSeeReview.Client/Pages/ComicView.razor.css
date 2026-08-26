@@ -195,78 +195,6 @@
 }
 
 
-/* Strangeness receipts — the evidence behind the score. Fades in after the ring finishes
-   counting so the number lands first and the quotes explain it, not the other way round. */
-.receipts {
-    margin: 1.25rem 0 0;
-    padding: 1rem 1.1rem;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-card);
-    background: var(--color-brand-surface);
-    opacity: 0;
-    transform: translateY(6px);
-    transition: opacity 260ms ease, transform 260ms ease;
-}
-
-.receipts-visible {
-    opacity: 1;
-    transform: none;
-}
-
-.receipts-title {
-    margin: 0 0 0.75rem;
-    font-family: var(--font-display);
-    font-size: 1.35rem;
-    letter-spacing: 0.02em;
-    color: var(--color-text-primary);
-}
-
-.receipt-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.6rem;
-}
-
-.receipt {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.6rem 0.7rem;
-    border-radius: 8px;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-}
-
-.receipt-quote {
-    margin: 0;
-    flex: 1;
-    font-size: 0.92rem;
-    line-height: 1.45;
-    color: var(--color-text-secondary);
-    font-style: italic;
-}
-
-.receipt-quote::before { content: "“"; }
-.receipt-quote::after { content: "”"; }
-
-.receipt-points {
-    flex-shrink: 0;
-    font-family: var(--font-display);
-    font-size: 1.05rem;
-    line-height: 1.4;
-    letter-spacing: 0.03em;
-    color: var(--color-brand);
-}
-
-.receipt-note {
-    margin: 0.7rem 0 0;
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-}
-
 @media (prefers-reduced-motion: reduce) {
     .comic-container,
     .ring-fill,
@@ -274,14 +202,8 @@
         animation: none;
     }
 
-    .ring-fill,
-    .receipts {
+    .ring-fill {
         transition: none;
-    }
-
-    /* The count-up still runs (it is driven in C#, not CSS) but nothing should slide. */
-    .receipts {
-        transform: none;
     }
 }
 

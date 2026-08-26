@@ -85,8 +85,8 @@ public class ColorContrastTests
     private const string LightBlock = "@layer tokens {";
     private const string DarkBlock = ":root[data-theme=\"dark\"]";
 
-    public static TheoryData<string> LightTextTokens => new()
-    {
+    private static readonly string[] TextTokens =
+    [
         "--color-text-primary",
         "--color-text-secondary",
         "--color-text-muted",
@@ -94,30 +94,69 @@ public class ColorContrastTests
         "--color-accent-ink",
         "--color-success-ink",
         "--color-danger",
-    };
+    ];
 
-    [Theory]
-    [MemberData(nameof(LightTextTokens))]
-    public void LightMode_TextTokens_MeetAaOnCard(string token)
+    /// <summary>
+    /// Every surface token a text token can legitimately land on — not just <c>--color-card</c>.
+    /// Checking only the card is what let <c>--color-text-muted</c> ship at 4.26:1: it cleared
+    /// 4.5:1 against pure white, but the Hall of Fame timestamp renders on
+    /// <c>--color-brand-surface</c>, and axe caught in the browser what this test could not.
+    /// </summary>
+    public static TheoryData<string, string> LightTextOnSurface => Pairs(TextTokens,
+    [
+        "--color-card",
+        "--color-surface",
+        "--color-surface-alt",
+        "--color-brand-surface",
+        "--color-highlight",
+    ]);
+
+    public static TheoryData<string, string> DarkTextOnSurface => Pairs(TextTokens,
+    [
+        "--color-card",
+        "--color-surface",
+        "--color-surface-alt",
+        "--color-brand-surface",
+        "--color-highlight",
+    ]);
+
+    private static TheoryData<string, string> Pairs(string[] tokens, string[] surfaces)
     {
-        var card = ReadToken("--color-card", LightBlock);
-        var value = ReadToken(token, LightBlock);
-        var ratio = ContrastRatio(value, card);
+        var data = new TheoryData<string, string>();
+        foreach (var token in tokens)
+        {
+            foreach (var surface in surfaces)
+            {
+                data.Add(token, surface);
+            }
+        }
 
-        Assert.True(ratio >= AaNormalText,
-            $"{token} ({value}) on {card} is {ratio:F2}:1 — below the {AaNormalText}:1 AA minimum for normal text.");
+        return data;
     }
 
     [Theory]
-    [MemberData(nameof(LightTextTokens))]
-    public void DarkMode_TextTokens_MeetAaOnCard(string token)
+    [MemberData(nameof(LightTextOnSurface))]
+    public void LightMode_TextTokens_MeetAaOnEverySurface(string token, string surfaceToken)
     {
-        var card = ReadToken("--color-card", DarkBlock);
-        var value = ReadToken(token, DarkBlock);
-        var ratio = ContrastRatio(value, card);
+        AssertReadable(token, surfaceToken, LightBlock, "light");
+    }
+
+    [Theory]
+    [MemberData(nameof(DarkTextOnSurface))]
+    public void DarkMode_TextTokens_MeetAaOnEverySurface(string token, string surfaceToken)
+    {
+        AssertReadable(token, surfaceToken, DarkBlock, "dark");
+    }
+
+    private static void AssertReadable(string token, string surfaceToken, string block, string theme)
+    {
+        var surface = ReadToken(surfaceToken, block);
+        var value = ReadToken(token, block);
+        var ratio = ContrastRatio(value, surface);
 
         Assert.True(ratio >= AaNormalText,
-            $"{token} ({value}) on {card} is {ratio:F2}:1 — below the {AaNormalText}:1 AA minimum for normal text.");
+            $"{theme}: {token} ({value}) on {surfaceToken} ({surface}) is {ratio:F2}:1 — " +
+            $"below the {AaNormalText}:1 AA minimum for normal text.");
     }
 
     [Fact]

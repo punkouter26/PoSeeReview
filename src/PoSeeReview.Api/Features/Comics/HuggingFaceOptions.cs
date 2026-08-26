@@ -1,8 +1,8 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Configuration for the HuggingFace Inference Providers backend, activated by the
-/// top-level <c>UseHuggingFace</c> flag. When on, HuggingFace replaces BOTH AI providers:
+/// Configuration for the HuggingFace Inference Providers backend, activated by setting
+/// <c>Ai:ImageProvider</c> to <c>HuggingFace</c>. When on, HuggingFace replaces BOTH AI providers:
 /// chat (Azure OpenAI → Qwen via the OpenAI-compatible router) and image generation
 /// (Google Imagen → FLUX). FLUX is chosen partly because it supports a negative prompt,
 /// which reliably suppresses the garbled text/speech-bubbles that Imagen bakes into the art.

@@ -79,18 +79,44 @@ const ring = await page.evaluate(() => {
 });
 record('focus-visible ring defined', !!ring, ring ? JSON.stringify(ring) : 'no focusable element');
 
-// 7. No horizontal overflow at mobile width
+// 7. No horizontal overflow at mobile width — on EVERY route, not just the landing page.
+// This used to measure whichever page happened to be loaded, which is how /diagnostics shipped
+// a 628px-wide document inside a 390px viewport: its config table could not shrink, and nothing
+// here ever looked at that route. 320px is included because auto-fit grid floors only overflow
+// once the container drops below them.
 // Resize the signed-in page rather than opening a second one: a fresh tab re-boots the WASM
 // runtime and re-runs the auth handshake, which is slow and unrelated to what is being measured.
-await page.setViewportSize({ width: 390, height: 844 });
-await page.waitForTimeout(600);
-const overflow = await page.evaluate(() => ({
-    scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth
-}));
-record('no horizontal overflow at 390px',
-    overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+const OVERFLOW_ROUTES = [
+    ['/', '.index-container'],
+    ['/leaderboard', '.leaderboard-container'],
+    ['/diagnostics', '.diagnostics-container'],
+];
+
+for (const width of [320, 390]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const [route, ready] of OVERFLOW_ROUTES) {
+        await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
+        await page.locator(ready).waitFor({ timeout: 30000 }).catch(() => {});
+        await page.waitForTimeout(900);
+        const overflow = await page.evaluate(() => {
+            const de = document.documentElement;
+            const worst = [...document.querySelectorAll('body *')]
+                .map(el => ({ el, w: el.getBoundingClientRect().width }))
+                .filter(x => x.w > de.clientWidth + 1)
+                .sort((a, b) => b.w - a.w)[0];
+            return {
+                scroll: de.scrollWidth, client: de.clientWidth,
+                worst: worst ? `${worst.el.tagName.toLowerCase()}.${String(worst.el.className || '').split(' ')[0]} ${Math.round(worst.w)}px` : null,
+            };
+        });
+        record(`no horizontal overflow on ${route} at ${width}px`,
+            overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+    }
+}
 
 await page.setViewportSize({ width: 1366, height: 768 });
+await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+await page.locator('.index-container').waitFor({ timeout: 30000 });
 
 // 8. End-to-end comic generation through the streaming endpoint (the reported failure).
 //    One real generation — this spends a paid image call, deliberately just the one.
@@ -126,12 +152,12 @@ const gen = await page.evaluate(async () => {
     return {
         stage: 'done', name: first.name, rating: first.averageRating,
         phases, error,
-        comic: done ? { score: done.strangenessScore, url: !!done.blobUrl, receipts: done.receipts?.length ?? 0 } : null
+        comic: done ? { score: done.strangenessScore, url: !!done.blobUrl } : null
     };
 });
 console.log('    generation:', JSON.stringify(gen));
 record('comic generation succeeds end-to-end', gen.stage === 'done' && !!gen.comic && !gen.error,
-    gen.comic ? `"${gen.name}" score ${gen.comic.score}, ${gen.comic.receipts} receipts, phases [${gen.phases}]`
+    gen.comic ? `"${gen.name}" score ${gen.comic.score}, image ${gen.comic.url}, phases [${gen.phases}]`
               : `stage=${gen.stage} ${JSON.stringify(gen.error ?? gen.status)}`);
 
 // 9. Nearby search now ranks by distance, not popularity.

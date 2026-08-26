@@ -58,11 +58,4 @@ public class Comic
     /// Originating principal, so dev-bypass users can still be traced in storage.
     /// </summary>
     public UserId RequestedByUserId { get; set; } = UserId.Anonymous;
-
-    /// <summary>
-    /// Verbatim review fragments the analyser weighted, with the points each contributed.
-    /// Empty for comics generated before receipts existed, and for any run where the model
-    /// returned quotes that could not be matched back to the source reviews.
-    /// </summary>
-    public IReadOnlyList<StrangenessReceipt> Receipts { get; set; } = [];
 }

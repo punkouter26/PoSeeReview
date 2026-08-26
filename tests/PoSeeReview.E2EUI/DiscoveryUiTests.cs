@@ -58,17 +58,6 @@ public sealed class DiscoveryUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Home_HeroLinkNavigatesToLeaderboard(string viewport)
-    {
-        var page = await HomeAsync(viewport);
-
-        await page.Locator(".leaderboard-hero-link").ClickAsync();
-
-        await Assertions.Expect(page.Locator(".leaderboard-container")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
     public async Task Home_GrantedGeolocation_TriggersRestaurantLookup(string viewport)
     {
         var page = await fixture.NewPageAsync(viewport);

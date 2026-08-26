@@ -192,18 +192,6 @@ public class ComicGenerationService : IComicGenerationService
             throw new InsufficientStrangenessException(strangenessScore, _options.MinimumStrangenessScore);
         }
 
-        // Verified against the reviews we actually sent, while we still hold them. Anything the
-        // model paraphrased or invented is discarded here rather than shown to a user as a
-        // quotation from a real restaurant's reviews.
-        var receipts = VerifyReceipts(analysis.Receipts, reviewsForAnalysis);
-        if (receipts.Count < analysis.Receipts.Count)
-        {
-            _logger.LogWarning(
-                "Dropped {DroppedCount} of {TotalCount} strangeness receipts for {PlaceId}: quote not found verbatim in the analysed reviews",
-                analysis.Receipts.Count - receipts.Count, analysis.Receipts.Count, placeId);
-            _telemetryClient.GetMetric("Comics.UnverifiedReceipts").TrackValue(analysis.Receipts.Count - receipts.Count);
-        }
-
         // Generate comic image (panel count capped at 2)
         progress?.Report(ComicGenerationPhase.GeneratingArtwork);
         var imageStopwatch = Stopwatch.StartNew();
@@ -240,8 +228,7 @@ public class ComicGenerationService : IComicGenerationService
             StrangenessScore = strangenessScore,
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
-            CacheState = ComicCacheState.Generated,
-            Receipts = receipts
+            CacheState = ComicCacheState.Generated
         };
 
         // Save to cache
@@ -285,62 +272,6 @@ public class ComicGenerationService : IComicGenerationService
 
         return comic;
     }
-
-    /// <summary>Receipts shown per comic. More than this is a wall of text, not evidence.</summary>
-    private const int MaxReceipts = 3;
-
-    /// <summary>Display cap for a single quote. Applied AFTER verification, so the kept prefix is still verbatim.</summary>
-    private const int MaxReceiptQuoteChars = 180;
-
-    /// <summary>
-    /// Keeps only the receipts whose quote genuinely appears in the reviews that were analysed.
-    /// The model is asked for verbatim fragments but is free to ignore that, and a fabricated
-    /// quote attributed to a named restaurant is a defamation problem rather than a cosmetic
-    /// one — so an unmatched quote is dropped, never repaired. Comparison normalises whitespace
-    /// runs and case only: those differ freely across JSON round-trips without changing what
-    /// the reviewer actually wrote.
-    /// </summary>
-    internal static List<StrangenessReceipt> VerifyReceipts(
-        IReadOnlyList<StrangenessReceipt> claimed,
-        List<string> analysedReviews)
-    {
-        if (claimed.Count == 0 || analysedReviews.Count == 0)
-        {
-            return [];
-        }
-
-        var haystack = NormalizeForQuoteMatch(string.Join("\n", analysedReviews));
-
-        var verified = new List<StrangenessReceipt>();
-        foreach (var receipt in claimed)
-        {
-            var needle = NormalizeForQuoteMatch(receipt.Quote);
-
-            // A one- or two-word "quote" matches almost any review by chance, which would let a
-            // paraphrase pass verification. Require enough text to be genuinely attributable.
-            if (needle.Length < 12 || !haystack.Contains(needle, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var quote = receipt.Quote.Trim();
-            if (quote.Length > MaxReceiptQuoteChars)
-            {
-                quote = quote[..MaxReceiptQuoteChars].TrimEnd() + "…";
-            }
-
-            verified.Add(receipt with { Quote = quote });
-            if (verified.Count == MaxReceipts)
-            {
-                break;
-            }
-        }
-
-        return verified.OrderByDescending(r => r.Points).ToList();
-    }
-
-    private static string NormalizeForQuoteMatch(string text) =>
-        Regex.Replace(text, @"\s+", " ").Trim();
 
     /// <summary>
     /// FrozenSet of normalized profanity keywords — allocated once at startup,

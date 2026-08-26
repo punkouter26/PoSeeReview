@@ -130,9 +130,13 @@ it, so a Test-only auto-navigate silently breaks that suite.
   locally. The config path is the constant `TakedownOptions.ApiKeyConfigurationKey`.
 - `AzureAd:ClientId` and `AzureAd:AllowedTenants` stay in appsettings.json on purpose — public
   application identifiers, not credentials. `AzureAd:ClientSecret` is Key Vault only.
-- AI backend is selected by the `AiImageProvider` enum (`Gemini` default, `HuggingFace`,
-  `AzureOpenAI`), which replaced a `UseHuggingFace` boolean that could not express the third
-  provider and coupled the chat and image paths together.
+- AI backend is selected by `Ai:ImageProvider`, bound to the `AiImageProvider` enum
+  (`Gemini` default, `HuggingFace`) in `InfrastructureServiceCollectionExtensions`. It replaced a
+  `UseHuggingFace` boolean; an unparseable value fails startup rather than silently falling back
+  to the paid default. There is deliberately **no** `AzureOpenAI` member — only two
+  `IImageGenerationService` implementations exist, so a third value could only ever throw. The
+  choice selects the chat provider too; that pairing is real (HuggingFace's chat and image
+  endpoints share a token), not an oversight.
 
 ### Pipeline ordering that matters
 
@@ -150,15 +154,20 @@ Tables and the comics blob container are created once at startup by `TableStorag
 (`IHostedService`); repositories never call `CreateIfNotExists` per request, and startup fails fast
 if storage is unreachable.
 
-### Comic generation: receipts and streaming
+### Comic generation: streaming
 
 `AnalyzeStrangenessAsync` returns a `StrangenessAnalysis` record (not a tuple) carrying the score,
-panel count, narrative, and **unverified** receipts — model-claimed verbatim review fragments with
-the points each contributed. `ComicGenerationService.VerifyReceipts` then drops any quote that is
-not actually present in the reviews that were sent. Treat that gate as load-bearing: these strings
-are displayed as quotations from real reviewers about a named restaurant, so a fabricated one is a
-defamation problem, not a cosmetic bug. Receipts persist as a JSON string column (`ReceiptsJson`)
-because Table Storage has no collection type. The HuggingFace provider returns none by design.
+panel count, and narrative.
+
+**Strangeness receipts were removed.** The comic used to ship model-claimed verbatim review
+fragments, gated by a `VerifyReceipts` check that dropped any quote not present in the reviews
+actually sent. The UI that rendered them was deleted, which left the whole vertical — prompt
+tokens, the verification gate, a `ReceiptsJson` column, and `ComicDto.Receipts` — running with no
+consumer, still shipping third-party quotes to every client. It was pruned end to end rather than
+left half-connected. Existing Table rows keep an orphaned `ReceiptsJson` column, which Table
+Storage ignores. **If receipts ever come back, the verbatim gate must come back with them**: these
+strings render as quotations from real reviewers about a named restaurant, so a fabricated one is
+a defamation problem, not a cosmetic bug.
 
 `POST /api/comics/{placeId}/stream` runs the same pipeline as the plain POST but emits server-sent
 events, one JSON `ComicGenerationEventDto` per `data:` line (`phase` / `complete` / `error`). It
@@ -196,6 +205,12 @@ is the point:
   `<link>`. Unlayered CSS outranks every layer regardless of source order, so a plain `<link>`
   would put vendor defaults above the entire design system.
 
+**Boot splash.** `#app` centres `.loading-progress` with `min-height: 100dvh` + `place-content`,
+guarded by `:has(.loading-progress)` so the rule stops applying once Blazor mounts. The splash
+previously pushed itself down with `margin: 20dvh`, so `body` snapped from y=20dvh to y=0 on the
+swap — a measured **CLS of 0.20 (mobile) / 0.14 (desktop) on every full page load**, and login and
+logout both navigate with `forceLoad`. Do not reintroduce a top offset on the splash; centre it.
+
 **Tokens.** Colour uses a **surface/ink split**: `--color-accent` is a background (bright amber),
 `--color-accent-ink` is the readable text version. The fix for a failing colour is to pair it, not
 to darken it — `--color-on-accent` on `--color-accent` measures 7.64:1. Two border weights:
@@ -212,6 +227,14 @@ exactly four breakpoints (`40/48/64/80rem`) — there were 13 before. Prefer a *
 token values out of app.css and asserts WCAG ratios. It reads the stylesheet rather than restating
 the hex codes on purpose — and it immediately caught a dark-mode border at 1.88:1 that hand
 calculation had missed.
+
+It asserts every text token against **every surface token**, not just `--color-card`. Checking
+only the white card is what let `--color-text-muted` ship at 4.26:1 on `--color-brand-surface`,
+where the Hall of Fame timestamp renders — axe caught in the browser what the test could not.
+Widening it exposed the same bug in `--color-accent-ink`, `--color-success-ink` and
+`--color-danger`, all of which had been tuned against pure white alone. **Tune a text token
+against `--color-surface-alt` (light) and `--color-highlight` (dark)** — those are the worst
+cases, not the card.
 
 **Component library: Radzen, not Fluent.** FluentUI was removed. Radzen is themed by mapping
 `--rz-*` onto the design tokens in app.css; that is the only reason its controls are on-brand.
@@ -269,7 +292,10 @@ node SCRIPTS/fx-perf-check.mjs   # frame budget + lazy-load assertions
 node SCRIPTS/ui-check.mjs        # cascade layers, tokens, mobile overflow, comic pipeline
 ```
 
-`ui-check.mjs` performs ONE real comic generation, which spends a paid image call.
+`ui-check.mjs` performs ONE real comic generation, which spends a paid image call. Its overflow
+check walks `/`, `/leaderboard` and `/diagnostics` at 320px and 390px — it used to measure only
+whichever page happened to be loaded, which is how `/diagnostics` shipped a 628px-wide document
+inside a 390px viewport.
 
 Measured floor under forced software rendering (no GPU in headless Chromium): 60 FPS mean with
 gradient + 400-particle burst + 3D shelf active. Worst-frame spikes of 380-630ms do occur, from
