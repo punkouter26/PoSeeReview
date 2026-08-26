@@ -19,6 +19,9 @@ public class LeaderboardService : ILeaderboardService
     private readonly LeaderboardOptions _options;
     private readonly TimeProvider _timeProvider;
 
+    /// <summary>Widest page the repository will return; used so filtering empty comics can still fill <c>limit</c>.</summary>
+    private const int MaxProbeCount = 50;
+
     public LeaderboardService(
         ILeaderboardRepository repository,
         IBlobStorageService blobStorageService,
@@ -54,7 +57,9 @@ public class LeaderboardService : ILeaderboardService
 
         try
         {
-            var entries = await _repository.GetTopEntriesAsync(region, limit);
+            // Probe the full page size so expired-blob rows (empty ComicBlobUrl after the
+            // existence check) do not occupy the slots the Hall of Fame actually paints.
+            var entries = await _repository.GetTopEntriesAsync(region, MaxProbeCount);
 
             // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel
             var sasRefreshTasks = entries
@@ -67,9 +72,11 @@ public class LeaderboardService : ILeaderboardService
                 });
             await Task.WhenAll(sasRefreshTasks);
 
-            // Verify blob existence for entries whose SAS is still valid — run in parallel
+            // Verify blob existence for hosted comic URLs whose SAS is still valid — run in parallel.
+            // Seeded test URLs (and any non-container link) are left as-is; only `/comics/` paths
+            // are ones this app uploaded and can answer Exists for.
             var blobCheckTasks = entries
-                .Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl))
+                .Where(e => IsHostedComicUrl(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl))
                 .Select(async entry =>
                 {
                     if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
@@ -81,10 +88,19 @@ public class LeaderboardService : ILeaderboardService
                 });
             await Task.WhenAll(blobCheckTasks);
 
-            // Ranks are already assigned by repository during query
-            _logger.LogInformation("Retrieved {Count} entries for region {Region}", entries.Count, region);
+            var visible = entries
+                .Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl))
+                .Take(limit)
+                .ToList();
 
-            return entries;
+            for (var i = 0; i < visible.Count; i++)
+            {
+                visible[i].Rank = i + 1;
+            }
+
+            _logger.LogInformation("Retrieved {Count} entries with comics for region {Region}", visible.Count, region);
+
+            return visible;
         }
         catch (Exception ex)
         {
@@ -175,6 +191,23 @@ public class LeaderboardService : ILeaderboardService
         {
             _logger.LogError(ex, "Error upserting leaderboard entry for {PlaceId}", entry.PlaceId);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// True when the URL points at a blob in this app's comics container, so <see cref="IBlobStorageService.BlobExistsAsync"/>
+    /// can actually answer. Other hosts (including integration-test seeds) are not ours to probe.
+    /// </summary>
+    private static bool IsHostedComicUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return false;
+        try
+        {
+            return new Uri(url).AbsolutePath.Contains("/comics/", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (UriFormatException)
+        {
+            return false;
         }
     }
 

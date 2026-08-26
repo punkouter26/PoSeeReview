@@ -43,28 +43,34 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Leaderboard_ExposesRegionChips(string viewport)
+    public async Task Leaderboard_HasNoRegionOrLimitControls(string viewport)
     {
         var page = await SignedInAsync(viewport, "/leaderboard");
+        await page.Locator(".leaderboard-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
 
-        var chips = page.Locator(".region-chips .region-chip");
-        await Assertions.Expect(chips.First).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-        Assert.True(await chips.CountAsync() > 1, "expected more than one selectable region");
+        await Assertions.Expect(page.Locator(".region-chips, .region-chip, .limit-select, label[for='limit']"))
+            .ToHaveCountAsync(0);
     }
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Leaderboard_SelectingRegion_RefetchesForThatRegion(string viewport)
+    public async Task Leaderboard_CardsAlwaysShowAComicStrip(string viewport)
     {
         var page = await SignedInAsync(viewport, "/leaderboard");
-        var chips = page.Locator(".region-chips .region-chip");
-        await chips.First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
+        await page.Locator(".leaderboard-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
+        await page.Locator("#leaderboard-results[aria-busy='false']")
+            .WaitForAsync(new() { Timeout = RenderTimeout });
 
-        var request = page.WaitForRequestAsync(r => r.Url.Contains("/api/leaderboard"), new() { Timeout = RenderTimeout });
-        await chips.Nth(1).ClickAsync();
+        await Assertions.Expect(page.Locator(".comic-thumbnail-placeholder")).ToHaveCountAsync(0);
 
-        var url = (await request).Url;
-        Assert.Contains("region=", url, StringComparison.OrdinalIgnoreCase);
+        var cards = page.Locator(".leaderboard-card");
+        var count = await cards.CountAsync();
+        if (count == 0)
+        {
+            return;
+        }
+
+        await Assertions.Expect(page.Locator(".leaderboard-card .comic-thumbnail img")).ToHaveCountAsync(count);
     }
 
     [Theory]

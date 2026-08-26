@@ -81,27 +81,6 @@
     line-height: 1.15;
 }
 
-.comic-supporting-copy {
-    margin: 1rem 0 0;
-    text-align: center;
-    color: var(--color-text-muted);
-    font-size: 0.95rem;
-}
-
-.comic-source-note {
-    margin: 0.35rem 0 0;
-    text-align: center;
-    color: var(--color-text-muted);
-    font-size: 0.8rem;
-}
-
-.action-buttons {
-    display: grid;
-    grid-template-columns: 1.3fr 1fr auto;
-    gap: clamp(0.75rem, 2vw, 1rem);
-    margin-top: 1.5rem;
-}
-
 .strangeness-ring-wrap {
     position: relative;
     width: clamp(80px, 14vw, 110px);
@@ -160,24 +139,6 @@
     color: var(--color-on-dark-secondary);
 }
 
-/* FluentMessageBar brings its own success styling — this only handles placement. */
-.copied-message {
-    text-align: center;
-    margin-top: 1rem;
-    animation: slideDown 0.3s ease-out;
-}
-
-@keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
 @media (max-width: 600px) {
     .comic-header {
         grid-template-columns: 1fr;
@@ -188,17 +149,12 @@
         width: 84px;
         height: 84px;
     }
-
-    .action-buttons {
-        grid-template-columns: 1fr;
-    }
 }
 
 
 @media (prefers-reduced-motion: reduce) {
     .comic-container,
-    .ring-fill,
-    .copied-message {
+    .ring-fill {
         animation: none;
     }
 
@@ -210,7 +166,7 @@
 
 /* === Ink-splatter burst (FX #4) ===
    Sized well beyond the ring so particles can fly clear of it. overflow must not be clipped by
-   .strangeness-ring-wrap, which is already position:relative (line 105). */
+   .strangeness-ring-wrap, which is already position:relative. */
 .fx-burst-canvas {
     position: absolute;
     left: -150%;

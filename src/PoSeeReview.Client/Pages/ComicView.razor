@@ -7,9 +7,7 @@
 @using System.Threading
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
-@inject ShareService ShareService
 @inject FxService Fx
-@inject ILogger<ComicView> Logger
 
 <PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
 
@@ -17,7 +15,7 @@
     @if (_isLoading)
     {
         <LoadingIndicator Message="Reading the weird stuff..."
-                          Steps="@(_isRegenerating ? _regenerateSteps : _comicSteps)"
+                          Steps="@_comicSteps"
                           ActiveStep="@_activeStepIndex" />
     }
     else if (_error != null)
@@ -79,39 +77,6 @@
 
             <ComicStrip ImageUrl="@_comic.BlobUrl"
                         RestaurantName="@_comic.RestaurantName" />
-
-            <p class="comic-supporting-copy">Share the panel, or reopen discovery to find the next strange story.</p>
-            <p class="comic-source-note">Drawn from a small sample of recent public Google reviews — not the restaurant's full history.</p>
-
-            <div class="action-buttons">
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Disabled="@(_isSharing || _isRegenerating)" Click="@(_ => ShareComic())">
-                    @if (_isSharing)
-                    {
-                        <text>Sharing...</text>
-                    }
-                    else if (_shareSupported)
-                    {
-                        <text>Share Comic</text>
-                    }
-                    else
-                    {
-                        <text>Copy Link</text>
-                    }
-                </RadzenButton>
-                <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary" Disabled="@(_isSharing || _isRegenerating)" Click="@(_ => GoBack())">
-                    &#8592; @(From == "leaderboard" ? "Back to Hall of Fame" : "Find Another")
-                </RadzenButton>
-                <RadzenButton ButtonStyle="ButtonStyle.Base" Variant="Variant.Outlined" class="btn btn-secondary" Disabled="@(_isRegenerating || _isSharing)" Click="@(_ => RegenerateComic())">
-                    Try Another Version
-                </RadzenButton>
-            </div>
-            
-            @if (_showCopiedMessage)
-            {
-                <div class="alert alert-success copied-message" role="status">
-                    &#10003; Link copied to clipboard!
-                </div>
-            }
         </RadzenCard>
     }
 </div>
@@ -131,13 +96,8 @@
     private ComicDto? _comic;
     private bool _needsGeneration;
     private bool _isLoading = true;
-    private bool _isSharing = false;
-    private bool _isRegenerating = false;
-    private bool _shareSupported = false;
-    private bool _showCopiedMessage = false;
     private string? _error;
     private string _errorTitle = "Oops!";
-    private Timer? _copiedMessageTimer;
     private Timer? _scoreRevealTimer;
 
     /// <summary>Score currently painted in the ring while it counts up to the real one.</summary>
@@ -167,15 +127,6 @@
         ("🎨", "Drawing the panels..."),
         ("✍️", "Lettering the captions..."),
         ("📮", "Publishing your strip..."),
-    ];
-
-    private static readonly (string Icon, string Label)[] _regenerateSteps =
-    [
-        ("🔍", "Re-reading the reviews..."),
-        ("🧠", "Finding a new angle..."),
-        ("🎨", "Redrawing the panels..."),
-        ("✍️", "Re-lettering the captions..."),
-        ("📮", "Publishing the new take..."),
     ];
 
     // Both recovery cards leave the comic entirely, so they must name the same destination
@@ -226,8 +177,6 @@
             _isLoading = false;
             StartScoreReveal();
         }
-
-        _shareSupported = await ShareService.IsShareSupportedAsync();
     }
 
     /// <summary>
@@ -309,7 +258,6 @@
 
     public ValueTask DisposeAsync()
     {
-        _copiedMessageTimer?.Dispose();
         _scoreRevealTimer?.Dispose();
         return ValueTask.CompletedTask;
     }
@@ -389,99 +337,4 @@
     {
         Navigation.NavigateTo(From == "leaderboard" ? "/leaderboard" : "/");
     }
-
-    private async Task RegenerateComic()
-    {
-        // Every button press is a trusted gesture, which is the only context in which a browser
-        // will let an AudioContext leave 'suspended'.
-        await Fx.UnlockAudioAsync();
-        await Fx.PlayTapAsync();
-
-        _isRegenerating = true;
-        StateHasChanged();
-        try
-        {
-            await LoadComic(forceRegenerate: true);
-        }
-        finally
-        {
-            _isRegenerating = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ShareComic()
-    {
-        if (_comic == null) return;
-
-        _isSharing = true;
-        StateHasChanged();
-
-        try
-        {
-            var currentUrl = Navigation.Uri;
-            var title = $"Strange Review Comic - {_comic.RestaurantName}";
-            var text = $"Check out this weird review comic! Strangeness: {_comic.StrangenessScore}/100 🎨 #PoSeeReview";
-
-            if (_shareSupported)
-            {
-                var outcome = await ShareService.ShareComicAsync(title, text, currentUrl);
-
-                // Cancelling is a decision, not a failure: falling back to a clipboard copy
-                // would hand the user a link they just declined to share.
-                if (outcome == ShareOutcome.Unsupported)
-                {
-                    Logger.LogWarning("Web Share unavailable at call time, copying link instead");
-                    await CopyLinkToClipboard(currentUrl);
-                }
-                else if (outcome == ShareOutcome.Shared)
-                {
-                    // Only on a real completion. Sounding a cancel would reward the one outcome
-                    // the user chose against, and the sheet is still animating away on mobile.
-                    await Fx.PlayShareStingerAsync();
-                }
-            }
-            else
-            {
-                // Fallback to clipboard copy
-                await CopyLinkToClipboard(currentUrl);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error sharing comic");
-            // Silently fail - user experience shouldn't be disrupted
-        }
-        finally
-        {
-            _isSharing = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task CopyLinkToClipboard(string url)
-    {
-        try
-        {
-            await ShareService.CopyToClipboardAsync(url);
-            await Fx.PlayShareStingerAsync();
-            _showCopiedMessage = true;
-            StateHasChanged();
-
-            // Hide message after 3 seconds
-            _copiedMessageTimer?.Dispose();
-            _copiedMessageTimer = new Timer(_ =>
-            {
-                _showCopiedMessage = false;
-                InvokeAsync(StateHasChanged);
-            }, null, 3000, Timeout.Infinite);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error copying to clipboard");
-        }
-    }
-
-
-
 }

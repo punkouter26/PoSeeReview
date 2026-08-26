@@ -7,7 +7,6 @@
 @inject ILogger<Leaderboard> Logger
 @inject ShareService ShareService
 @inject NavigationManager Navigation
-@inject FxService Fx
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
@@ -19,44 +18,15 @@
            Width="PageShell.ShellWidth.Wide"
            Class="leaderboard-container">
 
-    @* Toggle buttons, NOT an ARIA tablist. These were role="tab" inside a role="tablist" with
-       zero tabpanels, no aria-controls, tabindex=0 on all eight, and no arrow-key handling —
-       so a screen reader announced "tab 1 of 8" and the arrow keys every tab user then pressed
-       did nothing. They refilter the list below in place, which is what aria-pressed describes.
-       aria-controls points at the results region so the relationship survives. *@
-    <div class="region-selector">
-        <div class="region-chips" role="group" aria-label="Filter leaderboard by region">
-            @foreach (var (regionCode, flag, label) in _regions)
-            {
-                <button type="button"
-                        class="region-chip @(selectedRegion == regionCode ? "active" : "")"
-                        @onclick="() => SelectRegionAsync(regionCode)"
-                        aria-pressed="@(selectedRegion == regionCode ? "true" : "false")"
-                        aria-controls="@LeaderboardResultsId"
-                        aria-label="@label"
-                        title="@label">
-                    <span class="region-flag" aria-hidden="true">@flag</span>
-                    <span class="region-code" aria-hidden="true">@regionCode</span>
-                </button>
-            }
-        </div>
-
-        <div class="region-controls-row">
-            <label for="limit" class="limit-label">Show:</label>
-            <RadzenDropDown TValue="string" id="limit" @bind-Value="limitStr" Change="@(_ => OnLimitChangedAsync())"
-                            Data="@_limitOptions" TextProperty="Text" ValueProperty="Value"
-                            class="limit-select" aria-label="Number of entries to show" />
-
-            @if (isLoading)
-            {
-                <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" />
-            }
-        </div>
-    </div>
-
     <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
 
-    @if (errorMessage != null)
+    @if (isLoading && (leaderboardEntries == null || leaderboardEntries.Count == 0))
+    {
+        <div class="leaderboard-loading">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (errorMessage != null)
     {
         <div class="alert alert-danger" role="alert">
             @errorMessage
@@ -72,16 +42,13 @@
                 <div class="empty-panel">&#10067;</div>
             </div>
             <h2 class="empty-title">No Weird Stories Yet!</h2>
-            <p class="empty-body">No strange restaurant tales from <strong>@GetRegionName(selectedRegion)</strong> yet.<br />Go discover one — the weirder the better!</p>
+            <p class="empty-body">No strange restaurant tales on the board yet.<br />Go discover one — the weirder the better!</p>
             <a href="/" class="empty-home-btn">&#127968; Find Restaurants Near Me</a>
         </div>
     }
     else
     {
-        @* PageShell renders the page's h1 and each card renders an h3, so the populated branch
-           skipped a level. This heading closes it and gives the results list an accessible name;
-           it is deliberately not painted, because the region chips above already say it. *@
-        <h2 class="visually-hidden">Top @limit strangest restaurants in @GetRegionName(selectedRegion)</h2>
+        <h2 class="visually-hidden">Top 10 strangest restaurants</h2>
 
         @* The server stamps LastUpdated with the request time, so it only ever said "now".
            Report when THIS page last fetched, which is a fact we actually own. *@
@@ -105,19 +72,7 @@
                     </div>
 
                     <div class="comic-thumbnail">
-                        @if (!string.IsNullOrWhiteSpace(entry.ComicBlobUrl))
-                        {
-                            <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
-                        }
-                        else
-                        {
-                            @* Was a plain <div> that said "Tap to redraw" and did nothing. *@
-                            <a href="/comic/@entry.PlaceId?from=leaderboard" class="comic-thumbnail-placeholder"
-                               aria-label="Comic image for @entry.RestaurantName expired — open to redraw it">
-                                <span class="placeholder-icon">🎨</span>
-                                <span class="placeholder-text">Tap to redraw</span>
-                            </a>
-                        }
+                        <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
                     </div>
 
                     <div class="entry-details">
@@ -152,62 +107,16 @@
 </PageShell>
 
 @code {
-    private static readonly (string Code, string Flag, string Label)[] _regions =
-    [
-        ("US", "🇺🇸", "United States"),
-        ("CA", "🇨🇦", "Canada"),
-        ("GB", "🇬🇧", "United Kingdom"),
-        ("AU", "🇦🇺", "Australia"),
-        ("NZ", "🇳🇿", "New Zealand"),
-        ("IE", "🇮🇪", "Ireland"),
-        ("IN", "🇮🇳", "India"),
-        ("SG", "🇸🇬", "Singapore"),
-    ];
-
-    /// <summary>
-    /// Options for the Radzen dropdown, which binds to a data source rather than to child option
-    /// elements the way the previous Fluent select did.
-    /// <para>
-    /// A record CLASS, not a ValueTuple: Radzen resolves TextProperty/ValueProperty by
-    /// reflection over public PROPERTIES, and a tuple exposes Item1/Item2 as fields. Binding a
-    /// tuple threw at render time and surfaced as Blazor's "An unhandled error has occurred".
-    /// </para>
-    /// </summary>
-    private sealed record LimitOption(string Value, string Text);
-
-    private static readonly LimitOption[] _limitOptions =
-    [
-        new("10", "Top 10"),
-        new("25", "Top 25"),
-        new("50", "Top 50"),
-    ];
-
-    /// <summary>DOM id the region chips' <c>aria-controls</c> points at.</summary>
+    /// <summary>DOM id the results live region uses.</summary>
     private const string LeaderboardResultsId = "leaderboard-results";
+    private const int TopTen = 10;
 
     private List<LeaderboardEntryDto>? leaderboardEntries;
-    private string selectedRegion = "US";
-    private int limit = 10;
-    private string limitStr = "10";
     private DateTimeOffset lastLoadedLocal = DateTimeOffset.Now;
     private string? errorMessage;
     private bool isLoading = false;
     private string? shareToast;
     private System.Threading.Timer? shareToastTimer;
-
-    /// <summary>
-    /// Starts the shelf once entries exist, and rebuilds it when the region changes. Three.js is
-    /// ~171KB gzipped and is dynamically imported here — a visitor who never opens the Hall of
-    /// Fame never downloads it.
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (leaderboardEntries is not { Count: > 0 })
-        {
-            return;
-        }
-
-    }
 
     public ValueTask DisposeAsync()
     {
@@ -220,20 +129,6 @@
         
     }
 
-    private async Task OnLimitChangedAsync()
-    {
-        if (int.TryParse(limitStr, out var parsed))
-            limit = parsed;
-        await LoadLeaderboardAsync();
-    }
-
-    private async Task SelectRegionAsync(string code)
-    {
-        if (selectedRegion == code) return;
-        selectedRegion = code;
-        await LoadLeaderboardAsync();
-    }
-
     private async Task LoadLeaderboardAsync()
     {
         isLoading = true;
@@ -241,15 +136,17 @@
 
         try
         {
-            Logger.LogInformation("Fetching leaderboard for region {Region} with limit {Limit}", selectedRegion, limit);
-            
-            var response = await ApiClient.GetLeaderboardAsync(selectedRegion, limit);
+            Logger.LogInformation("Fetching Hall of Fame top {Limit}", TopTen);
+
+            var response = await ApiClient.GetLeaderboardAsync(limit: TopTen);
 
             if (response != null)
             {
-                leaderboardEntries = response.Entries;
+                leaderboardEntries = response.Entries
+                    .Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl))
+                    .ToList();
                 lastLoadedLocal = DateTimeOffset.Now;
-                Logger.LogInformation("Loaded {Count} leaderboard entries", leaderboardEntries.Count);
+                Logger.LogInformation("Loaded {Count} leaderboard entries with comics", leaderboardEntries.Count);
             }
             else
             {
@@ -273,19 +170,6 @@
     private static string GetMedalClass(int rank) => rank switch { 1 => "medal-gold", 2 => "medal-silver", 3 => "medal-bronze", _ => "medal-default" };
 
     private static string GetRankClass(int rank) => rank switch { 1 => "rank-gold", 2 => "rank-silver", 3 => "rank-bronze", _ => "" };
-
-    private string GetRegionName(string region) => region switch
-    {
-        "US" => "the United States",
-        "CA" => "Canada",
-        "GB" => "the United Kingdom",
-        "AU" => "Australia",
-        "NZ" => "New Zealand",
-        "IE" => "Ireland",
-        "IN" => "India",
-        "SG" => "Singapore",
-        _ => region
-    };
 
     private async Task ShareComicAsync(LeaderboardEntryDto entry)
     {
