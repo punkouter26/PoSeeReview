@@ -24,7 +24,7 @@ public class ComicRepository : IComicRepository
         IOptions<AzureStorageOptions> options,
         ILogger<ComicRepository> logger)
     {
-        var tableName = options.Value.ComicsTableName ?? "PoSeeReviewComics";
+        var tableName = options.Value.ComicsTableName;
         _tableClient = tableServiceClient.GetTableClient(tableName);
 
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -92,76 +92,6 @@ public class ComicRepository : IComicRepository
         {
             // Already deleted, ignore
         }
-    }
-
-    /// <summary>
-    /// Deletes a specific comic by Place ID and generation timestamp
-    /// </summary>
-    /// <param name="placeId">Google Maps Place ID</param>
-    /// <param name="generatedAt">Generation timestamp used as RowKey</param>
-    public async Task DeleteAsync(PlaceId placeId, DateTimeOffset generatedAt)
-    {
-        if (placeId.IsEmpty)
-        {
-            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
-        }
-
-        try
-        {
-            // Comics are stored with PartitionKey=ComicEntity.PartitionKeyValue and RowKey=placeId
-            // (see ComicEntity.FromDomain). The generatedAt timestamp is not part of the key.
-            await _tableClient.DeleteEntityAsync(
-                partitionKey: ComicEntity.PartitionKeyValue,
-                rowKey: placeId.Value);
-            _logger.LogInformation(
-                "Deleted comic for PlaceId {PlaceId} generated at {GeneratedAt}",
-                placeId,
-                generatedAt);
-        }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            _logger.LogWarning(
-                ex,
-                "Comic not found for deletion: PlaceId {PlaceId}, GeneratedAt {GeneratedAt}",
-                placeId,
-                generatedAt);
-        }
-    }
-
-    /// <summary>
-    /// Retrieves all comics for a specific place (for takedown requests)
-    /// </summary>
-    /// <param name="placeId">Google Maps Place ID</param>
-    /// <returns>List of all comics for this place</returns>
-    public async Task<IReadOnlyList<Comic>> GetComicsByPlaceIdAsync(PlaceId placeId)
-    {
-        if (placeId.IsEmpty)
-        {
-            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
-        }
-
-        var rowKey = placeId.Value;
-
-        var comics = new List<Comic>();
-
-        // Comics are stored with PartitionKey=ComicEntity.PartitionKeyValue and RowKey=placeId
-        // (see ComicEntity.FromDomain); there is at most one comic per place.
-        var filter = TableClient.CreateQueryFilter<ComicEntity>(entity =>
-            entity.PartitionKey == ComicEntity.PartitionKeyValue && entity.RowKey == rowKey);
-
-        var query = _tableClient.QueryAsync<ComicEntity>(filter: filter);
-
-        await foreach (var entity in query)
-        {
-            comics.Add(entity.ToDomain());
-        }
-
-        _logger.LogInformation(
-            "Retrieved {Count} comic(s) for PlaceId {PlaceId}",
-            comics.Count,
-            placeId);
-
-        return comics;
     }
 
     /// <inheritdoc />

@@ -1,6 +1,8 @@
 using Azure.Data.Tables;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Storage;
 using Microsoft.Extensions.Logging;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Restaurants;
@@ -78,7 +80,7 @@ public class RestaurantServiceIntegrationTests : IAsyncLifetime
         var tableServiceClient = new TableServiceClient(connectionString);
 
         // Setup repository with table storage
-        var restaurantRepository = new RestaurantRepository(tableServiceClient, NullLogger<RestaurantRepository>.Instance);
+        var restaurantRepository = new RestaurantRepository(tableServiceClient, Options.Create(new AzureStorageOptions()), NullLogger<RestaurantRepository>.Instance);
 
         var restaurantLogger = NullLogger<RestaurantService>.Instance;
         _restaurantService = new RestaurantService(

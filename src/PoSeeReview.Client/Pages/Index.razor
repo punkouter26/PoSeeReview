@@ -93,9 +93,6 @@
 
     @if (_restaurants.Count > 0)
     {
-        @* Rapier springs each card around its CSS layout position (FX #10). The grid is a normal
-           grid; physics only ever writes a transform offset, so if the ~580KB module never loads
-           — slow link, Save-Data, a downgraded tier — nothing here changes. *@
         <div class="restaurants-grid">
             <div class="results-chip-bar">
                 <span class="search-chip">
@@ -104,7 +101,7 @@
                 </span>
                 @* Not "comic-ready" any more: the client no longer pre-filters by review
                    count, so this is simply what the search returned. *@
-                <span class="results-count">@_totalCount restaurant@(_totalCount == 1 ? "" : "s") found</span>
+                <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
             </div>
             @foreach (var restaurant in _restaurants)
             {
@@ -133,7 +130,6 @@
     private string _loadingMessage = "Getting your location...";
     private string _errorMessage = string.Empty;
     private List<RestaurantDto> _restaurants = new();
-    private int _totalCount = 0;
     private string _searchQuery = string.Empty;
     private string _searchPlaceholder = "e.g. Seattle, 10001, Chicago";
     private string _lastSearch = string.Empty;
@@ -450,7 +446,6 @@
     private void ClearSearch()
     {
         _restaurants = new();
-        _totalCount = 0;
         _lastSearch = string.Empty;
         _searchQuery = string.Empty;
         _isNavigatingToComic = false;
@@ -466,7 +461,6 @@
         // handled by RestaurantCard, which matches the server's floor.
         _restaurants = restaurants.ToList();
 
-        _totalCount = _restaurants.Count;
         _lastSearch = label;
 
         if (_restaurants.Count == 0)

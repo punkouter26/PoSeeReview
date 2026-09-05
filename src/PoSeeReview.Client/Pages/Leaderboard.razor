@@ -59,10 +59,6 @@
             </RadzenButton>
         </div>
 
-        @* Three.js shelf (FX #8) layered over the list, NOT replacing it. The DOM list below
-           stays the real leaderboard: focusable, in reading order, and announced. A canvas-only
-           3D list would be unreachable by keyboard and invisible to a screen reader, which is
-           not a trade a leaderboard is worth. *@
         <div class="leaderboard-list cq-list">
             @foreach (var entry in leaderboardEntries)
             {

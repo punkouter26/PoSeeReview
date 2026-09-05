@@ -27,7 +27,7 @@ public class LeaderboardRepository : ILeaderboardRepository
     {
         _logger = logger;
 
-        var tableName = options.Value.LeaderboardTableName ?? "PoSeeReviewLeaderboard";
+        var tableName = options.Value.LeaderboardTableName;
         _tableClient = tableServiceClient.GetTableClient(tableName);
     }
 
@@ -235,53 +235,6 @@ public class LeaderboardRepository : ILeaderboardRepository
         {
             // Already deleted, ignore
             _logger.LogDebug("Entry {PlaceId} already deleted from {Region}", placeId, region);
-        }
-    }
-
-    /// <summary>
-    /// Deletes all leaderboard entries for a specific place ID across all regions
-    /// Used for takedown requests
-    /// </summary>
-    public async Task DeleteByPlaceIdAsync(PlaceId placeId)
-    {
-        if (placeId.IsEmpty)
-            throw new ArgumentException("PlaceId cannot be empty", nameof(placeId));
-
-        var placeKey = placeId.Value;
-
-        _logger.LogInformation("Deleting all leaderboard entries for PlaceId {PlaceId}", placeId);
-
-        try
-        {
-            // Query all partitions for this PlaceId
-            var filter = TableClient.CreateQueryFilter<LeaderboardEntity>(
-                e => e.PlaceId == placeKey);
-
-            var query = _tableClient.QueryAsync<LeaderboardEntity>(filter: filter);
-
-            var deleteCount = 0;
-            await foreach (var entity in query)
-            {
-                await _tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
-                deleteCount++;
-                _logger.LogDebug(
-                    "Deleted leaderboard entry for {PlaceId} from region partition {Partition}",
-                    placeId,
-                    entity.PartitionKey);
-            }
-
-            _logger.LogInformation(
-                "Deleted {Count} leaderboard entry/entries for PlaceId {PlaceId}",
-                deleteCount,
-                placeId);
-        }
-        catch (RequestFailedException ex)
-        {
-            _logger.LogError(
-                ex,
-                "Error deleting leaderboard entries for PlaceId {PlaceId}",
-                placeId);
-            throw;
         }
     }
 }

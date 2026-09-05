@@ -15,7 +15,7 @@
     @if (_isLoading)
     {
         <LoadingIndicator Message="Reading the weird stuff..."
-                          Steps="@_comicSteps"
+                          Steps="@_stepDisplay"
                           ActiveStep="@_activeStepIndex" />
     }
     else if (_error != null)
@@ -109,25 +109,22 @@
     private ElementReference _burstCanvas;
     private bool _burstFired;
 
-    // Aligned one-to-one with the phases the API streams. The order here IS the progress
-    // order, so a new pipeline phase must be added in both places or the stepper misreports.
-    private static readonly ComicGenerationPhase[] _phaseOrder =
+    // Aligned one-to-one with the phases the API streams. The order here IS the progress order,
+    // so a new pipeline phase must be added here too or the stepper misreports. Phase and copy
+    // live in one array on purpose: they used to be two coupled only by array index, where
+    // inserting a phase without inserting its icon shifted every step's caption by one.
+    private static readonly (ComicGenerationPhase Phase, string Icon, string Label)[] _comicSteps =
     [
-        ComicGenerationPhase.FetchingReviews,
-        ComicGenerationPhase.AnalyzingStrangeness,
-        ComicGenerationPhase.GeneratingArtwork,
-        ComicGenerationPhase.ComposingStrip,
-        ComicGenerationPhase.Publishing,
+        (ComicGenerationPhase.FetchingReviews, "🔍", "Reading the reviews..."),
+        (ComicGenerationPhase.AnalyzingStrangeness, "🧠", "Scoring the strangeness..."),
+        (ComicGenerationPhase.GeneratingArtwork, "🎨", "Drawing the panels..."),
+        (ComicGenerationPhase.ComposingStrip, "✍️", "Lettering the captions..."),
+        (ComicGenerationPhase.Publishing, "📮", "Publishing your strip..."),
     ];
 
-    private static readonly (string Icon, string Label)[] _comicSteps =
-    [
-        ("🔍", "Reading the reviews..."),
-        ("🧠", "Scoring the strangeness..."),
-        ("🎨", "Drawing the panels..."),
-        ("✍️", "Lettering the captions..."),
-        ("📮", "Publishing your strip..."),
-    ];
+    // The stepper only needs the presentation half; projected once, not per render.
+    private static readonly (string Icon, string Label)[] _stepDisplay =
+        _comicSteps.Select(s => (s.Icon, s.Label)).ToArray();
 
     // Both recovery cards leave the comic entirely, so they must name the same destination
     // GoBack() actually navigates to.
@@ -272,11 +269,11 @@
         try
         {
             // Streamed so the stepper reflects the stage the pipeline is genuinely in. The
-            // reported phase is mapped through _phaseOrder rather than cast, so an unknown
+            // reported phase is mapped through _comicSteps rather than cast, so an unknown
             // phase from a newer API leaves the stepper where it is instead of jumping.
             var progress = new Progress<ComicGenerationPhase>(phase =>
             {
-                var index = Array.IndexOf(_phaseOrder, phase);
+                var index = Array.FindIndex(_comicSteps, s => s.Phase == phase);
                 if (index >= 0)
                 {
                     _activeStepIndex = index;
@@ -289,33 +286,30 @@
         }
         catch (HttpRequestException ex)
         {
-            if (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            (_errorTitle, _error) = ex.StatusCode switch
             {
-                _errorTitle = "No Reviews to Draw From! 📭";
-                _error = "We couldn't find any usable reviews for this restaurant, so there's nothing to build a comic out of. Try another place!";
-            }
-            else if (ex.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity)
-            {
-                _errorTitle = "Too Normal for a Comic! 😌";
-                _error = string.IsNullOrWhiteSpace(ex.Message)
-                    ? "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!"
-                    : ex.Message;
-            }
-            else if (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-            {
-                _errorTitle = "Whoa, Slow Down! 🚦";
-                _error = "You're generating comics faster than we can draw them. Please wait about a minute and try again.";
-            }
-            else if (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                _errorTitle = "Restaurant Not Found";
-                _error = "We couldn't find this restaurant. It might have closed or the Google Maps data is unavailable.";
-            }
-            else
-            {
-                _errorTitle = "Generation Failed";
-                _error = $"Something went wrong while generating the comic. Please try again in a moment. ({ex.Message})";
-            }
+                System.Net.HttpStatusCode.BadRequest => (
+                    "No Reviews to Draw From! 📭",
+                    "We couldn't find any usable reviews for this restaurant, so there's nothing to build a comic out of. Try another place!"),
+
+                System.Net.HttpStatusCode.UnprocessableEntity => (
+                    "Too Normal for a Comic! 😌",
+                    string.IsNullOrWhiteSpace(ex.Message)
+                        ? "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!"
+                        : ex.Message),
+
+                System.Net.HttpStatusCode.TooManyRequests => (
+                    "Whoa, Slow Down! 🚦",
+                    "You're generating comics faster than we can draw them. Please wait about a minute and try again."),
+
+                System.Net.HttpStatusCode.NotFound => (
+                    "Restaurant Not Found",
+                    "We couldn't find this restaurant. It might have closed or the Google Maps data is unavailable."),
+
+                _ => (
+                    "Generation Failed",
+                    $"Something went wrong while generating the comic. Please try again in a moment. ({ex.Message})")
+            };
         }
         catch (Exception ex)
         {

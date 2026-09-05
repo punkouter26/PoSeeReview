@@ -36,14 +36,7 @@ public class ApiClient
             $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
 
-        if (!httpResponse.IsSuccessStatusCode)
-        {
-            var errorBody = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-            var detail = TryExtractProblemDetail(errorBody)
-                ?? $"Nearby restaurant search failed (HTTP {(int)httpResponse.StatusCode}).";
-
-            throw new HttpRequestException(detail, null, httpResponse.StatusCode);
-        }
+        await EnsureSuccessAsync(httpResponse, "Nearby restaurant search failed", cancellationToken);
 
         return await httpResponse.Content.ReadFromJsonAsync(AppJsonContext.Default.NearbyRestaurantsResponse, cancellationToken);
     }
@@ -70,14 +63,7 @@ public class ApiClient
         using var request = await CreateRequestAsync(HttpMethod.Post, url);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = TryExtractProblemDetail(errorBody)
-                ?? $"Comic generation failed (HTTP {(int)response.StatusCode}). Please try again in a moment.";
-
-            throw new HttpRequestException(message, null, response.StatusCode);
-        }
+        await EnsureSuccessAsync(response, "Comic generation failed", cancellationToken, "Please try again in a moment.");
 
         var comic = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
         return comic ?? throw new InvalidOperationException("Comic response was null");
@@ -118,11 +104,7 @@ public class ApiClient
                 return await GenerateComicAsync(placeId, forceRegenerate, cancellationToken);
             }
 
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = TryExtractProblemDetail(errorBody)
-                ?? $"Comic generation failed (HTTP {(int)response.StatusCode}). Please try again in a moment.";
-
-            throw new HttpRequestException(message, null, response.StatusCode);
+            await EnsureSuccessAsync(response, "Comic generation failed", cancellationToken, "Please try again in a moment.");
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -189,14 +171,7 @@ public class ApiClient
             return null;
         }
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = TryExtractProblemDetail(errorBody)
-                ?? $"Comic lookup failed (HTTP {(int)response.StatusCode}).";
-
-            throw new HttpRequestException(message, null, response.StatusCode);
-        }
+        await EnsureSuccessAsync(response, "Comic lookup failed", cancellationToken);
 
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
     }
@@ -213,17 +188,36 @@ public class ApiClient
         using var request = await CreateRequestAsync(HttpMethod.Get, url);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            var message = TryExtractProblemDetail(errorBody)
-                ?? $"Search request failed with status {(int)response.StatusCode}.";
-
-            throw new HttpRequestException(message, null, response.StatusCode);
-        }
+        await EnsureSuccessAsync(response, "Search request failed", cancellationToken);
 
         var payload = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.NearbyRestaurantsResponse, cancellationToken);
         return payload;
+    }
+
+    /// <summary>
+    /// Throws an <see cref="HttpRequestException"/> carrying the API's ProblemDetails
+    /// <c>detail</c> when the response is not a success.
+    /// <para>
+    /// Every call site used to inline this: read body, <see cref="TryExtractProblemDetail"/>,
+    /// throw. The copies had already drifted apart in wording, and two endpoints skipped it
+    /// entirely for <c>EnsureSuccessStatusCode()</c> — which surfaces the framework's opaque
+    /// "net_http_message_not_success_statuscode_reason" text that this helper exists to replace.
+    /// </para>
+    /// </summary>
+    private static async Task EnsureSuccessAsync(
+        HttpResponseMessage response,
+        string fallback,
+        CancellationToken cancellationToken,
+        string? suffix = null)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var message = TryExtractProblemDetail(errorBody)
+            ?? $"{fallback} (HTTP {(int)response.StatusCode}).{(suffix is null ? "" : " " + suffix)}";
+
+        throw new HttpRequestException(message, null, response.StatusCode);
     }
 
     private static string? TryExtractProblemDetail(string? json)
@@ -278,7 +272,7 @@ public class ApiClient
                 HttpMethod.Get,
                 $"/api/leaderboard?region={region}&limit={limit}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
-            response.EnsureSuccessStatusCode();
+            await EnsureSuccessAsync(response, "Leaderboard request failed", cancellationToken);
             return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.LeaderboardResponse, cancellationToken);
         }
         catch (HttpRequestException)
@@ -291,7 +285,7 @@ public class ApiClient
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, "/health");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "Health request failed", cancellationToken);
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HealthStatusDto, cancellationToken);
     }
 
@@ -299,7 +293,7 @@ public class ApiClient
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, "/diag");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessAsync(response, "Diagnostics request failed", cancellationToken);
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DiagnosticsSnapshotDto, cancellationToken);
     }
 

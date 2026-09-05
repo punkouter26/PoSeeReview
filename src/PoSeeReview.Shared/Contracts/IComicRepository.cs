@@ -29,20 +29,6 @@ public interface IComicRepository
     Task DeleteAsync(PlaceId placeId);
 
     /// <summary>
-    /// Deletes a specific comic by place identifier and generation timestamp.
-    /// </summary>
-    /// <param name="placeId">Google Maps place identifier</param>
-    /// <param name="generatedAt">Generation timestamp used as RowKey</param>
-    Task DeleteAsync(PlaceId placeId, DateTimeOffset generatedAt);
-
-    /// <summary>
-    /// Retrieves all comics for a specific place (for takedown requests).
-    /// </summary>
-    /// <param name="placeId">Google Maps place identifier</param>
-    /// <returns>List of all comics for this place</returns>
-    Task<IReadOnlyList<Comic>> GetComicsByPlaceIdAsync(PlaceId placeId);
-
-    /// <summary>
     /// Retrieves a batch of expired comics that should be purged from storage.
     /// </summary>
     /// <param name="cutoff">Expiration threshold (usually DateTimeOffset.UtcNow)</param>

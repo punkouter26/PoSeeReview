@@ -23,21 +23,23 @@ internal sealed class TableStorageInitializer(
     {
         var storageOptions = options.Value;
 
-        var comicsTableName = storageOptions.ComicsTableName ?? "PoSeeReviewComics";
-        var leaderboardTableName = storageOptions.LeaderboardTableName ?? "PoSeeReviewLeaderboard";
-        var restaurantsTableName = storageOptions.RestaurantsTableName ?? "PoSeeReviewRestaurants";
-        var comicsContainerName = storageOptions.ComicsContainerName ?? "comics";
+        string[] tableNames =
+        [
+            storageOptions.ComicsTableName,
+            storageOptions.LeaderboardTableName,
+            storageOptions.RestaurantsTableName
+        ];
 
-        foreach (var tableName in new[] { comicsTableName, leaderboardTableName, restaurantsTableName })
+        foreach (var tableName in tableNames)
         {
             var tableClient = tableServiceClient.GetTableClient(tableName);
             await tableClient.CreateIfNotExistsAsync(cancellationToken);
             logger.LogInformation("Verified table storage table {TableName}", tableName);
         }
 
-        var containerClient = blobServiceClient.GetBlobContainerClient(comicsContainerName);
+        var containerClient = blobServiceClient.GetBlobContainerClient(storageOptions.ComicsContainerName);
         await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
-        logger.LogInformation("Verified blob container {ContainerName}", comicsContainerName);
+        logger.LogInformation("Verified blob container {ContainerName}", storageOptions.ComicsContainerName);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -34,11 +34,13 @@ internal static class ComicsEndpoints
     /// generation fails, so it has to carry the same status in its payload instead of a header,
     /// and both paths must agree on what a 422 means or the UI copy diverges.
     /// </summary>
-    private static (int Status, string Title, string Detail, string TypeUri, string ErrorType) DescribeFailure(Exception ex) => ex switch
+    private static (int Status, string Title, string Detail, string TypeUri, string ErrorType) DescribeFailure(
+        Exception ex,
+        string placeId) => ex switch
     {
         KeyNotFoundException => (
             StatusCodes.Status404NotFound, "Not Found",
-            "Restaurant not found", "https://tools.ietf.org/html/rfc7231#section-6.5.4", "restaurant_not_found"),
+            $"Restaurant not found: {placeId}", "https://tools.ietf.org/html/rfc7231#section-6.5.4", "restaurant_not_found"),
 
         InsufficientReviewsException e => (
             StatusCodes.Status400BadRequest, "Bad Request",
@@ -140,15 +142,9 @@ internal static class ComicsEndpoints
         }
         catch (Exception ex)
         {
-            var (status, title, detail, typeUri, errorType) = DescribeFailure(ex);
+            var (status, title, detail, typeUri, errorType) = DescribeFailure(ex, placeId);
             TrackFailure(errorType, placeId);
             LogFailure(logger, ex, errorType, placeId);
-
-            // The 404 detail names the place; the shared map cannot, since it never sees the id.
-            if (errorType == "restaurant_not_found")
-            {
-                detail = $"Restaurant not found: {placeId}";
-            }
 
             return Results.Problem(
                 type: typeUri,
@@ -245,14 +241,9 @@ internal static class ComicsEndpoints
             }
             catch (Exception ex)
             {
-                var (status, title, detail, _, errorType) = DescribeFailure(ex);
+                var (status, title, detail, _, errorType) = DescribeFailure(ex, placeId);
                 TrackFailure(errorType, placeId);
                 LogFailure(logger, ex, errorType, placeId);
-
-                if (errorType == "restaurant_not_found")
-                {
-                    detail = $"Restaurant not found: {placeId}";
-                }
 
                 events.Writer.TryWrite(new ComicGenerationEventDto
                 {

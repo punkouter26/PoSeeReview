@@ -24,7 +24,7 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
 {
     private const string RoutePrefix = "/comic/";
 
-    public async Task InvokeAsync(HttpContext context, GetCachedComicQueryHandler cachedComics)
+    public async Task InvokeAsync(HttpContext context)
     {
         if (!TryGetPlaceId(context.Request, out var placeId)
             || !SocialCrawlers.IsSocialCrawler(context.Request.Headers.UserAgent.ToString()))
@@ -36,6 +36,12 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
         Comic? comic = null;
         try
         {
+            // Resolved here rather than as an InvokeAsync parameter: UseMiddleware injects those
+            // from RequestServices before the body runs, which would build the entire scoped
+            // comic-generation graph (restaurant service, chat, image and blob clients) for every
+            // request this middleware sees — including every static asset, since it is registered
+            // ahead of UseStaticFiles.
+            var cachedComics = context.RequestServices.GetRequiredService<GetCachedComicQueryHandler>();
             comic = await cachedComics.ExecuteAsync(PlaceId.From(placeId), context.RequestAborted);
         }
         catch (Exception ex)

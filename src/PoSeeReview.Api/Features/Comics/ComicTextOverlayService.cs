@@ -155,28 +155,34 @@ public class ComicTextOverlayService : IComicTextOverlayService
     }
 
     /// <summary>
+    /// The caption font family, resolved once for the process. Only the size varies per panel,
+    /// and <see cref="SystemFonts.Families"/> materialises every installed family on each access —
+    /// that whole scan used to run once per panel, up to four times per comic.
+    /// </summary>
+    private static readonly Lazy<FontFamily> ComicFontFamily = new(() =>
+    {
+        var families = SystemFonts.Families.ToList();
+        if (families.Count == 0)
+            throw new InvalidOperationException("No system fonts available, text overlay will be skipped");
+
+        // Prefer Comic Sans MS, Arial, DejaVu or Liberation; otherwise take whatever is installed.
+        var fontFamily = families.FirstOrDefault(f =>
+            f.Name.Contains("Comic", StringComparison.OrdinalIgnoreCase) ||
+            f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
+            f.Name.Contains("DejaVu", StringComparison.OrdinalIgnoreCase) ||
+            f.Name.Contains("Liberation", StringComparison.OrdinalIgnoreCase));
+
+        return fontFamily.Name != null ? fontFamily : families[0];
+    });
+
+    /// <summary>
     /// Gets a comic-style font for text rendering
     /// </summary>
     private Font GetComicFont(int size)
     {
         try
         {
-            var families = SystemFonts.Families.ToList();
-            if (families.Count == 0)
-            {
-                _logger.LogWarning("No system fonts available, text overlay will be skipped");
-                throw new InvalidOperationException("No fonts available");
-            }
-
-            // Try to use Comic Sans MS, Arial, DejaVu, Liberation, or fall back to first available font
-            var fontFamily = families.FirstOrDefault(f =>
-                f.Name.Contains("Comic", StringComparison.OrdinalIgnoreCase) ||
-                f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
-                f.Name.Contains("DejaVu", StringComparison.OrdinalIgnoreCase) ||
-                f.Name.Contains("Liberation", StringComparison.OrdinalIgnoreCase));
-
-            var selectedFamily = fontFamily.Name != null ? fontFamily : families.First();
-            return selectedFamily.CreateFont(size, FontStyle.Bold);
+            return ComicFontFamily.Value.CreateFont(size, FontStyle.Bold);
         }
         catch (Exception ex)
         {

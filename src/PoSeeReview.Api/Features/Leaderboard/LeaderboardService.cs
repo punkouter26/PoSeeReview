@@ -63,7 +63,7 @@ public class LeaderboardService : ILeaderboardService
 
             // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel
             var sasRefreshTasks = entries
-                .Where(e => IsSasExpiringSoon(e.ComicBlobUrl))
+                .Where(e => SasUrl.IsExpiringSoon(e.ComicBlobUrl))
                 .Select(async entry =>
                 {
                     _logger.LogInformation("Refreshing expired SAS for leaderboard entry {PlaceId}", entry.PlaceId);
@@ -76,7 +76,7 @@ public class LeaderboardService : ILeaderboardService
             // Seeded test URLs (and any non-container link) are left as-is; only `/comics/` paths
             // are ones this app uploaded and can answer Exists for.
             var blobCheckTasks = entries
-                .Where(e => IsHostedComicUrl(e.ComicBlobUrl) && !IsSasExpiringSoon(e.ComicBlobUrl))
+                .Where(e => IsHostedComicUrl(e.ComicBlobUrl) && !SasUrl.IsExpiringSoon(e.ComicBlobUrl))
                 .Select(async entry =>
                 {
                     if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
@@ -211,27 +211,5 @@ public class LeaderboardService : ILeaderboardService
         }
     }
 
-    /// <summary>
-    /// Returns true when a SAS URL's <c>se</c> (signed expiry) parameter is already past or within 2 hours.
-    /// </summary>
-    private static bool IsSasExpiringSoon(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        try
-        {
-            var query = new Uri(url).Query;
-            var seIdx = query.IndexOf("se=", StringComparison.OrdinalIgnoreCase);
-            if (seIdx < 0) return false;
-
-            var seStart = seIdx + 3;
-            var seEnd = query.IndexOf('&', seStart);
-            var seValue = Uri.UnescapeDataString(seEnd >= 0 ? query[seStart..seEnd] : query[seStart..]);
-            return DateTimeOffset.TryParse(seValue, out var expiry)
-                   && expiry < DateTimeOffset.UtcNow.AddHours(2);
-        }
-        catch
-        {
-            return false;
-        }
-    }
 }
+

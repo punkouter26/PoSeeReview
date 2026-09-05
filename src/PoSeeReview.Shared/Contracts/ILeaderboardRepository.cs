@@ -45,10 +45,4 @@ public interface ILeaderboardRepository
     /// <param name="placeId">Google Maps place identifier</param>
     /// <param name="region">Geographic region code</param>
     Task DeleteAsync(PlaceId placeId, RegionCode region);
-
-    /// <summary>
-    /// Deletes all leaderboard entries for a place across every region (takedown requests).
-    /// </summary>
-    /// <param name="placeId">Google Maps place identifier</param>
-    Task DeleteByPlaceIdAsync(PlaceId placeId);
 }

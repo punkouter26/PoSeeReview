@@ -1,5 +1,3 @@
-using System.Collections.Frozen;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Microsoft.ApplicationInsights;
@@ -18,7 +16,7 @@ namespace PoSeeReview.Api.Features.Comics;
 /// Prioritizes 1-star reviews as source material (most interesting stories).
 /// Implements 7-day caching with ExpiresAt validation.
 /// </summary>
-public class ComicGenerationService : IComicGenerationService
+public partial class ComicGenerationService : IComicGenerationService
 {
     private readonly IRestaurantService _restaurantService;
     private readonly IChatCompletionService _chatService;
@@ -91,7 +89,7 @@ public class ComicGenerationService : IComicGenerationService
                 _logger.ReturningCachedComic(placeId.Value);
 
                 // Refresh SAS token if it is expired or within 2 hours of expiry
-                if (IsSasExpiringSoon(cachedComic.ImageUrl))
+                if (SasUrl.IsExpiringSoon(cachedComic.ImageUrl, treatUnsignedAzureUrlAsStale: true))
                 {
                     _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
                     cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);
@@ -274,16 +272,15 @@ public class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
-    /// FrozenSet of normalized profanity keywords — allocated once at startup,
-    /// ~30% faster lookup than HashSet with zero per-call allocation.
+    /// The profanity filter, as one alternation. These keywords used to be matched in a loop of
+    /// interpolated patterns: 16 keywords against a process-wide <see cref="Regex"/> cache that
+    /// holds 15, so the LRU evicted on every pass — every keyword was re-parsed for every review,
+    /// and other callers' patterns were evicted along with them. Generated at build time now.
     /// </summary>
-    private static readonly FrozenSet<string> InappropriateKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "fuck", "shit", "ass", "bitch",
-        "bastard", "piss", "slut", "whore",
-        "damn", "crap", "hell", "dick", "cock",
-        "penis", "vagina", "anus"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    [GeneratedRegex(
+        @"\b(?:fuck|shit|ass|bitch|bastard|piss|slut|whore|damn|crap|hell|dick|cock|penis|vagina|anus)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex InappropriateContentRegex();
 
     /// <summary>
     /// Filters out reviews containing inappropriate language or content.
@@ -325,13 +322,7 @@ public class ComicGenerationService : IComicGenerationService
         var normalized = NormalizeLeetSpeak(
             review.Normalize(System.Text.NormalizationForm.FormC));
 
-        foreach (var keyword in InappropriateKeywords)
-        {
-            if (Regex.IsMatch(normalized, $@"\b{Regex.Escape(keyword)}\b", RegexOptions.IgnoreCase))
-                return true;
-        }
-
-        return false;
+        return InappropriateContentRegex().IsMatch(normalized);
     }
 
     /// <summary>
@@ -386,42 +377,6 @@ public class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
-    /// Returns true when a comic URL needs its read SAS refreshed: either the SAS `se`
-    /// (signed expiry) is already past or within 2 hours, or the URL points at a private
-    /// Azure Blob endpoint with no SAS token at all. The latter self-heals URLs that were
-    /// persisted unsigned — e.g. a transient User Delegation SAS failure at write time left
-    /// a bare "https://{account}.blob.core.windows.net/..." URL that a private container
-    /// rejects (broken image). Azurite/local emulator URLs are signed with an account key
-    /// and never hit that branch, so they are left alone.
-    /// </summary>
-    private static bool IsSasExpiringSoon(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return false;
-        try
-        {
-            var uri = new Uri(url);
-            var query = uri.Query;
-            var seIdx = query.IndexOf("se=", StringComparison.OrdinalIgnoreCase);
-            if (seIdx < 0)
-            {
-                // No SAS token. Refresh only for real Azure Blob URLs (private container needs
-                // a SAS to be readable); skip Azurite/other hosts which sign a different way.
-                return uri.Host.EndsWith(".blob.core.windows.net", StringComparison.OrdinalIgnoreCase);
-            }
-
-            var seStart = seIdx + 3;
-            var seEnd = query.IndexOf('&', seStart);
-            var seValue = Uri.UnescapeDataString(seEnd >= 0 ? query[seStart..seEnd] : query[seStart..]);
-            return DateTimeOffset.TryParse(seValue, out var expiry)
-                   && expiry < DateTimeOffset.UtcNow.AddHours(2);
-        }
-        catch
-        {
-            return false; // Malformed URL: leave it to the caller rather than churn refreshes
-        }
-    }
-
-    /// <summary>
     /// Gets cached comic for a restaurant if it exists and hasn't expired
     /// </summary>
     public async Task<Comic?> GetCachedComicAsync(PlaceId placeId, CancellationToken cancellationToken = default)
@@ -435,7 +390,7 @@ public class ComicGenerationService : IComicGenerationService
         {
             _logger.LogInformation("Found valid cached comic for placeId: {PlaceId}", placeId);
 
-            if (IsSasExpiringSoon(cachedComic.ImageUrl))
+            if (SasUrl.IsExpiringSoon(cachedComic.ImageUrl, treatUnsignedAzureUrlAsStale: true))
             {
                 _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
                 cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);

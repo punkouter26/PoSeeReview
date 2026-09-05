@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using PoSeeReview.Api.Features.Comics;
@@ -54,7 +55,12 @@ public class SocialPreviewMiddlewareTests
     private static Task RunAsync(Comic? comic, DefaultHttpContext context, Action onNext)
     {
         var (middleware, handler) = Build(comic, onNext);
-        return middleware.InvokeAsync(context, handler);
+        // The middleware resolves the handler from RequestServices rather than taking it as an
+        // InvokeAsync parameter, so the crawler guard can short-circuit before that graph is built.
+        context.RequestServices = new ServiceCollection()
+            .AddSingleton(handler)
+            .BuildServiceProvider();
+        return middleware.InvokeAsync(context);
     }
 
     private static Comic LiveComic(string restaurantName = "The Owl Cafe", string narrative = "An owl judged the soup.") => new()

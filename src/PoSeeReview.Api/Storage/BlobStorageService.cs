@@ -31,7 +31,7 @@ public class BlobStorageService : IBlobStorageService
     {
         _blobServiceClient = blobServiceClient;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _containerName = options.Value.ComicsContainerName ?? "comics";
+        _containerName = options.Value.ComicsContainerName;
     }
 
     /// <summary>
@@ -106,17 +106,7 @@ public class BlobStorageService : IBlobStorageService
 
         try
         {
-            var uri = new Uri(blobUrl);
-            var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-
-            // Extract blob name from URL path (skip container name)
-            var pathParts = uri.AbsolutePath.TrimStart('/').Split('/');
-            if (pathParts.Length >= 2)
-            {
-                var blobName = string.Join("/", pathParts.Skip(1));
-                var blobClientFromUrl = containerClient.GetBlobClient(blobName);
-                await blobClientFromUrl.DeleteIfExistsAsync();
-            }
+            await ResolveBlobClient(blobUrl).DeleteIfExistsAsync();
         }
         catch (Exception ex)
         {
@@ -131,15 +121,7 @@ public class BlobStorageService : IBlobStorageService
         if (string.IsNullOrWhiteSpace(blobUrl)) return false;
         try
         {
-            var uri = new Uri(blobUrl);
-            var pathParts = uri.AbsolutePath.TrimStart('/').Split('/');
-            var blobName = pathParts.Length >= 2
-                ? string.Join("/", pathParts.Skip(1))
-                : pathParts[0];
-
-            var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-            var blobClient = containerClient.GetBlobClient(blobName);
-            return (await blobClient.ExistsAsync()).Value;
+            return (await ResolveBlobClient(blobUrl).ExistsAsync()).Value;
         }
         catch
         {
@@ -153,17 +135,22 @@ public class BlobStorageService : IBlobStorageService
         if (string.IsNullOrWhiteSpace(existingBlobUrl))
             throw new ArgumentNullException(nameof(existingBlobUrl));
 
-        // Strip query string to get the bare blob URL, then extract blob name from path
-        var uri = new Uri(existingBlobUrl);
-        var pathParts = uri.AbsolutePath.TrimStart('/').Split('/');
-        // pathParts[0] = container name, rest = blob name (may include virtual dirs)
+        return GenerateReadSasUrlAsync(ResolveBlobClient(existingBlobUrl));
+    }
+
+    /// <summary>
+    /// Resolves a blob URL (with or without a SAS query string) to a client in the comics
+    /// container. The path is <c>/{container}/{blob}</c>, where the blob part may contain virtual
+    /// directories; a single-segment path is treated as a bare blob name.
+    /// </summary>
+    private BlobClient ResolveBlobClient(string blobUrl)
+    {
+        var pathParts = new Uri(blobUrl).AbsolutePath.TrimStart('/').Split('/');
         var blobName = pathParts.Length >= 2
             ? string.Join("/", pathParts.Skip(1))
             : pathParts[0];
 
-        var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        var blobClient = containerClient.GetBlobClient(blobName);
-        return GenerateReadSasUrlAsync(blobClient);
+        return _blobServiceClient.GetBlobContainerClient(_containerName).GetBlobClient(blobName);
     }
 
     /// <summary>

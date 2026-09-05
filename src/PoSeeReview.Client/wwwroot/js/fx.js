@@ -37,7 +37,7 @@ async function guardAsync(fn, fallback = null) {
 
 const info = gfx.init();
 audio.init();
-const transitionInfo = viewTransitions.init();
+viewTransitions.init();
 
 // Reflected onto <html> so CSS can respond to the tier — this is how the glass material knows
 // whether it is allowed to spend GPU time on a backdrop blur.
@@ -88,7 +88,6 @@ export const fx = {
     stopLoadingRing: (id) => guard(() => loadingRing.stop(id)),
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
-    viewTransitionsEnabled: () => transitionInfo.enabled,
     /** Called after the destination route renders, to close the open transition. */
     settleViewTransition: () => guard(() => viewTransitions.settle())
 

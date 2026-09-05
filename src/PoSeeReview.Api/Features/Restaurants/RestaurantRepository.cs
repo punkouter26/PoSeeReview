@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Azure.Data.Tables;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
@@ -20,8 +21,9 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
 
     public RestaurantRepository(
         TableServiceClient tableServiceClient,
+        IOptions<AzureStorageOptions> options,
         ILogger<RestaurantRepository> logger)
-        : base(tableServiceClient, "PoSeeReviewRestaurants", logger)
+        : base(tableServiceClient, options.Value.RestaurantsTableName, logger)
     {
         _logger = logger;
     }

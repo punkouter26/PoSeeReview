@@ -13,7 +13,7 @@ public enum FxTier
     /// <summary>Audio and CSS materials, but no persistent GPU loop.</summary>
     Lite = 1,
 
-    /// <summary>Everything, including the lazily-loaded 3D and physics scenes.</summary>
+    /// <summary>Everything, including the persistent WebGL shader loops.</summary>
     Full = 2
 }
 

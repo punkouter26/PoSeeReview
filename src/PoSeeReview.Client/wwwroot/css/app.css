@@ -606,12 +606,6 @@
         color: var(--color-brand-ink);
     }
 
-    /* Amber surface with dark ink — the pairing that makes the accent usable at 7.64:1. */
-    .btn-accent {
-        background: var(--color-accent);
-        color: var(--color-on-accent);
-    }
-
     /* ── Icon button ─────────────────────────────────────────────────────────────────────────
        Small glyph controls (a chip's ×, a dismiss) still need a 44px hit area. The visual box
        stays small; the target is expanded with a pseudo-element so layout is unaffected. */
@@ -660,12 +654,6 @@
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger);
         color: var(--color-danger-text);
-    }
-
-    .alert-success {
-        background: var(--color-success-surface);
-        border: 1px solid var(--color-success);
-        color: var(--color-success-text);
     }
 
     /* ── Error / empty state ─────────────────────────────────────────────────────────────────
@@ -806,18 +794,6 @@
     /* ── Blazor framework UI ─────────────────────────────────────────────────────────────── */
     h1:focus {
         outline: none;
-    }
-
-    .valid.modified:not([type=checkbox]) {
-        outline: 1px solid var(--color-success-ink);
-    }
-
-    .invalid {
-        outline: 1px solid var(--color-danger);
-    }
-
-    .validation-message {
-        color: var(--color-danger-ink);
     }
 
     #blazor-error-ui {

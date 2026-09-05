@@ -5,30 +5,6 @@
     /* intentionally empty of layout — see PageShell */
 }
 
-.leaderboard-header {
-    text-align: center;
-    margin-bottom: 2rem;
-    padding: clamp(1.5rem, 4vw, 2.5rem) 1rem;
-    background: var(--gradient-hero);
-    border-radius: 16px;
-    color: var(--color-on-dark);
-}
-
-.leaderboard-header h1 {
-    font-family: var(--font-display, 'Bangers', cursive);
-    font-size: clamp(2.5rem, 6vw, 4rem);
-    letter-spacing: 0.04em;
-    color: var(--color-on-dark);
-    margin-bottom: 0.5rem;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.25);
-}
-
-.subtitle {
-    font-size: 1rem;
-    color: color-mix(in srgb, var(--color-on-dark) 80%, transparent);
-    margin: 0;
-}
-
 .leaderboard-loading {
     display: flex;
     justify-content: center;
@@ -400,8 +376,3 @@
         flex: 1;
     }
 }
-    
-
-/* === Three.js shelf host (FX #8) ===
-   The canvas is appended here by hall-shelf.js and stretched over the list. The DOM cards
-   underneath stay the real, focusable leaderboard — see the comment in Leaderboard.razor. */

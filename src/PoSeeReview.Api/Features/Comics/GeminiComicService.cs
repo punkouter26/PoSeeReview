@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -13,7 +14,7 @@ namespace PoSeeReview.Api.Features.Comics;
 /// Requires <c>Google:GeminiApiKey</c> in configuration (stored as "PoSeeReview--Google--GeminiApiKey" in Key Vault).
 /// Model must expose <c>generateContent</c>; the Imagen <c>predict</c> family is not available on this key.
 /// </summary>
-public sealed class GeminiComicService : IImageGenerationService
+public sealed partial class GeminiComicService : IImageGenerationService
 {
     // Verified against ListModels for this project's key on 2026-08-25: NO model exposes the
     // Imagen ":predict" method any more, which is why every generation was failing with
@@ -187,30 +188,19 @@ public sealed class GeminiComicService : IImageGenerationService
         throw new InvalidOperationException("Gemini returned no image data for this prompt.");
     }
 
-    private static string SanitizeNarrative(string narrative)
-    {
-        string[] flaggedPatterns =
-        [
-            "blood", "bloody", "kill", "murder", "dead", "death", "die", "dying",
-            "gun", "shoot", "weapon", "knife", "stab", "fight", "attack",
-            "drug", "cocaine", "heroin", "meth",
-            "naked", "nude", "sex", "sexual",
-            "hate", "racist", "racial",
-            "vomit", "puke", "disgusting",
-            "roach", "cockroach", "rat", "mice", "vermin",
-            "poison", "toxic", "contaminated"
-        ];
+    /// <summary>
+    /// Blunts terms Imagen's safety filter rejects. This was 37 separate
+    /// <see cref="Regex"/>.Replace passes — 37 interpolated patterns and 37 full-string rewrites
+    /// per image, thrashing a process-wide pattern cache that holds 15. One generated alternation,
+    /// one pass.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(?:blood|bloody|kill|murder|dead|death|die|dying|gun|shoot|weapon|knife|stab|fight|attack|drug|cocaine|heroin|meth|naked|nude|sex|sexual|hate|racist|racial|vomit|puke|disgusting|roach|cockroach|rat|mice|vermin|poison|toxic|contaminated)\w*\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex FlaggedTermRegex();
 
-        var sanitized = narrative;
-        foreach (var pattern in flaggedPatterns)
-        {
-            sanitized = System.Text.RegularExpressions.Regex.Replace(
-                sanitized, $@"\b{pattern}\w*\b", "unusual",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        }
-
-        return sanitized;
-    }
+    private static string SanitizeNarrative(string narrative) =>
+        FlaggedTermRegex().Replace(narrative, "unusual");
 
     private static string BuildComicPrompt(string narrative, int panelCount)
     {

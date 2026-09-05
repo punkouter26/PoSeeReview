@@ -183,7 +183,7 @@ only endpoint that spends money. Notes:
   BCL `Progress<T>` has no SynchronizationContext here and would post callbacks to the thread pool,
   racing the completion write.
 - `ComicGenerationPhase` members map 1:1 to real pipeline steps and are ordered by
-  `ComicView._phaseOrder`. Add a phase in both places or the stepper misreports.
+  `ComicView._comicSteps`. Add a phase in both places or the stepper misreports.
 - The client falls back to the plain POST **only** on 404/405 — a status that proves nothing ran.
   A mid-stream failure is surfaced, not retried, because a retry pays for the same comic twice.
 - App Service's proxy may still buffer the whole response despite `X-Accel-Buffering: no`. That
@@ -358,3 +358,25 @@ script no longer asserts on it.
 - Shared `.btn`/`.btn-primary`/`.btn-secondary`/`.alert*` primitives belong in `app.css`, not in
   scoped page CSS. Scoped sheets load after `app.css` and carry a `[b-*]` attribute, so a page-level
   redefinition silently wins — that is how Diagnostics and the Hall of Fame drifted apart.
+
+## Working rules (NET_AGENTS)
+
+These govern how the agent operates in this repo, not how the code is written.
+
+- **`master` only.** Do all work on `master`. Use another branch only when explicitly asked to.
+- **Restart and verify after every code change.** Stop the app, start it again
+  (`dotnet run --project src/PoSeeReview.Api --launch-profile https`, or the
+  `start-api-clean` VS Code task), and confirm it actually came up before reporting done.
+  Config/appsettings/Key Vault changes need a full restart — `dotnet watch` will not pick them up.
+- **Read [docs/](docs/) first** for the project overview, when it exists. The generated reports
+  were cleared out and are due to be rebuilt; until then this file and [README.md](README.md) are
+  the authoritative overview, so do not assume `docs/index.html` is there to read.
+- **No `dotnet user-secrets`.** Non-secret config goes in `appsettings*.json`; real secrets go in
+  Key Vault `kv-poshared` under the `PoSeeReview--` prefix. The one existing exception is
+  `Takedowns:ApiKey` for local dev — it is a live credential, so it must never land in an
+  appsettings file that is committed.
+- **Never push to remote unless asked.** Committing locally is fine; `git push` is not, until the
+  user says so.
+- **On "git sync": commit and push.** Short American-slang message that reads like a human wrote it
+  ("fixed the busted nav", "cleaned up that css mess"), then push.
+- **TL;DR any answer over 100 words** with a ~20-word summary at the end.
