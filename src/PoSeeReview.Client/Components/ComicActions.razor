@@ -1,0 +1,203 @@
+@* The comic page's action bar.
+
+   This is the whole reason the app exists and it was missing: the payoff screen rendered a
+   score and an image and offered nothing to do with either. Share lived only on the Hall of
+   Fame, and ApiClient.GenerateComicAsync(forceRegenerate: true) had no caller at all.
+
+   Share is first and visually dominant — for the Content Creator persona it is the entire
+   product — and Regenerate is deliberately last and confirmed, because it is the only control
+   here that spends money. *@
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@using Microsoft.JSInterop
+@implements IDisposable
+@inject ShareService ShareService
+@inject AnalyticsService Analytics
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<div class="comic-actions" role="group" aria-label="Comic actions">
+    <button type="button" class="btn btn-primary action-share" @onclick="ShareAsync" disabled="@_isBusy">
+        <span aria-hidden="true">📤</span> Share
+    </button>
+
+    <button type="button" class="btn btn-secondary" @onclick="SaveAsync" disabled="@_isBusy">
+        <span aria-hidden="true">💾</span> Save image
+    </button>
+
+    <button type="button" class="btn btn-secondary" @onclick="OpenInMapsAsync">
+        <span aria-hidden="true">📍</span> Open in Maps
+    </button>
+
+    @if (OnRegenerate.HasDelegate)
+    {
+        @if (_confirmingRegenerate)
+        {
+            @* A second, explicit step. A regenerate costs a real image-model call and burns one
+               of the user's daily generations, so it must not be a single mis-tap away from a
+               comic they are currently happy with. *@
+            <div class="regenerate-confirm" role="alert">
+                <span class="regenerate-warning">Draw a brand new comic? This uses one of today's generations.</span>
+                <div class="regenerate-confirm-actions">
+                    <button type="button" class="btn btn-primary" @onclick="ConfirmRegenerateAsync">Yes, redraw</button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => _confirmingRegenerate = false">Cancel</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <button type="button" class="btn btn-secondary"
+                    @onclick="() => _confirmingRegenerate = true"
+                    disabled="@(!CanRegenerate)"
+                    title="@RegenerateTitle">
+                <span aria-hidden="true">🎲</span> Redraw
+            </button>
+        }
+    }
+
+    <button type="button" class="btn btn-icon action-report" @onclick="OnReport" title="Report this comic" aria-label="Report this comic">
+        <span aria-hidden="true">⚑</span>
+    </button>
+</div>
+
+@if (_toast is not null)
+{
+    <div class="toast" role="status">@_toast</div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public ComicDto Comic { get; set; } = default!;
+
+    /// <summary>Raised when the user confirms a redraw. Omit to hide the control entirely.</summary>
+    [Parameter]
+    public EventCallback OnRegenerate { get; set; }
+
+    /// <summary>Raised when the user opens the report flow.</summary>
+    [Parameter]
+    public EventCallback OnReport { get; set; }
+
+    /// <summary>
+    /// The caller's daily budget, when known. Null means "unknown", which is treated as
+    /// allowed — a failed budget read must never lock the app's primary action.
+    /// </summary>
+    [Parameter]
+    public GenerationBudgetDto? Budget { get; set; }
+
+    private bool _isBusy;
+    private bool _confirmingRegenerate;
+    private string? _toast;
+    private Timer? _toastTimer;
+
+    private bool CanRegenerate => Budget?.CanGenerate ?? true;
+
+    private string RegenerateTitle => Budget switch
+    {
+        { ServiceHasCapacity: false } => "PoSeeReview is at its daily drawing limit. Try again after midnight UTC.",
+        { Remaining: <= 0 } => "You have used all of today's comic generations.",
+        { Remaining: var remaining } => $"Draw a new comic ({remaining} left today)",
+        _ => "Draw a new comic"
+    };
+
+    private async Task ShareAsync()
+    {
+        _isBusy = true;
+
+        try
+        {
+            // The canonical comic URL, not the current one: the page may carry a ?from= or
+            // ?generate= that would make a shared link re-run the flow for whoever opens it.
+            var url = Navigation.ToAbsoluteUri($"/comic/{Comic.PlaceId}").ToString();
+            var text = $"{Comic.RestaurantName} scored {Comic.StrangenessScore}/100 on the strangeness scale. Look at this.";
+
+            var outcome = await ShareService.ShareComicAsync(Comic.RestaurantName, text, url);
+
+            switch (outcome)
+            {
+                case ShareOutcome.Shared:
+                    Analytics.Track(FunnelSteps.ComicShared);
+                    ShowToast("Shared!");
+                    break;
+
+                case ShareOutcome.Cancelled:
+                    // The user closed the sheet. Doing anything here — including a "copied
+                    // instead" fallback — overrides a decision they just made.
+                    break;
+
+                case ShareOutcome.Unsupported:
+                    await ShareService.CopyToClipboardAsync(url);
+                    Analytics.Track(FunnelSteps.ComicShared);
+                    ShowToast("Link copied to clipboard");
+                    break;
+            }
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _isBusy = true;
+
+        try
+        {
+            // Routed through the app's own origin by shareUtils.saveComic — a cross-origin
+            // download attribute is ignored by every browser, and the blob host sends no CORS.
+            var saved = await JS.InvokeAsync<bool>("shareUtils.saveComic", Comic.PlaceId);
+
+            if (saved)
+            {
+                Analytics.Track(FunnelSteps.ComicSaved);
+                ShowToast("Saved to your device");
+            }
+            else
+            {
+                ShowToast("Couldn't save that one — try long-pressing the comic instead.");
+            }
+        }
+        catch (JSException)
+        {
+            ShowToast("Couldn't save that one — try long-pressing the comic instead.");
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task OpenInMapsAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("shareUtils.openInMaps", Comic.PlaceId, Comic.RestaurantName);
+        }
+        catch (JSException)
+        {
+            ShowToast("Couldn't open Maps.");
+        }
+    }
+
+    private async Task ConfirmRegenerateAsync()
+    {
+        _confirmingRegenerate = false;
+        await OnRegenerate.InvokeAsync();
+    }
+
+    private void ShowToast(string message)
+    {
+        _toast = message;
+        _toastTimer?.Dispose();
+
+        _toastTimer = new Timer(_ => InvokeAsync(() =>
+        {
+            _toast = null;
+            StateHasChanged();
+        }), null, ToastDurationMs, Timeout.Infinite);
+    }
+
+    private const int ToastDurationMs = 3000;
+
+    public void Dispose() => _toastTimer?.Dispose();
+}

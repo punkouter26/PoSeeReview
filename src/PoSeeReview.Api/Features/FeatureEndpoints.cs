@@ -1,8 +1,11 @@
+using PoSeeReview.Api.Features.Analytics;
 using PoSeeReview.Api.Features.Auth;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.DevSessions;
 using PoSeeReview.Api.Features.Diagnostics;
 using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Features.Reactions;
+using PoSeeReview.Api.Features.Reports;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Api.Features.Takedowns;
 
@@ -21,6 +24,9 @@ internal static class FeatureEndpoints
         app.MapLeaderboardEndpoints();
         app.MapDevSessionEndpoints();
         app.MapTakedownEndpoints();
+        app.MapReportEndpoints();
+        app.MapReactionEndpoints();
+        app.MapAnalyticsEndpoints();
         app.MapDiagnosticsEndpoints();
         return app;
     }

@@ -404,3 +404,35 @@
 }
 
 /* === end of styles === */
+
+/* ── Results controls ────────────────────────────────────────────────────────────────────────
+   Sort chips are the shared `.chip-toggle` primitive (app.css); only the row layout is here.
+   Sorting is client-side over results already fetched, so switching is instant and costs no
+   Maps quota. */
+.results-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-md);
+}
+
+.sort-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3xs);
+}
+
+.surprise-btn {
+    padding-inline: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+@media (max-width: 40rem) {
+    /* The chips keep their row; Surprise Me takes the next one in full so it stays an obvious,
+       thumb-sized target rather than a squeezed remnant. */
+    .surprise-btn {
+        flex: 1 1 100%;
+    }
+}

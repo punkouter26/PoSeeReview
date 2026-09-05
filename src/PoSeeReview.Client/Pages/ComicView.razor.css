@@ -182,3 +182,48 @@
         display: none;
     }
 }
+
+/* ── Narrative + disclosure ──────────────────────────────────────────────────────────────── */
+
+/* The narrative was already on the DTO and rendered nowhere. It is the one piece of writing the
+   pipeline produces, and it explains the score the ring shows. */
+.comic-narrative {
+    margin-top: var(--space-lg);
+    font-size: var(--text-lg);
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+}
+
+/* AI provenance sits with the comic rather than in a page footer: the strip names a real
+   business and reads as a claim about it, so the disclaimer has to be where the claim is. */
+.comic-disclosure {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-border);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+/* A button that reads as a link. Real <button> for semantics — this triggers a dialog, it does
+   not navigate, and an <a href="#"> here would be a lie to a screen reader. */
+.link-button {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-brand-ink);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.link-button:hover {
+    color: var(--color-brand);
+}
+
+/* Stated before the tap that spends a generation, not after the 429 that refuses it. */
+.budget-note {
+    margin-bottom: var(--space-sm);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-warning-text);
+}

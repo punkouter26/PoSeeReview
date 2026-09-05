@@ -30,6 +30,7 @@ public sealed class TakedownsEndpointValidationTests
     private readonly Mock<IComicRepository> _mockComicRepository = new();
     private readonly Mock<IBlobStorageService> _mockBlobStorageService = new();
     private readonly Mock<ILeaderboardRepository> _mockLeaderboardRepository = new();
+    private readonly Mock<IHallOfFameArchive> _mockHallOfFameArchive = new();
     private readonly Mock<ILogger<TakedownRequestDto>> _mockLogger = new();
     private readonly TelemetryClient _telemetryClient = new(new TelemetryConfiguration { DisableTelemetry = true });
 
@@ -40,6 +41,7 @@ public sealed class TakedownsEndpointValidationTests
             _mockComicRepository.Object,
             _mockBlobStorageService.Object,
             _mockLeaderboardRepository.Object,
+            _mockHallOfFameArchive.Object,
             _mockLogger.Object,
             _telemetryClient,
             CancellationToken.None);

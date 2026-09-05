@@ -270,3 +270,36 @@
         border: 1.5px solid currentColor;
     }
 }
+
+/* ── My Comics ───────────────────────────────────────────────────────────────────────────────
+   Lives in the right-hand session zone, not in nav.nav-links: it is per-user state, and the
+   primary nav is contractually two items (HeaderContractUiTests asserts exactly that).
+   Colour comes from the on-dark tokens because this bar is dark in BOTH themes. */
+.nav-mycomics {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
+    min-height: var(--tap-target);
+    padding: var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius-pill);
+    color: var(--color-on-dark-secondary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.nav-mycomics:hover,
+.nav-mycomics.active {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--color-on-dark);
+    text-decoration: none;
+}
+
+/* On a phone the label is dropped and the glyph carries it — the session zone already competes
+   with the brand and the sign-out control for a very narrow bar. */
+@media (max-width: 48rem) {
+    .nav-mycomics-label {
+        display: none;
+    }
+}

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline — PoSeeReview</title>
+    <!--
+        Deliberately self-contained. This page is served when the network is gone, which is
+        exactly when a <link> to app.css may not resolve — an offline page that depends on
+        another fetch is an offline page that renders unstyled.
+    -->
+    <style>
+        :root { color-scheme: light dark; }
+
+        body {
+            margin: 0;
+            min-height: 100dvh;
+            display: grid;
+            place-content: center;
+            gap: 1rem;
+            padding: 2rem;
+            text-align: center;
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            background: #F8F7FF;
+            color: #1e1e2e;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            body { background: #12101A; color: #ECEAF5; }
+            .panel { background: #1C1926; border-color: #2C2838; }
+        }
+
+        .panels { display: flex; gap: .5rem; justify-content: center; }
+
+        .panel {
+            width: 3rem;
+            height: 3rem;
+            display: grid;
+            place-content: center;
+            font-size: 1.5rem;
+            background: #fff;
+            border: 1px solid #C9C9DC;
+            border-radius: .5rem;
+        }
+
+        h1 { font-size: 1.5rem; margin: 0; }
+        p { margin: 0; max-width: 26rem; color: #555; }
+        @media (prefers-color-scheme: dark) { p { color: #B4AFC6; } }
+
+        button {
+            justify-self: center;
+            min-height: 2.75rem;
+            padding: .75rem 1.5rem;
+            border: none;
+            border-radius: 999px;
+            background: linear-gradient(135deg, #7C3AED 0%, #3B1078 100%);
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="panels">
+        <div class="panel">📡</div>
+        <div class="panel">🍽️</div>
+        <div class="panel">❓</div>
+        <div class="panel">💤</div>
+    </div>
+    <h1>You're offline</h1>
+    <p>
+        PoSeeReview needs a connection to read reviews and draw comics.
+        Comics you have already opened may still be available once you're back.
+    </p>
+    <button type="button" onclick="location.reload()">Try again</button>
+</body>
+</html>

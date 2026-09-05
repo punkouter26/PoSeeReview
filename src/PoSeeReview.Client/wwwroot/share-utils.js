@@ -78,6 +78,70 @@ window.shareUtils = {
     },
 
     /**
+     * Save a comic image to the user's device.
+     *
+     * Downloads through the app's OWN origin (/api/comics/{placeId}/image) rather than the blob
+     * URL the page displays. Two browser rules make that necessary: the `download` attribute is
+     * ignored on a cross-origin href (the browser navigates to the image instead of saving it),
+     * and Blob Storage sends no CORS headers, so fetching it into an object URL fails outright.
+     * Same-origin bytes sidestep both.
+     *
+     * @param {string} placeId - Google Maps place id of the comic
+     * @returns {Promise<boolean>} True when the save was handed to the browser
+     */
+    saveComic: async function (placeId) {
+        if (!placeId) {
+            return false;
+        }
+
+        try {
+            const response = await fetch(`/api/comics/${encodeURIComponent(placeId)}/image`, {
+                credentials: 'same-origin'
+            });
+
+            if (!response.ok) {
+                return false;
+            }
+
+            // The server sets Content-Disposition with a real filename; honouring it here keeps
+            // one source of truth for what the file is called.
+            const disposition = response.headers.get('Content-Disposition') || '';
+            const match = /filename="?([^";]+)"?/i.exec(disposition);
+            const filename = match ? match[1] : 'poseereview-comic.png';
+
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Revoked on a later tick: revoking synchronously can cancel the download in some
+            // browsers before it has read the blob.
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+            return true;
+        } catch (error) {
+            console.error('Error saving comic:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Open a restaurant on Google Maps by its place id.
+     * @param {string} placeId
+     * @param {string} name - Used as the query text, which is what makes the pin resolve
+     *                        when a place id is stale.
+     */
+    openInMaps: function (placeId, name) {
+        const query = encodeURIComponent(name || '');
+        const url = `https://www.google.com/maps/search/?api=1&query=${query}&query_place_id=${encodeURIComponent(placeId || '')}`;
+        window.open(url, '_blank', 'noopener');
+    },
+
+    /**
      * Display an accessible toast alert notification
      * @param {string} message
      */

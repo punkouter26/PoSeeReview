@@ -49,6 +49,14 @@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-user-zone">
+                    @* Deliberately in the right-hand session zone, NOT in nav.nav-links. My
+                       Comics is per-user state, and the primary nav is contractually two items
+                       (HeaderContractUiTests asserts exactly that) — a third would both break
+                       the test and dilute a two-destination app. *@
+                    <NavLink class="nav-mycomics" href="my-comics" title="My Comics">
+                        <span aria-hidden="true">🗂️</span>
+                        <span class="nav-mycomics-label">My Comics</span>
+                    </NavLink>
                     @if (_devSession != null)
                     {
                         <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">

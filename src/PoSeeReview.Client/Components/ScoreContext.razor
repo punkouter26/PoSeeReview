@@ -1,0 +1,71 @@
+@* What the strangeness score actually means.
+
+   The ring shows a number out of 100 with nothing to compare it against, so 62 reads the same
+   as 91. This puts it in the context of the region it was scored in.
+
+   Every figure here is arithmetic over scores this app computed. It quotes no review text: the
+   receipts vertical was pruned end to end because a model-invented "verbatim" quotation about a
+   named restaurant is a defamation problem. A percentile cannot be fabricated that way. *@
+@using PoSeeReview.Shared.Dtos
+
+@if (Stats is { } stats)
+{
+    <div class="score-context">
+        @if (stats.HasMeaningfulSample)
+        {
+            <p class="score-verdict">@Verdict(stats)</p>
+        }
+
+        <dl class="score-facts">
+            @if (stats.RegionRank is { } rank)
+            {
+                <div class="score-fact">
+                    <dt>Rank in @stats.Region</dt>
+                    <dd>#@rank</dd>
+                </div>
+            }
+
+            @if (stats.RegionSampleSize > 0)
+            {
+                <div class="score-fact">
+                    <dt>Typical here</dt>
+                    <dd>@stats.RegionMedianScore.ToString("F0")</dd>
+                </div>
+
+                <div class="score-fact">
+                    <dt>Weirdest here</dt>
+                    <dd>@stats.RegionTopScore.ToString("F0")</dd>
+                </div>
+            }
+        </dl>
+
+        @if (!stats.HasMeaningfulSample)
+        {
+            @* Below a handful of ranked comics a percentile says nothing — "weirder than 100%
+               of 1 restaurant" is noise dressed as insight. The raw facts stand alone until
+               the region has enough history to compare against. *@
+            <p class="score-note">Not enough comics in @stats.Region yet to say how this one ranks.</p>
+        }
+        else if (stats.RegionRank is null)
+        {
+            @* Deliberately not "scored too low": a null rank means it is not in the ranked
+               sample, which covers both "below the leaderboard threshold" and "on the board but
+               outside the top 50". Naming the wrong one would be a guess presented as a fact. *@
+            <p class="score-note">Not on the @stats.Region leaderboard right now.</p>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Regional context, or null when it could not be loaded — the panel then renders nothing.</summary>
+    [Parameter]
+    public ComicStatsDto? Stats { get; set; }
+
+    private static string Verdict(ComicStatsDto stats) => stats.Percentile switch
+    {
+        >= 90 => $"Weirder than {stats.Percentile}% of everywhere else in {stats.Region}.",
+        >= 50 => $"Weirder than {stats.Percentile}% of {stats.Region}'s ranked restaurants.",
+        > 0 => $"On the tamer end — weirder than just {stats.Percentile}% of {stats.Region}.",
+        _ => $"The most ordinary comic on {stats.Region}'s board right now."
+    };
+}

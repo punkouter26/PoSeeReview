@@ -1,0 +1,64 @@
+/* Scoped to ReactionBar. */
+
+.reaction-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+    margin-top: var(--space-md);
+}
+
+.reaction {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3xs);
+    /* A real 44px target: these are small glyphs and the most likely control on the page to be
+       tapped with a thumb while holding a phone one-handed. */
+    min-height: var(--tap-target);
+    min-width: var(--tap-target);
+    padding: var(--space-2xs) var(--space-sm);
+    border: 1.5px solid var(--color-border-strong);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.reaction:hover {
+    border-color: var(--color-brand);
+    transform: translateY(-1px);
+}
+
+.reaction:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* The selected state is carried by border and fill, never by colour alone — aria-pressed
+   covers assistive tech, but a sighted user with low colour discrimination needs the shape
+   change too. */
+.reaction--mine {
+    background: var(--brand-a12);
+    border-color: var(--color-brand);
+}
+
+.reaction-glyph {
+    font-size: var(--text-lg);
+    line-height: 1;
+}
+
+.reaction-count {
+    font-size: var(--text-sm);
+    font-weight: 700;
+    color: var(--color-text-secondary);
+}
+
+.reaction--mine .reaction-count {
+    color: var(--color-brand-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reaction:hover {
+        transform: none;
+    }
+}

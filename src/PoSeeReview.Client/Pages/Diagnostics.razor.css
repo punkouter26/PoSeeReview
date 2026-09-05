@@ -374,3 +374,99 @@
 .fx-notes .fx-bad {
     color: var(--color-danger);
 }
+
+/* ── Product funnel ──────────────────────────────────────────────────────────────────────── */
+.funnel-panel {
+    margin-top: var(--space-lg);
+    padding: var(--space-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+}
+
+.funnel-panel h2 {
+    margin-bottom: var(--space-md);
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    letter-spacing: 0.02em;
+    color: var(--color-text-primary);
+}
+
+.funnel-empty {
+    color: var(--color-text-muted);
+}
+
+.funnel-rates {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.funnel-rate {
+    padding: var(--space-sm);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface-alt);
+    text-align: center;
+}
+
+/* Status is carried by an explicit colour token AND the label text, never colour alone. */
+.funnel-rate--good {
+    border-color: var(--color-success);
+}
+
+.funnel-rate--good .funnel-rate-value {
+    color: var(--color-success-ink);
+}
+
+.funnel-rate--warn {
+    border-color: var(--color-accent-dark);
+}
+
+.funnel-rate--warn .funnel-rate-value {
+    color: var(--color-accent-ink);
+}
+
+.funnel-rate-value {
+    display: block;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    line-height: 1.1;
+    color: var(--color-text-primary);
+}
+
+.funnel-rate-label {
+    display: block;
+    margin-top: var(--space-3xs);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+.funnel-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+}
+
+.funnel-table th,
+.funnel-table td {
+    padding: var(--space-2xs) var(--space-xs);
+    text-align: left;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.funnel-table th {
+    font-size: var(--text-2xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+.funnel-count {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+}

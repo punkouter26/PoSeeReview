@@ -27,15 +27,23 @@ internal sealed class TableStorageInitializer(
         [
             storageOptions.ComicsTableName,
             storageOptions.LeaderboardTableName,
-            storageOptions.RestaurantsTableName
+            storageOptions.RestaurantsTableName,
+            storageOptions.ReportsTableName,
+            storageOptions.ReactionsTableName,
+            storageOptions.HallOfFameTableName,
+            storageOptions.BudgetTableName,
+            storageOptions.AnalyticsTableName
         ];
 
-        foreach (var tableName in tableNames)
+        // Created concurrently: these are independent round trips, and running eight of them in
+        // series put the whole set on the startup critical path. A failure in any one still
+        // propagates and fails the host fast, which is the point of doing this at startup.
+        await Task.WhenAll(tableNames.Select(async tableName =>
         {
             var tableClient = tableServiceClient.GetTableClient(tableName);
             await tableClient.CreateIfNotExistsAsync(cancellationToken);
             logger.LogInformation("Verified table storage table {TableName}", tableName);
-        }
+        }));
 
         var containerClient = blobServiceClient.GetBlobContainerClient(storageOptions.ComicsContainerName);
         await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);

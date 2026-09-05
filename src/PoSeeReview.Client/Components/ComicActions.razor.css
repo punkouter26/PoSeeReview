@@ -1,0 +1,74 @@
+/* Scoped to ComicActions. `.btn`, `.btn-primary`, `.btn-secondary` and `.btn-icon` all come
+   from app.css untouched — only layout and this component's own classes live here. */
+
+.comic-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-lg);
+}
+
+/* Share is the point of the whole screen, so it takes the room when there is any to take. */
+.action-share {
+    flex: 1 1 10rem;
+}
+
+/* Pushed to the far end: reporting is a rarely-correct action sitting next to four common
+   ones, and it must not read as a peer of Share. */
+.action-report {
+    margin-inline-start: auto;
+    font-size: var(--text-lg);
+    color: var(--color-text-muted);
+}
+
+.action-report:hover {
+    color: var(--color-danger-ink);
+}
+
+.regenerate-confirm {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    border: 1.5px solid var(--color-accent-dark);
+    border-radius: var(--radius-card);
+    background: var(--color-highlight);
+}
+
+.regenerate-warning {
+    flex: 1 1 12rem;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    /* warning-text, not accent: this sits on --color-highlight, which is the surface the
+       warning ink was tuned against. */
+    color: var(--color-warning-text);
+}
+
+.regenerate-confirm-actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.regenerate-confirm-actions .btn {
+    padding-inline: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+/* On a phone every action goes full width rather than wrapping into ragged pairs. */
+@media (max-width: 40rem) {
+    .comic-actions .btn:not(.btn-icon) {
+        flex: 1 1 100%;
+    }
+
+    /* The report control ends up alone on the last row once the others go full width. Left
+       aligned it reads as a stray glyph someone forgot to finish, so it takes the row and
+       centres in it. `margin-inline: auto` rather than the desktop `margin-inline-start: auto`,
+       which is what pinned it to the left edge. */
+    .action-report {
+        flex: 1 1 100%;
+        margin-inline: auto;
+    }
+}

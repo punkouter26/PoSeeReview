@@ -1,0 +1,53 @@
+/* Scoped to ScoreContext. */
+
+.score-context {
+    margin-top: var(--space-lg);
+    padding: var(--space-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-brand-surface);
+}
+
+.score-verdict {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    text-align: center;
+    color: var(--color-text-primary);
+}
+
+.score-facts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-md) var(--space-xl);
+    margin-top: var(--space-sm);
+}
+
+.score-fact {
+    text-align: center;
+}
+
+.score-fact dt {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    /* text-muted is tuned against --color-surface-alt, the worst light surface; this panel sits
+       on --color-brand-surface, which is lighter still, so the ratio holds. */
+    color: var(--color-text-muted);
+}
+
+.score-fact dd {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    line-height: 1.1;
+    color: var(--color-text-primary);
+}
+
+.score-note {
+    margin-top: var(--space-sm);
+    font-size: var(--text-sm);
+    text-align: center;
+    color: var(--color-text-secondary);
+}

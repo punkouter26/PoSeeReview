@@ -20,6 +20,18 @@
     <link rel="stylesheet" href="css/app.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
 
+    <!-- PWA. The app is mobile-first and opened in short bursts, which is exactly the shape
+         install-to-homescreen exists for; before this there was no manifest, no worker and no
+         maskable icon, so it could never be installed. theme-color paints the Android status
+         bar and the iOS/desktop title bar to match the nav. -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <meta name="theme-color" content="#7C3AED" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PoSeeReview" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="description" content="Turn a restaurant's weirdest Google Maps reviews into a four-panel comic strip." />
+
     <!-- Application Insights will be added when deployed to Azure -->
 </head>
 
@@ -39,12 +51,28 @@
     </div>
     <script src="geolocation.js"></script>
     <script src="share-utils.js"></script>
+    <!-- Must load before Blazor: `beforeinstallprompt` fires early and is only capturable if
+         its default is prevented the moment it arrives. -->
+    <script src="pwa.js"></script>
     <!-- Graphics + audio. type="module" so the heavy scenes can be dynamically imported on
          demand; nothing under lib/ is fetched until a page actually asks for it. Loaded before
          Blazor so window.poseeFx exists by the time the first component calls into it. -->
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script type="module" src="js/fx.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
+
+    <!-- Registered after Blazor starts loading so the worker never competes with the boot
+         request it exists to accelerate. Failure is silent on purpose: a browser with service
+         workers disabled must still get a working app, not a console-level error. -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/service-worker.js').catch(function () {
+                    /* No offline support in this browser. Everything else works. */
+                });
+            });
+        }
+    </script>
 </body>
 
 </html>

@@ -9,6 +9,7 @@
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject FxService Fx
+@inject AnalyticsService Analytics
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
@@ -103,7 +104,31 @@
                    count, so this is simply what the search returned. *@
                 <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
             </div>
-            @foreach (var restaurant in _restaurants)
+
+            @* Ordering was fixed at whatever the API returned, with no way to ask a different
+               question of the same results. "Best odds" is the one that matters most here:
+               strangeness is drawn from review text, so review volume is the closest thing to
+               a predictor the client can compute without spending a generation. *@
+            <div class="results-controls">
+                <div class="sort-chips" role="group" aria-label="Sort results">
+                    @foreach (var option in SortOptions)
+                    {
+                        <button type="button"
+                                class="chip-toggle @(_sort == option.Sort ? "chip-toggle--active" : "")"
+                                aria-pressed="@(_sort == option.Sort)"
+                                title="@option.Hint"
+                                @onclick="() => SetSort(option.Sort)">
+                            @option.Label
+                        </button>
+                    }
+                </div>
+
+                <button type="button" class="btn btn-secondary surprise-btn" @onclick="SurpriseMeAsync"
+                        title="Pick somewhere promising at random and draw it">
+                    <span aria-hidden="true">🎲</span> Surprise me
+                </button>
+            </div>
+            @foreach (var restaurant in SortedRestaurants)
             {
                 @* cq-card makes each slot a query container so the card inside can size itself
                    from the room it actually has (see @container card in app.css). A container
@@ -136,6 +161,66 @@
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
 
+    /// <summary>How the result grid is ordered.</summary>
+    private enum ResultSort
+    {
+        /// <summary>Closest first — the PRD's proximity-first default.</summary>
+        Distance,
+
+        /// <summary>Most reviews first: the best available predictor of a strange comic.</summary>
+        BestOdds,
+
+        /// <summary>Highest Google rating first.</summary>
+        Rating
+    }
+
+    private static readonly (ResultSort Sort, string Label, string Hint)[] SortOptions =
+    [
+        (ResultSort.Distance, "Closest", "Nearest first"),
+        (ResultSort.BestOdds, "Best odds", "Most reviews — more material means a stranger comic"),
+        (ResultSort.Rating, "Top rated", "Highest Google rating first")
+    ];
+
+    private ResultSort _sort = ResultSort.Distance;
+
+    /// <summary>
+    /// The grid's order. Sorting a copy rather than the backing list keeps the API's own
+    /// ordering intact, so switching back to Closest is exact rather than approximately right.
+    /// </summary>
+    private IEnumerable<RestaurantDto> SortedRestaurants => _sort switch
+    {
+        ResultSort.BestOdds => _restaurants.OrderByDescending(r => r.TotalReviews),
+        ResultSort.Rating => _restaurants.OrderByDescending(r => r.AverageRating).ThenByDescending(r => r.TotalReviews),
+        _ => _restaurants.OrderBy(r => r.Distance)
+    };
+
+    private void SetSort(ResultSort sort) => _sort = sort;
+
+    /// <summary>
+    /// Picks a promising restaurant at random and goes straight to generating it.
+    /// <para>
+    /// This is the PRD's "serendipity, not utility" thesis as a single tap. Random over the
+    /// top half by review count rather than the whole list: a place with two reviews reliably
+    /// produces a weak comic, and spending someone's generation on it to preserve the purity
+    /// of the shuffle is a bad trade.
+    /// </para>
+    /// </summary>
+    private async Task SurpriseMeAsync()
+    {
+        if (_restaurants.Count == 0 || _isNavigatingToComic)
+        {
+            return;
+        }
+
+        var candidates = _restaurants
+            .OrderByDescending(r => r.TotalReviews)
+            .Take(Math.Max(1, _restaurants.Count / 2))
+            .ToList();
+
+        var pick = candidates[Random.Shared.Next(candidates.Count)];
+        await HandleRestaurantClick(pick);
+    }
+
     private const string LastSearchKey = "posee_last_search";
     private const string DiscoveryModeKey = "posee_discovery_mode";
     private const string LegacyLocationEnabledKey = "posee_location_enabled";
@@ -150,6 +235,8 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        Analytics.Track(FunnelSteps.AppOpened);
+
         var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", LastSearchKey);
         if (!string.IsNullOrWhiteSpace(lastLocation))
         {
@@ -244,6 +331,8 @@
             {
                 if (result.PermissionDenied)
                 {
+                    // Invisible to the server, and the single biggest drop-off in the funnel.
+                    Analytics.Track(FunnelSteps.LocationDenied);
                     _flowState = LocationFlowState.Denied;
                     await ForgetGeoPreferenceAsync();
                 }
@@ -255,6 +344,7 @@
                 return;
             }
 
+            Analytics.Track(FunnelSteps.LocationGranted);
             await RememberDiscoveryModeAsync(GeoMode);
 
             _loadingMessage = "Finding nearby restaurants...";
@@ -320,6 +410,7 @@
         await Fx.UnlockAudioAsync();
         await Fx.PlayTapAsync();
 
+        Analytics.Track(FunnelSteps.SearchPerformed);
         _lastAttempt = DiscoveryAttempt.Search;
         _lastSearch = searchTerm;
         _flowState = LocationFlowState.Loading;
@@ -434,6 +525,7 @@
             return;
         }
 
+        Analytics.Track(FunnelSteps.RestaurantTapped);
         _isNavigatingToComic = true;
         _activeComicPlaceId = restaurant.PlaceId;
         await Fx.PlayTapAsync();
@@ -460,6 +552,11 @@
         // server would happily draw. The only genuinely unusable case — zero reviews — is
         // handled by RestaurantCard, which matches the server's floor.
         _restaurants = restaurants.ToList();
+
+        if (_restaurants.Count > 0)
+        {
+            Analytics.Track(FunnelSteps.ResultsShown);
+        }
 
         _lastSearch = label;
 

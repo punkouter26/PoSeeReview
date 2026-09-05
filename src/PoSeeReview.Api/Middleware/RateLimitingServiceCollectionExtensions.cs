@@ -38,6 +38,28 @@ internal static class RateLimitingServiceCollectionExtensions
                 limiterOptions.AutoReplenishment = true;
             });
 
+            // Reporting is cheap for the server and must stay available to an angry user with a
+            // real complaint, but it writes a row per call and is worth a ceiling.
+            options.AddFixedWindowLimiter("reports-post", limiterOptions =>
+            {
+                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:ReportsPostPermitLimit", 10);
+                limiterOptions.Window = TimeSpan.FromMinutes(1);
+                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                limiterOptions.QueueLimit = 0;
+                limiterOptions.AutoReplenishment = true;
+            });
+
+            // Funnel events fire several times per session by design, so this is generous — it
+            // exists to bound a client bug looping on a report, not to shape normal traffic.
+            options.AddFixedWindowLimiter("analytics-post", limiterOptions =>
+            {
+                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:AnalyticsPostPermitLimit", 120);
+                limiterOptions.Window = TimeSpan.FromMinutes(1);
+                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+                limiterOptions.QueueLimit = 0;
+                limiterOptions.AutoReplenishment = true;
+            });
+
             options.OnRejected = (context, _) =>
             {
                 var logger = context.HttpContext.RequestServices

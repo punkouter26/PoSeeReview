@@ -1,0 +1,105 @@
+@* Four reactions, no comments.
+
+   Comics expire in 24 hours, so nothing about a comic accumulates and there is no signal that
+   anyone else ever saw it. A reaction is the cheapest thing a viewer can give it. A comment box
+   is deliberately absent: free text about a real, named business is a moderation surface this
+   app has no queue for. *@
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@using PoSeeReview.Shared.Enums
+@inject ApiClient ApiClient
+
+<div class="reaction-bar" role="group" aria-label="React to this comic">
+    @foreach (var (kind, glyph, label) in Reactions)
+    {
+        var isMine = _counts?.MyReaction == kind;
+        var count = CountFor(kind);
+
+        <button type="button"
+                class="reaction @(isMine ? "reaction--mine" : "")"
+                @onclick="() => ToggleAsync(kind)"
+                disabled="@_isSaving"
+                aria-pressed="@(isMine ? "true" : "false")"
+                aria-label="@($"{label}{(count > 0 ? $", {count}" : "")}")"
+                title="@label">
+            <span class="reaction-glyph" aria-hidden="true">@glyph</span>
+            @if (count > 0)
+            {
+                <span class="reaction-count">@count</span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string PlaceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Presentation for each reaction, kept in one array so a glyph and its label cannot drift
+    /// apart the way two index-coupled arrays eventually do.
+    /// </summary>
+    private static readonly (ReactionKind Kind, string Glyph, string Label)[] Reactions =
+    [
+        (ReactionKind.Laugh, "😂", "Funny"),
+        (ReactionKind.Mind, "🤯", "Genuinely bizarre"),
+        (ReactionKind.Grim, "🤢", "Put me off my lunch"),
+        (ReactionKind.Love, "❤️", "Love this place anyway")
+    ];
+
+    private ReactionCountsDto? _counts;
+    private bool _isSaving;
+    private string? _loadedPlaceId;
+
+    /// <summary>
+    /// Loads on parameter change rather than initialization: a redraw swaps the comic on the
+    /// same component instance, and OnInitialized would leave the previous comic's tallies.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PlaceId) || _loadedPlaceId == PlaceId)
+        {
+            return;
+        }
+
+        _loadedPlaceId = PlaceId;
+        _counts = await ApiClient.GetReactionsAsync(PlaceId);
+    }
+
+    private int CountFor(ReactionKind kind) => kind switch
+    {
+        ReactionKind.Laugh => _counts?.Laugh ?? 0,
+        ReactionKind.Mind => _counts?.Mind ?? 0,
+        ReactionKind.Grim => _counts?.Grim ?? 0,
+        ReactionKind.Love => _counts?.Love ?? 0,
+        _ => 0
+    };
+
+    private async Task ToggleAsync(ReactionKind kind)
+    {
+        if (_isSaving)
+        {
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            // The server treats "the reaction I already hold" as a withdrawal, so the same
+            // value is sent either way and the toggle rule lives in exactly one place.
+            var updated = await ApiClient.SetReactionAsync(PlaceId, kind);
+
+            // A null response means the write failed. Leaving the previous tallies on screen is
+            // honest; painting an optimistic count that the server never recorded is not.
+            if (updated is not null)
+            {
+                _counts = updated;
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+}

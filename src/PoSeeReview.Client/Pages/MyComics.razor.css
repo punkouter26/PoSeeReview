@@ -1,0 +1,154 @@
+/* Scoped to MyComics. `.state-card`, `.btn*` and `.glass` come from app.css. */
+
+.my-comics-loading {
+    display: grid;
+    place-items: center;
+    padding: var(--space-2xl);
+}
+
+.my-comics-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xs);
+}
+
+.my-comics-count {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.my-comics-expired-note {
+    font-weight: 400;
+    color: var(--color-text-muted);
+}
+
+.my-comics-privacy {
+    margin-bottom: var(--space-lg);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.clear-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.clear-confirm .btn {
+    padding-inline: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.my-comics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: var(--space-md);
+}
+
+.history-card {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+}
+
+/* Expired entries stay legible rather than being greyed into illegibility — the score is
+   still the interesting part, and the card is now a prompt to redraw. */
+.history-card--expired {
+    border-style: dashed;
+    border-color: var(--color-border-strong);
+}
+
+.history-thumb {
+    display: block;
+    aspect-ratio: 4 / 3;
+    background: var(--color-surface-alt);
+}
+
+.history-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.history-thumb-expired {
+    display: grid;
+    place-content: center;
+    gap: var(--space-3xs);
+    height: 100%;
+    background: var(--color-brand-surface);
+    text-align: center;
+}
+
+.history-expired-score {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    line-height: 1;
+    color: var(--color-brand-ink);
+}
+
+.history-expired-label {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+
+.history-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    padding: var(--space-md);
+}
+
+.history-name {
+    font-size: var(--text-md);
+    line-height: var(--leading-tight, 1.2);
+    color: var(--color-text-primary);
+    /* Two lines then ellipsis: restaurant names are third-party text and some are very long. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.history-meta {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.history-score {
+    font-weight: 700;
+    color: var(--color-accent-ink);
+}
+
+.history-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin-top: var(--space-2xs);
+}
+
+.history-open {
+    flex: 1 1 auto;
+    padding-inline: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+.history-forget {
+    font-size: var(--text-lg);
+    color: var(--color-text-muted);
+}
+
+.history-forget:hover {
+    color: var(--color-danger-ink);
+}

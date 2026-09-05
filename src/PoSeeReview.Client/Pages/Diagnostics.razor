@@ -234,6 +234,66 @@ else
             <a href="/" class="btn btn-secondary">← Back to Home</a>
         </div>
     }
+
+    @* Product funnel. The PRD sets targets — time-to-first-comic, cache hit rate above 40% —
+       that nothing measured: the server only ever tracked ComicGenerated, which cannot see a
+       user who denied location or abandoned a generation. These counters come from the client. *@
+    <section class="funnel-panel glass">
+        <h2>Today's funnel</h2>
+
+        @if (_funnel is null)
+        {
+            <p class="funnel-empty">No funnel data recorded yet today.</p>
+        }
+        else
+        {
+            <div class="funnel-rates">
+                <div class="funnel-rate">
+                    <span class="funnel-rate-value">@FormatRate(_funnel.LocationGrantRate)</span>
+                    <span class="funnel-rate-label">Location granted</span>
+                </div>
+                <div class="funnel-rate">
+                    <span class="funnel-rate-value">@FormatRate(_funnel.TapThroughRate)</span>
+                    <span class="funnel-rate-label">Tap to generate</span>
+                </div>
+                <div class="funnel-rate">
+                    <span class="funnel-rate-value">@FormatRate(_funnel.GenerationCompletionRate)</span>
+                    <span class="funnel-rate-label">Generations finished</span>
+                </div>
+                @* The one rate with a number attached to it in the PRD, so it is marked against
+                   that target rather than left for the reader to remember. *@
+                <div class="funnel-rate @CacheRateClass">
+                    <span class="funnel-rate-value">@FormatRate(_funnel.CacheHitRate)</span>
+                    <span class="funnel-rate-label">Cache hits (target &gt; 40%)</span>
+                </div>
+                <div class="funnel-rate">
+                    <span class="funnel-rate-value">@FormatRate(_funnel.ShareRate)</span>
+                    <span class="funnel-rate-label">Comics shared</span>
+                </div>
+                <div class="funnel-rate">
+                    <span class="funnel-rate-value">@FormatDuration(_funnel.AverageGenerationMs)</span>
+                    <span class="funnel-rate-label">Avg generation</span>
+                </div>
+            </div>
+
+            <table class="funnel-table">
+                <caption class="visually-hidden">Raw funnel step counts for today</caption>
+                <thead>
+                    <tr><th scope="col">Step</th><th scope="col">Count</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var step in FunnelSteps.All)
+                    {
+                        <tr>
+                            <td>@step.Replace('_', ' ')</td>
+                            <td class="funnel-count">@(_funnel.Counts.TryGetValue(step, out var n) ? n : 0)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+
 </PageShell>
 }
 
@@ -297,11 +357,29 @@ else
     private bool _storageKeyPresent;
     private string? errorMessage;
 
+    private FunnelSnapshotDto? _funnel;
+
     protected override async Task OnInitializedAsync()
     {
         await LoadHealthStatus();
+        _funnel = await ApiClient.GetFunnelSnapshotAsync();
         await InitFxPanelAsync();
     }
+
+    /// <summary>A rate with no denominator is absent, not zero — "0%" would be a claim we cannot make.</summary>
+    private static string FormatRate(double? rate) =>
+        rate is null ? "--" : $"{rate.Value:F0}%";
+
+    private static string FormatDuration(double? ms) =>
+        ms is null ? "--" : $"{ms.Value / 1000:F1}s";
+
+    /// <summary>Marks the cache hit rate against the PRD's stated 40% target.</summary>
+    private string CacheRateClass => _funnel?.CacheHitRate switch
+    {
+        null => string.Empty,
+        >= 40 => "funnel-rate--good",
+        _ => "funnel-rate--warn"
+    };
 
     private async Task LoadHealthStatus()
     {

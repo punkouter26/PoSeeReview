@@ -116,6 +116,27 @@ public class BlobStorageService : IBlobStorageService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<Stream?> OpenComicImageStreamAsync(string blobUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(blobUrl))
+        {
+            return null;
+        }
+
+        try
+        {
+            var response = await ResolveBlobClient(blobUrl).OpenReadAsync(cancellationToken: cancellationToken);
+            return response;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Cleaned up after expiry. A missing image is a 404 to the caller, not an error here.
+            _logger.LogInformation("Comic blob no longer exists for download");
+            return null;
+        }
+    }
+
     public async Task<bool> BlobExistsAsync(string blobUrl)
     {
         if (string.IsNullOrWhiteSpace(blobUrl)) return false;

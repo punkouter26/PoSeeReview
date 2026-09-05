@@ -1,0 +1,167 @@
+@page "/my-comics"
+@attribute [Authorize]
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@inject ComicHistoryService History
+@inject NavigationManager Navigation
+
+<PageTitle>My Comics - PoSeeReview</PageTitle>
+
+<PageShell Title="My Comics"
+           Subtitle="Every strip you've opened, kept on this device"
+           Width="PageShell.ShellWidth.Wide"
+           Class="my-comics-container">
+
+    @if (_entries is null)
+    {
+        <div class="my-comics-loading">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (_entries.Count == 0)
+    {
+        <div class="state-card">
+            <div class="state-card-icon" aria-hidden="true">📭</div>
+            <h2 class="state-card-title">Nothing here yet</h2>
+            <p class="state-card-body">
+                Comics you open show up here automatically. Go find a restaurant with
+                questionable reviews.
+            </p>
+            <div class="state-card-actions">
+                <a href="/" class="btn btn-primary">Find Restaurants</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="my-comics-toolbar">
+            <p class="my-comics-count">
+                @_entries.Count comic@(_entries.Count == 1 ? "" : "s") remembered
+                @if (_expiredCount > 0)
+                {
+                    <span class="my-comics-expired-note">· @_expiredCount expired</span>
+                }
+            </p>
+
+            @if (_confirmingClear)
+            {
+                <div class="clear-confirm" role="alert">
+                    <span>Forget all of them?</span>
+                    <button type="button" class="btn btn-secondary" @onclick="ClearAsync">Yes, clear</button>
+                    <button type="button" class="btn btn-secondary" @onclick="() => _confirmingClear = false">Cancel</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="btn btn-secondary" @onclick="() => _confirmingClear = true">Clear history</button>
+            }
+        </div>
+
+        @* This list never leaves the browser. Saying so plainly is the honest counterpart to
+           storing it without asking, and it explains why it is empty on the user's other phone. *@
+        <p class="my-comics-privacy">
+            Stored only in this browser — never uploaded, and not shared between your devices.
+        </p>
+
+        <div class="my-comics-grid cq-list">
+            @foreach (var entry in _entries)
+            {
+                <article class="history-card glass @(entry.IsExpired ? "history-card--expired" : "")">
+                    <a class="history-thumb" href="@LinkFor(entry)" aria-label="@($"Open the comic for {entry.RestaurantName}")">
+                        @if (entry.IsExpired)
+                        {
+                            @* The blob is gone after cleanup, so rendering the <img> would show a
+                               broken image on every aged card. The score is what survives, and
+                               it is the part worth showing. *@
+                            <div class="history-thumb-expired">
+                                <span class="history-expired-score">@entry.StrangenessScore</span>
+                                <span class="history-expired-label">expired</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <img src="@entry.BlobUrl" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
+                        }
+                    </a>
+
+                    <div class="history-details">
+                        <h3 class="history-name">@entry.RestaurantName</h3>
+                        <p class="history-meta">
+                            <span class="history-score">@entry.StrangenessScore weird</span>
+                            <span class="history-seen">· @FormatSeen(entry.ViewedAt)</span>
+                        </p>
+
+                        <div class="history-actions">
+                            <a href="@LinkFor(entry)" class="btn btn-primary history-open">
+                                @(entry.IsExpired ? "Redraw" : "Open")
+                            </a>
+                            <button type="button"
+                                    class="btn btn-icon history-forget"
+                                    @onclick="() => ForgetAsync(entry.PlaceId)"
+                                    title="@($"Forget {entry.RestaurantName}")"
+                                    aria-label="@($"Forget {entry.RestaurantName}")">
+                                <span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</PageShell>
+
+@code {
+    private List<ComicHistoryEntry>? _entries;
+    private bool _confirmingClear;
+
+    private int _expiredCount;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _entries = await History.GetAllAsync();
+        _expiredCount = _entries.Count(e => e.IsExpired);
+    }
+
+    /// <summary>
+    /// An expired entry links straight into generation; a live one does not.
+    /// <para>
+    /// This is the whole reason expiry is worth surfacing rather than hiding. An aged card is
+    /// not dead weight — it is a one-tap prompt to spend a generation on a place the user has
+    /// already shown interest in.
+    /// </para>
+    /// </summary>
+    private static string LinkFor(ComicHistoryEntry entry) =>
+        entry.IsExpired
+            ? $"/comic/{entry.PlaceId}?generate=true"
+            : $"/comic/{entry.PlaceId}";
+
+    private async Task ForgetAsync(string placeId)
+    {
+        await History.RemoveAsync(placeId);
+        await ReloadAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        _confirmingClear = false;
+        await History.ClearAsync();
+        await ReloadAsync();
+    }
+
+    /// <summary>Relative time, because "yesterday" is more useful here than a timestamp.</summary>
+    private static string FormatSeen(DateTimeOffset viewedAt)
+    {
+        var elapsed = DateTimeOffset.UtcNow - viewedAt;
+
+        return elapsed switch
+        {
+            { TotalMinutes: < 1 } => "just now",
+            { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
+            { TotalHours: < 24 } => $"{(int)elapsed.TotalHours}h ago",
+            { TotalDays: < 7 } => $"{(int)elapsed.TotalDays}d ago",
+            _ => viewedAt.ToLocalTime().ToString("MMM d")
+        };
+    }
+}

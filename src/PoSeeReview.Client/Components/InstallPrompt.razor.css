@@ -1,0 +1,61 @@
+/* Scoped to InstallPrompt. Every class here is component-specific, so nothing in it can fork a
+   shared primitive — .btn/.btn-primary/.btn-secondary come from app.css untouched. */
+
+.install-prompt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-md);
+    margin-top: var(--space-lg);
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-border);
+}
+
+.install-icon {
+    font-size: var(--text-xl);
+    line-height: 1;
+}
+
+.install-copy {
+    flex: 1 1 14rem;
+    min-width: 0;
+}
+
+.install-title {
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+
+.install-body {
+    margin-top: var(--space-3xs);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.install-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+}
+
+.install-cta,
+.install-dismiss {
+    /* Smaller than a page-level CTA: this is an aside, not the point of the screen. The
+       min-height still comes from .btn, so the 44px tap target survives. */
+    padding-inline: var(--space-md);
+    font-size: var(--text-sm);
+}
+
+/* Below the narrowest breakpoint the actions take the full row rather than crowding the copy
+   into a two-word column. */
+@media (max-width: 40rem) {
+    .install-actions {
+        width: 100%;
+    }
+
+    .install-cta,
+    .install-dismiss {
+        flex: 1 1 auto;
+    }
+}

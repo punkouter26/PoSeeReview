@@ -281,6 +281,186 @@ public class ApiClient
         }
     }
 
+    /// <summary>
+    /// Reads the permanent weekly archive. Separate from the live board because these entries
+    /// outlive the comics they came from.
+    /// </summary>
+    public async Task<HallOfFameResponse?> GetWeeklyHallOfFameAsync(
+        string region = "US",
+        int weeks = 4,
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(
+                HttpMethod.Get,
+                $"/api/leaderboard/weekly?region={region}&weeks={weeks}&limit={limit}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            await EnsureSuccessAsync(response, "Weekly archive request failed", cancellationToken);
+            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HallOfFameResponse, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Regional context for a comic's score. Returns <c>null</c> when the comic has no stats
+    /// yet — the score still renders, just without the comparison.
+    /// </summary>
+    public async Task<ComicStatsDto?> GetComicStatsAsync(
+        string placeId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}/stats");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicStatsDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            // Decoration on the payoff screen. It never justifies an error state.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// What the signed-in user has left to spend today. Returns <c>null</c> when the budget
+    /// cannot be read, which callers treat as "allow" — a failed read must not lock the app's
+    /// primary action.
+    /// </summary>
+    public async Task<GenerationBudgetDto?> GetGenerationBudgetAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, "/api/comics/budget");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.GenerationBudgetDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Reads reaction tallies for a comic, plus the caller's own reaction.</summary>
+    public async Task<ReactionCountsDto?> GetReactionsAsync(
+        string placeId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/reactions/{placeId}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ReactionCountsDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Sets, changes or withdraws the caller's reaction. Passing <c>null</c> — or the reaction
+    /// they already hold — withdraws it.
+    /// </summary>
+    public async Task<ReactionCountsDto?> SetReactionAsync(
+        string placeId,
+        ReactionKind? reaction,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/reactions/{placeId}");
+            request.Content = JsonContent.Create(
+                new ReactionRequestDto { Reaction = reaction }, AppJsonContext.Default.ReactionRequestDto);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ReactionCountsDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Submits a viewer report. Unlike most calls here this one surfaces its failure: someone
+    /// reporting content needs to know whether it was actually received.
+    /// </summary>
+    public async Task<ComicReportResponseDto> SubmitReportAsync(
+        ComicReportRequestDto report,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Post, "/api/reports");
+        request.Content = JsonContent.Create(report, AppJsonContext.Default.ComicReportRequestDto);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await EnsureSuccessAsync(response, "Report submission failed", cancellationToken, "Please try again in a moment.");
+
+        var payload = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicReportResponseDto, cancellationToken);
+        return payload ?? throw new InvalidOperationException("Report response was null");
+    }
+
+    /// <summary>
+    /// Reports one funnel step. Fire-and-forget by contract: it never throws and never blocks
+    /// anything a user is waiting on.
+    /// </summary>
+    public async Task RecordFunnelEventAsync(
+        string step,
+        int? durationMs = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Post, "/api/analytics/events");
+            request.Content = JsonContent.Create(
+                new FunnelEventDto { Step = step, DurationMs = durationMs }, AppJsonContext.Default.FunnelEventDto);
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            _ = response.IsSuccessStatusCode;
+        }
+        catch (Exception)
+        {
+            // Telemetry must never be able to break the thing it is measuring.
+        }
+    }
+
+    /// <summary>Reads a day of funnel counters for the Diagnostics page.</summary>
+    public async Task<FunnelSnapshotDto?> GetFunnelSnapshotAsync(
+        int daysAgo = 0,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/analytics/funnel?daysAgo={daysAgo}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.FunnelSnapshotDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     public async Task<HealthStatusDto?> GetHealthStatusAsync(CancellationToken cancellationToken = default)
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, "/health");

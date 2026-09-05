@@ -18,6 +18,7 @@ public class LeaderboardService : ILeaderboardService
     private readonly ILogger<LeaderboardService> _logger;
     private readonly LeaderboardOptions _options;
     private readonly TimeProvider _timeProvider;
+    private readonly HallOfFameRepository? _hallOfFame;
 
     /// <summary>Widest page the repository will return; used so filtering empty comics can still fill <c>limit</c>.</summary>
     private const int MaxProbeCount = 50;
@@ -27,13 +28,19 @@ public class LeaderboardService : ILeaderboardService
         IBlobStorageService blobStorageService,
         ILogger<LeaderboardService> logger,
         IOptions<LeaderboardOptions> options,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        HallOfFameRepository? hallOfFame = null)
     {
         _repository = repository;
         _blobStorageService = blobStorageService;
         _logger = logger;
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
         _timeProvider = timeProvider ?? TimeProvider.System;
+
+        // Optional so the archive is additive: unit tests that construct this service directly
+        // keep compiling, and a deployment without the table simply records no archive rather
+        // than failing every generation.
+        _hallOfFame = hallOfFame;
     }
 
     /// <summary>
@@ -175,6 +182,10 @@ public class LeaderboardService : ILeaderboardService
                 _logger.LogInformation(
                     "Kept peak score {ExistingScore} for {PlaceId} (new comic scored {NewScore}); refreshed artwork only",
                     existing.StrangenessScore, entry.PlaceId, entry.StrangenessScore);
+
+                // Archive the peak, not the weaker comic that just ran: the week's record is
+                // what this place actually achieved.
+                await ArchiveQuietlyAsync(existing);
                 return;
             }
 
@@ -186,11 +197,38 @@ public class LeaderboardService : ILeaderboardService
             _logger.LogInformation(
                 "Upserted leaderboard entry: {PlaceId} ({RestaurantName}) in {Region} with score {Score}",
                 entry.PlaceId, entry.RestaurantName, entry.Region, entry.StrangenessScore);
+
+            await ArchiveQuietlyAsync(entry);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error upserting leaderboard entry for {PlaceId}", entry.PlaceId);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Files an entry into the permanent weekly archive.
+    /// <para>
+    /// Swallows its own failures on purpose. This runs inside the comic generation pipeline,
+    /// and a decorative archive must never be the reason a user who just waited ten seconds
+    /// and spent a generation gets an error instead of their comic.
+    /// </para>
+    /// </summary>
+    private async Task ArchiveQuietlyAsync(LeaderboardEntry entry)
+    {
+        if (_hallOfFame is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _hallOfFame.ArchiveAsync(entry, _timeProvider.GetUtcNow());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not archive {PlaceId} into the hall of fame", entry.PlaceId);
         }
     }
 

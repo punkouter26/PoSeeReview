@@ -72,7 +72,8 @@ $env:BASE_URL = "https://app-poseereview.azurewebsites.net"; node SCRIPTS/post-d
 ```
 src/PoSeeReview.Api        ASP.NET Core host; also serves the WASM client
   Features/<Slice>/        endpoints + handlers + entities + repositories + services together
-                           (Auth, Comics, Restaurants, Leaderboard, DevSessions, Diagnostics, Takedowns)
+                           (Auth, Comics, Restaurants, Leaderboard, DevSessions, Diagnostics,
+                            Takedowns, Reports, Reactions, Analytics)
   Storage/                 cross-slice TableStorageRepository, BlobStorageService
   Identity/                ICurrentRequestIdentityAccessor + HttpContext impl
   Telemetry/               App Insights + OpenTelemetry, RoleNameTelemetryInitializer
@@ -83,7 +84,10 @@ src/PoSeeReview.Shared     wire DTOs, Ids/, Enums/, Contracts/, FluentValidation
 
 **Slices must not reference each other.** Anything two slices need lives in
 `PoSeeReview.Shared/Contracts/` (`Comic`, `Restaurant`, `Review`, `LeaderboardEntry`;
-`IComicRepository`, `ILeaderboardRepository`, `IRestaurantService`, `ILeaderboardService`).
+`IComicRepository`, `ILeaderboardRepository`, `IRestaurantService`, `ILeaderboardService`,
+`IHallOfFameArchive`). `IHallOfFameArchive` exists for exactly the reason `ILeaderboardRepository`
+does: Takedowns must erase archived entries without referencing the Leaderboard slice that owns
+them. Only the delete is exposed there — reads stay in the slice.
 [Features/FeatureEndpoints.cs](src/PoSeeReview.Api/Features/FeatureEndpoints.cs) is the composition
 root and is the only file allowed to reference every slice. `Abstractions/IMockable.cs` is a
 cross-cutting marker deliberately outside any slice. Each slice owns its own options type.
@@ -188,6 +192,21 @@ only endpoint that spends money. Notes:
   A mid-stream failure is surfaced, not retried, because a retry pays for the same comic twice.
 - App Service's proxy may still buffer the whole response despite `X-Accel-Buffering: no`. That
   degrades to a correct comic with useless progress, which is why the fallback is not wired to it.
+
+### Client-side comic history
+
+`ComicHistoryService` keeps the user's seen-comics list in `localStorage` under
+`posee_comic_history`, rendered at `/my-comics`. Saved history was a v1 non-goal when the
+alternative was accounts and a server store; it is not — comics are addressed by place id, so a
+list of ids reconstructs the feature with no backend and nothing leaving the device. Because
+comics expire in 24h, an aged entry becomes a one-tap prompt to regenerate a place the user
+already showed interest in. Every method degrades to a no-op: `localStorage` throws in private
+modes and blocked-cookie configurations, and a history list is never worth taking the page down
+for. The type is registered in `AppJsonContext` like every wire DTO — the client is
+trim-analyzed, so reflection-based serialization fails the build.
+
+`/my-comics` is linked from the **right-hand session zone**, not `nav.nav-links`: it is per-user
+state, and `HeaderContractUiTests` asserts the primary nav is exactly two items.
 
 ### Design system and CSS architecture
 
@@ -312,6 +331,74 @@ Rapier grid now removed: the gradient alone still runs ~17-19 FPS at 53-60ms per
 `full` tier auto-downgrades to `lite` within 1.5s, as designed. Treat these numbers as a
 software-rendering floor, not a device measurement — a real GPU is far faster.
 
+### Spend control, reactions, reports and the funnel
+
+Four capabilities were added on top of the original slices. Each exists because of a specific
+gap, and the reasons matter more than the mechanics.
+
+**Daily generation budget (`Features/Comics/GenerationBudget*`).** The `comics-post` limiter caps
+bursts at 3/min *by IP*, which bounds nothing over a day — a rotating mobile IP or a modest spike
+could run the paid image model indefinitely. `IGenerationBudgetService` charges a UTC-day counter
+per principal and an app-wide one, both in `PoSeeReviewBudget`. Notes:
+
+- The reservation happens **before** the pipeline and is **refunded** on a cache hit, so it counts
+  paid generations rather than requests. Failures refund only when they provably preceded the
+  image call (`restaurant_not_found`, `insufficient_reviews`, `insufficient_strangeness`); a
+  generic 500 does not, because it can be thrown after the spend.
+- The service ceiling is checked first, so a user is not charged their own quota for a request the
+  app was going to refuse anyway. If the per-user check then fails, the service unit is returned.
+- The counter **fails open** after `MaxConcurrencyRetries` — a contended ETag must not become an
+  outage on the app's primary action.
+- `GET /api/comics/budget` is free, so the client greys out the generate button *before* a tap
+  rather than after a 429.
+
+**`GET /api/comics/{placeId}/image`** re-serves the comic from this origin. The `download`
+attribute is ignored on a cross-origin href and the storage account sends no CORS headers, so a
+blob URL can only be opened in a tab, never saved. It is deliberately **not** used for display —
+that would move every view onto the app's bandwidth for no user-visible gain.
+
+**Reports (`Features/Reports`)** are the public moderation intake. `POST /api/takedowns` is not
+that path: it carries a shared admin key and deletes the comic, blob and leaderboard row on the
+spot. `/api/reports` requires a session, is rate limited, dedupes by reporter (the RowKey *is* the
+principal, so the 409 is the duplicate check), and only ever writes a row.
+
+**Weekly Hall of Fame (`Features/Leaderboard/HallOfFame*`).** Comics expire in 24h and the live
+board churns with them, so nothing accumulated and there was no reason to return. Entries are
+promoted as scores are recorded and outlive the comic — which is why `ImageExpired` exists, and
+why a takedown must purge the archive too (it is the copy that survives everything else).
+
+**Funnel analytics (`Features/Analytics`).** The PRD sets targets the app never measured; the
+server only tracked `ComicGenerated`, which cannot see a denied location or an abandoned
+generation. The client reports steps from a **closed vocabulary** (`FunnelSteps`) that the server
+enforces — an open one would let a client bug mint unbounded telemetry dimensions, which is a
+billing problem. Rendered on `/diagnostics`.
+
+> A rate whose denominator is zero is reported as `null`, not `0` — an absent rate is honest.
+> `TapThroughRate` divides *started generations* by taps, both tapped-flow-only events. Dividing
+> all delivered comics by taps reported **200%**, because a comic opened from a shared link or the
+> Hall of Fame has no tap in front of it.
+
+Five tables were added and are created by `TableStorageInitializer` alongside the originals:
+`PoSeeReviewReports`, `PoSeeReviewReactions`, `PoSeeReviewHallOfFame`, `PoSeeReviewBudget`,
+`PoSeeReviewAnalytics`. The initializer now creates them concurrently — eight serial round trips
+were all on the startup critical path.
+
+### PWA
+
+`manifest.webmanifest`, `service-worker.js`, `offline.html`, generated icons under `wwwroot/icons/`
+and `pwa.js` (published as `window.poseeFx`-style `window.poseePwa`).
+
+**The worker is network-first, and that is not a preference.** Blazor verifies every framework file
+against the integrity hashes in `blazor.boot.json`, and those files are not fingerprinted by name.
+A cache-first worker serving yesterday's `_framework/*.wasm` against today's boot manifest produces
+an integrity failure and a white screen the user cannot clear without wiping site data. `/api`,
+`/auth`, `/diag` and `/health` are never cached; cross-origin (comic blobs) passes straight through.
+
+`pwa.js` must load **before** Blazor: `beforeinstallprompt` fires early and is only capturable if
+its default is prevented the moment it arrives. The install nudge renders on the comic page rather
+than the landing page — it asks once the app has shown why it is worth keeping. iOS Safari can
+install but exposes no prompt API, so it gets instructions instead of a button.
+
 ### Link previews
 
 `SocialPreviewMiddleware` (in the Comics slice, registered from `Program.cs`) answers link-preview
@@ -355,8 +442,10 @@ script no longer asserts on it.
   overrides that no UI currently sets (only `ThemeUiTests` exercises them via JS).
   **Never hardcode a colour in scoped CSS** — a literal `white` under token-driven text renders
   white-on-white in dark mode, and the theme tests assert token *values*, not rendered contrast.
-- Shared `.btn`/`.btn-primary`/`.btn-secondary`/`.alert*` primitives belong in `app.css`, not in
-  scoped page CSS. Scoped sheets load after `app.css` and carry a `[b-*]` attribute, so a page-level
+- Shared `.btn`/`.btn-primary`/`.btn-secondary`/`.alert*`/`.chip-toggle`/`.toast` primitives belong
+  in `app.css`, not in scoped page CSS. `.chip-toggle` (discovery sort + Hall of Fame scope) and
+  `.toast` (comic actions + Hall of Fame share) are shared for exactly the reason this file already
+  documents: two pages needing the same control is how `.btn-primary` forked last time. Scoped sheets load after `app.css` and carry a `[b-*]` attribute, so a page-level
   redefinition silently wins — that is how Diagnostics and the Hall of Fame drifted apart.
 
 ## Working rules (NET_AGENTS)

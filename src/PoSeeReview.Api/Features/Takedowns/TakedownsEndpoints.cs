@@ -37,6 +37,7 @@ internal static class TakedownsEndpoints
         IComicRepository comicRepository,
         IBlobStorageService blobStorageService,
         ILeaderboardRepository leaderboardRepository,
+        IHallOfFameArchive hallOfFameArchive,
         ILogger<TakedownRequestDto> logger,
         TelemetryClient telemetryClient,
         CancellationToken cancellationToken)
@@ -76,6 +77,12 @@ internal static class TakedownsEndpoints
         {
             logger.LogInformation("No cached comic found for {PlaceId} during takedown", request.PlaceId);
         }
+
+        // Runs whether or not a live comic existed. The weekly archive is built to outlive the
+        // 24-hour comic, so it is precisely the copy that survives when everything else has
+        // already expired — and leaving it would mean a completed takedown that still shows the
+        // restaurant's name and score on a page designed never to expire.
+        await hallOfFameArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
 
         return Results.Accepted(value: new
         {

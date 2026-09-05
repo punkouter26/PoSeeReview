@@ -1,0 +1,141 @@
+@* Install-to-homescreen nudge.
+
+   Placed on the comic page rather than the landing page on purpose: it appears once the user
+   has a comic in front of them, which is the only moment the app has demonstrated why it is
+   worth keeping. Asking on a cold first paint is how install prompts get dismissed reflexively.
+
+   Renders nothing at all unless installation is genuinely possible and the user has not already
+   said no. *@
+@using PoSeeReview.Client.Services
+@using Microsoft.JSInterop
+@inject PwaService Pwa
+@inject IJSRuntime JS
+
+@if (_mode != PromptMode.Hidden)
+{
+    <div class="install-prompt glass" role="region" aria-label="Install PoSeeReview">
+        <div class="install-icon" aria-hidden="true">📲</div>
+
+        <div class="install-copy">
+            <p class="install-title">Keep PoSeeReview one tap away</p>
+            @if (_mode == PromptMode.Native)
+            {
+                <p class="install-body">Add it to your home screen — it opens full screen and loads instantly.</p>
+            }
+            else
+            {
+                @* iOS Safari can install but exposes no prompt API, so the only honest thing
+                   the app can do is describe the gesture. *@
+                <p class="install-body">
+                    Tap <strong>Share</strong> <span aria-hidden="true">􀈂</span> then
+                    <strong>Add to Home Screen</strong>.
+                </p>
+            }
+        </div>
+
+        <div class="install-actions">
+            @if (_mode == PromptMode.Native)
+            {
+                <button type="button" class="btn btn-primary install-cta" @onclick="InstallAsync">Install</button>
+            }
+            <button type="button" class="btn btn-secondary install-dismiss" @onclick="DismissAsync">Not now</button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Which flavour of prompt applies, if any.</summary>
+    private enum PromptMode
+    {
+        Hidden,
+
+        /// <summary>The browser gave us a real prompt to fire.</summary>
+        Native,
+
+        /// <summary>iOS Safari — instructions only.</summary>
+        Manual
+    }
+
+    /// <summary>Remembers a dismissal so the nudge is asked at most once per browser.</summary>
+    private const string DismissedKey = "posee_install_dismissed";
+
+    private PromptMode _mode = PromptMode.Hidden;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        // OnAfterRender, not OnInitialized: every check here is a JS call, and none of them can
+        // run before the client has a JS runtime.
+        var mode = await ResolveModeAsync();
+        if (mode != _mode)
+        {
+            _mode = mode;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<PromptMode> ResolveModeAsync()
+    {
+        if (await Pwa.IsInstalledAsync() || await WasDismissedAsync())
+        {
+            return PromptMode.Hidden;
+        }
+
+        if (await Pwa.CanInstallAsync())
+        {
+            return PromptMode.Native;
+        }
+
+        return await Pwa.NeedsManualInstructionsAsync() ? PromptMode.Manual : PromptMode.Hidden;
+    }
+
+    private async Task InstallAsync()
+    {
+        var outcome = await Pwa.PromptInstallAsync();
+
+        // Hidden either way. An accepted install has nothing left to offer, and re-asking
+        // someone who just declined the native dialog is nagging.
+        _mode = PromptMode.Hidden;
+
+        if (outcome != InstallOutcome.Accepted)
+        {
+            await RememberDismissalAsync();
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        _mode = PromptMode.Hidden;
+        await RememberDismissalAsync();
+    }
+
+    private async Task<bool> WasDismissedAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<string?>("localStorage.getItem", DismissedKey) == "true";
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            // Storage blocked. Treating that as "not dismissed" shows the prompt again, which is
+            // the milder failure — the alternative is silently never offering the install.
+            return false;
+        }
+    }
+
+    private async Task RememberDismissalAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", DismissedKey, "true");
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            // Nothing to do; the prompt will simply be offered again next visit.
+        }
+    }
+}

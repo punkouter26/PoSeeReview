@@ -77,4 +77,34 @@ public static class PoSeeReviewTelemetry
         unit: "requests",
         description: "Total number of force-regenerate comic requests");
 
+    /// <summary>
+    /// Counter for generation requests refused by the daily budget rather than the rate limiter.
+    /// A rising service_exhausted count is the signal that the app-wide ceiling is the binding
+    /// constraint and needs raising — or that something is burning the budget.
+    /// Tags: scope (user/service)
+    /// </summary>
+    public static readonly Counter<long> GenerationBudgetRejections = Meter.CreateCounter<long>(
+        name: "po.seereview.comics.budget_rejections",
+        unit: "requests",
+        description: "Generation requests refused because a daily budget was exhausted");
+
+    /// <summary>
+    /// Counter for viewer reports of comics, by reason. The moderation signal the app had no
+    /// way to receive before — the takedown path is admin-key only.
+    /// Tags: reason
+    /// </summary>
+    public static readonly Counter<long> ComicReports = Meter.CreateCounter<long>(
+        name: "po.seereview.comics.reports",
+        unit: "reports",
+        description: "Viewer reports submitted against generated comics");
+
+    /// <summary>
+    /// Counter for client-reported funnel steps. The browser-side half of the PRD's success
+    /// metrics: location grants, abandons and shares are invisible to the server otherwise.
+    /// Tags: step
+    /// </summary>
+    public static readonly Counter<long> FunnelEvents = Meter.CreateCounter<long>(
+        name: "po.seereview.funnel.events",
+        unit: "events",
+        description: "Client-reported funnel steps");
 }

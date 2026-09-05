@@ -1,0 +1,46 @@
+{
+  "name": "PoSeeReview — Strange stories, illustrated",
+  "short_name": "PoSeeReview",
+  "description": "Turn a restaurant's weirdest Google Maps reviews into a four-panel comic strip.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F7FF",
+  "theme_color": "#7C3AED",
+  "categories": ["entertainment", "food", "social"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Hall of Fame",
+      "short_name": "Hall of Fame",
+      "url": "/leaderboard",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "My Comics",
+      "short_name": "My Comics",
+      "url": "/my-comics",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

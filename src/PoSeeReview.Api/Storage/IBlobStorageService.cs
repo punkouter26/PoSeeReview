@@ -34,6 +34,21 @@ public interface IBlobStorageService
     Task<string> RefreshSasUrlAsync(string existingBlobUrl);
 
     /// <summary>
+    /// Opens a read stream over an existing comic blob.
+    /// <para>
+    /// Exists so the API can re-serve a comic from its own origin. The browser's
+    /// <c>download</c> attribute is ignored on cross-origin hrefs, and the storage account
+    /// sends no CORS headers, so a blob URL handed straight to the page can only ever be
+    /// opened in a tab — never saved. Streaming it back through the app makes it same-origin,
+    /// and the save works.
+    /// </para>
+    /// </summary>
+    /// <param name="blobUrl">Full URL (with or without SAS) of the blob to read</param>
+    /// <param name="cancellationToken">Cancels the read when the client disconnects</param>
+    /// <returns>The stream, or <c>null</c> when the blob no longer exists</returns>
+    Task<Stream?> OpenComicImageStreamAsync(string blobUrl, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Checks whether a blob physically exists in storage.
     /// Used to detect leaderboard entries whose blobs were purged by the cleanup service.
     /// </summary>

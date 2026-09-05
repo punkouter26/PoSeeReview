@@ -8,6 +8,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Features.Analytics;
+using PoSeeReview.Api.Features.Reactions;
+using PoSeeReview.Api.Features.Reports;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Restaurants;
@@ -46,6 +49,8 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(AzureOpenAIOptions.SectionName));
         services.Configure<ComicOptions>(
             configuration.GetSection(ComicOptions.SectionName));
+        services.Configure<GenerationBudgetOptions>(
+            configuration.GetSection(GenerationBudgetOptions.SectionName));
         services.Configure<LeaderboardOptions>(
             configuration.GetSection(LeaderboardOptions.SectionName));
         services.Configure<HuggingFaceOptions>(
@@ -142,6 +147,14 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<RestaurantRepository>();
         services.AddScoped<IComicRepository, ComicRepository>();
         services.AddScoped<ILeaderboardRepository, LeaderboardRepository>();
+        services.AddScoped<HallOfFameRepository>();
+        // Same instance behind both: the slice reads through the concrete type, Takedowns
+        // erases through the Shared contract.
+        services.AddScoped<IHallOfFameArchive>(sp => sp.GetRequiredService<HallOfFameRepository>());
+        services.AddScoped<ComicReportRepository>();
+        services.AddScoped<ReactionRepository>();
+        services.AddScoped<FunnelRepository>();
+        services.AddScoped<IGenerationBudgetService, GenerationBudgetService>();
 
         // Register services
         services.AddHttpClient<GoogleMapsService>()

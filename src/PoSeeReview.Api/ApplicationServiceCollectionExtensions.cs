@@ -13,6 +13,7 @@ public static class ApplicationServiceCollectionExtensions
         // keeping controllers aligned with SRP and feature-slice boundaries.
         services.AddScoped<GenerateComicCommandHandler>();
         services.AddScoped<GetCachedComicQueryHandler>();
+        services.AddScoped<ComicStatsQueryHandler>();
         services.AddScoped<DiagnosticsSnapshotQueryHandler>();
         services.AddScoped<DevSessionCommandHandler>();
 
