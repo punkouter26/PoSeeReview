@@ -13,9 +13,20 @@ import * as comicFx from './comic-fx.js';
 import * as particles from './particles.js';
 import * as loadingRing from './loading-ring.js';
 import * as viewTransitions from './view-transitions.js';
+import * as audioReactive from './audio-reactive.js';
+import { initPerfHud, toggle as togglePerfHud, isVisible as perfHudVisible } from './perf-hud.js';
 
-// The two heavy modules are NOT imported statically — that would defeat the lazy loading they
-// were written for. They are pulled in on first use.
+// The 3D shelf is NOT imported statically — that would defeat the lazy loading it was written
+// for, and put a renderer on the first-load path of every route that does not use it. It is
+// pulled in on first use, on one page.
+let shelfModule = null;
+
+async function loadShelf() {
+    if (!shelfModule) {
+        shelfModule = await import('./shelf.js');
+    }
+    return shelfModule;
+}
 
 function guard(fn, fallback = null) {
     try {
@@ -36,8 +47,13 @@ async function guardAsync(fn, fallback = null) {
 }
 
 const info = gfx.init();
-audio.init();
+const audioInfo = audio.init();
 viewTransitions.init();
+guard(() => initPerfHud());
+
+// Audio may already be enabled from a previous session's stored preference. The reactive driver
+// has to follow that, or a returning user gets sound with a backdrop that ignores it.
+guard(() => audioReactive.sync(audioInfo.enabled));
 
 // Reflected onto <html> so CSS can respond to the tier — this is how the glass material knows
 // whether it is allowed to spend GPU time on a backdrop blur.
@@ -56,13 +72,38 @@ export const fx = {
     stats: () => guard(() => gfx.stats(), null),
     resetStats: () => guard(() => gfx.resetStats()),
 
+    /** Live performance overlay. Also reachable with Ctrl+Shift+F and ?fx=debug. */
+    togglePerfHud: () => guard(() => togglePerfHud(), false),
+    perfHudVisible: () => guard(() => perfHudVisible(), false),
+
     // ── Audio ────────────────────────────────────────────────────────────────────────────
     audioEnabled: () => guard(() => audio.isEnabled(), false),
-    setAudioEnabled: (enabled) => guardAsync(() => audio.setEnabled(enabled), false),
-    /** Call from a real click handler or the AudioContext will not leave 'suspended'. */
-    unlockAudio: () => guardAsync(() => audio.unlock(), false),
 
-    playTap: () => guard(() => audio.tap()),
+    setAudioEnabled: (enabled) => guardAsync(async () => {
+        const applied = await audio.setEnabled(enabled);
+        // Kept in step here rather than inside audio.js: the analyser belongs to the audio
+        // graph, but the decision to drive *visuals* from it is a composition concern, and
+        // audio.js has no business knowing the gradient exists.
+        audioReactive.sync(applied);
+        return applied;
+    }, false),
+
+    /** Call from a real click handler or the AudioContext will not leave 'suspended'. */
+    unlockAudio: () => guardAsync(async () => {
+        const unlocked = await audio.unlock();
+        audioReactive.sync(unlocked && audio.isEnabled());
+        return unlocked;
+    }, false),
+
+    audioLatency: () => guard(() => audio.latency(), null),
+
+    /**
+     * `element` is optional and pans the click to wherever the control actually is. Callers that
+     * pass nothing get the old centred behaviour, so no existing call site had to change.
+     */
+    playTap: (element) => guard(() => audio.tap(element ?? null)),
+    /** Pans the click to a viewport x coordinate — see audio.tapAt. */
+    playTapAt: (clientX) => guard(() => audio.tapAt(clientX)),
     playScoreTick: (value, target) => guard(() => audio.scoreTick(value, target)),
     playScoreLand: (score) => guard(() => audio.scoreLand(score)),
     playPhase: (index, total) => guard(() => audio.phase(index, total)),
@@ -86,6 +127,22 @@ export const fx = {
     startLoadingRing: (canvas, progress) => guard(() => loadingRing.start(canvas, { progress }), 0),
     setLoadingRingProgress: (id, progress) => guard(() => loadingRing.setProgress(id, progress)),
     stopLoadingRing: (id) => guard(() => loadingRing.stop(id)),
+
+    // ── Hall of Fame shelf (lazy) ────────────────────────────────────────────────────────
+    /**
+     * `entries` is an array of { rank, score }. Async because the module is fetched on demand;
+     * a 0 handle means it did not start, which every caller already treats as "no effect".
+     * The DOM list must stay in place underneath — see the header comment in shelf.js.
+     */
+    startShelf: (canvas, entries) => guardAsync(async () => {
+        const module = await loadShelf();
+        return module.start(canvas, entries ?? []);
+    }, 0),
+
+    stopShelf: (id) => guardAsync(async () => {
+        if (!id || !shelfModule) return;
+        shelfModule.stop(id);
+    }),
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
     /** Called after the destination route renders, to close the open transition. */

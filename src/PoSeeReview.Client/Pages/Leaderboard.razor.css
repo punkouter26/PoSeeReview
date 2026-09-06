@@ -497,3 +497,52 @@
         flex: 1 1 100%;
     }
 }
+
+/* ── 3D shelf stage ──────────────────────────────────────────────────────────────────────────
+   The canvas is positioned behind the list rather than sized by it, so it can never affect the
+   layout of the rows on top. Two things here are load-bearing rather than stylistic:
+
+     * pointer-events: none — every tap has to reach the card underneath. A full-bleed canvas
+       over an interactive list is the classic way to make a page look fine and be unusable.
+     * The stage has no background of its own. When the shelf does not start — reduced motion,
+       no WebGL2, the 'lite' tier, a driver that refuses the shader — the canvas stays 0x0 and
+       transparent, and the list renders exactly as it did before any of this existed.
+
+   Hidden below the 'lite' tier: gfx-core stamps the tier onto <html>, and at 'lite' nothing is
+   drawing into this canvas, so leaving it in the layer tree buys a compositor layer for nothing. */
+.shelf-stage {
+    position: relative;
+    isolation: isolate;
+}
+
+.shelf-canvas {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    /* Tall enough to sit behind the first few rows, which is where the eye goes. Full height
+       would mean a very large drawing buffer on a long board for scenery nobody scrolls to. */
+    height: min(26rem, 60vh);
+    width: 100%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.9;
+    /* Fades out at the bottom so the scene ends in the page rather than at a hard edge. */
+    -webkit-mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+}
+
+.leaderboard-list {
+    position: relative;
+    z-index: 1;
+}
+
+:global(html[data-fx-tier="off"]) .shelf-canvas,
+:global(html[data-fx-tier="lite"]) .shelf-canvas {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shelf-canvas {
+        display: none;
+    }
+}

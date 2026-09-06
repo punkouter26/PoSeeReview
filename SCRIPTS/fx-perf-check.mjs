@@ -6,9 +6,11 @@
 // It asserts the thing that cannot be established by reading the source: the shared frame
 // scheduler holds 60 FPS with the gradient and a 400-particle burst running at once.
 //
-// The Three.js shelf and Rapier grid-physics scenes were removed along with their ~2.4 MB of
-// vendored libraries, so the first-load and lazy-import assertions that guarded them are gone
-// too — there is no longer a heavy module that could reach the first-load path.
+// It also guards the load path. A 3D shelf now exists again on /leaderboard — hand-rolled, no
+// vendored library — and the whole case for re-adding it rests on it being lazy. That is a claim
+// about network behaviour, which is exactly the kind of thing that rots silently when someone
+// adds a convenient static import. So it is asserted both ways: absent on first load, present
+// after the route that uses it.
 //
 // CAVEAT ON THE NUMBERS: headless Chromium here has no GPU, so this forces ANGLE/SwiftShader.
 // The FPS figures are therefore a SOFTWARE-RENDERING FLOOR, not a device measurement. A real GPU
@@ -83,11 +85,45 @@ await page.evaluate(() => window.poseeFx.resetStats());
 await page.waitForTimeout(4000);
 const stats = await page.evaluate(() => window.poseeFx.stats());
 
+// The pool is the reason this many effects can run at once without burning a context each.
+record('effects share pooled WebGL contexts', stats.glContexts <= 2,
+    `${stats.glContexts} context(s) for ${stats.glSurfaces} surface(s)`);
+
 console.log('    frame stats:', JSON.stringify(stats));
 record('sustained 60+ FPS with shaders active', stats.fps >= 58,
     `${stats.fps.toFixed(1)} fps, mean ${stats.frameMs.toFixed(2)}ms, worst ${stats.worstFrameMs.toFixed(1)}ms, ${stats.droppedFrames}/${stats.sampledFrames} over budget`);
 record('no auto-downgrade triggered', stats.autoDowngraded === false,
     `tier still "${stats.tier}"`);
+
+// ── 3b. The 3D shelf stays OFF the first-load path ──────────────────────────────────────
+const shelfBeforeLeaderboard = requested.filter((url) => url.includes('shelf.js'));
+record('shelf.js not fetched on first load', shelfBeforeLeaderboard.length === 0,
+    shelfBeforeLeaderboard.length === 0 ? 'lazy' : `fetched ${shelfBeforeLeaderboard.length}x`);
+
+await page.goto(`${BASE}/leaderboard`, { waitUntil: 'domcontentloaded' });
+await page.locator('.leaderboard-container').waitFor({ timeout: 30000 });
+await page.evaluate(() => window.poseeFx.setTier('full'));
+// The module is imported on demand, so give the fetch a moment to land.
+await page.waitForTimeout(2500);
+
+const shelfAfterLeaderboard = requested.filter((url) => url.includes('shelf.js'));
+record('shelf.js loads on demand at /leaderboard', shelfAfterLeaderboard.length > 0,
+    `${shelfAfterLeaderboard.length} fetch(es)`);
+
+// The DOM list is the real leaderboard; the canvas is decoration over it. If this ever inverts,
+// the page becomes unreachable by keyboard and invisible to a screen reader.
+const listIntact = await page.evaluate(() => {
+    const list = document.querySelector('.leaderboard-list');
+    const canvas = document.querySelector('.shelf-canvas');
+    if (!list) return { ok: false, why: 'no .leaderboard-list in the DOM' };
+    if (!canvas) return { ok: true, why: 'shelf not running; list present' };
+    return {
+        ok: canvas.getAttribute('aria-hidden') === 'true'
+            && getComputedStyle(canvas).pointerEvents === 'none',
+        why: `aria-hidden=${canvas.getAttribute('aria-hidden')} pointer-events=${getComputedStyle(canvas).pointerEvents}`
+    };
+});
+record('leaderboard DOM list survives under the shelf', listIntact.ok, listIntact.why);
 
 // ── 4. Audio graph builds (no gesture here, so it stays locked — that is correct) ───────
 const audioState = await page.evaluate(async () => {

@@ -245,6 +245,26 @@ Scales: 8-step spacing (`--space-*`), 7-step fluid type (`--text-*`), `--tap-tar
 exactly four breakpoints (`40/48/64/80rem`) — there were 13 before. Prefer a **container query**
 (`.cq-card`, `.cq-list`) over a media query when the question is how much room a *component* has.
 
+**Motion** is a scale too: `--duration-instant/fast/base/slow/deliberate` and
+`--ease-out/in/in-out/spring`. Duration tracks distance travelled, not importance — a 4px chip
+needs less time than a full-screen sheet or it looks sluggish. The easings are not
+interchangeable: `--ease-out` for things arriving, `--ease-in` for things leaving (it starts slow,
+which on an entrance reads as hesitation), `--ease-spring` for a *single* emphasised element —
+overshoot applied to a list reads as instability. Reduced motion zeroes the durations at `:root`
+rather than hunting individual transitions, so end states are unchanged.
+
+**Elevation is a PAIR**, `--elevation-N-surface` + `--elevation-N-shadow`, N in 1..4 (resting card
+/ raised / popover / modal). Reaching past them for a bare `--shadow-md` is correct in light mode
+and invisible in dark, where a black shadow on a near-black ground conveys no height — dark mode
+signals elevation by the surface getting *lighter* as it rises, the opposite of light mode. Use
+`.elevation-N`, and `.elevation-raise` for hover (pointer-only: on touch there is no hover to
+leave, so the card sticks raised after a tap).
+
+> Watch the two dark blocks. `:root[data-theme="dark"]` did not redefine `--shadow-xs..lg` at all,
+> so an explicit dark choice kept light mode's 0.08–0.18 alphas; only `ThemeUiTests` sets
+> `data-theme`, which is why nobody saw it. Redefine a token in **both** the media query and the
+> attribute selector, every time.
+
 [ColorContrastTests.cs](tests/PoSeeReview.Unit/Utilities/ColorContrastTests.cs) parses the real
 token values out of app.css and asserts WCAG ratios. It reads the stylesheet rather than restating
 the hex codes on purpose — and it immediately caught a dark-mode border at 1.88:1 that hand
@@ -287,14 +307,61 @@ Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/
   Save-Data, low `deviceMemory`, or few cores default to `lite`.
 
 Effect modules: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`, `comic-fx.js`,
-`particles.js`, `loading-ring.js`, `scroll-guard.js`.
+`particles.js`, `loading-ring.js`, `scroll-guard.js`, `shelf.js`.
 
-**The two heavy scenes were removed.** `hall-shelf.js` (Three.js) and `grid-physics.js` (Rapier)
-cost ~2.4 MB of vendored library for decoration layered over a DOM list and a card grid that
-already worked without them. Gone with them: `wwwroot/lib/three`, `wwwroot/lib/rapier`, the
-`startHallShelf`/`startGridPhysics` interop on `FxService`, and the lazy-import assertions in
-`SCRIPTS/fx-perf-check.mjs` that existed only to keep them off the first-load path.
-`wwwroot/lib/bootstrap` went too — 228 KB nothing had referenced since Bootstrap was dropped.
+**`gl-pool.js` owns every WebGL2 context.** Effects no longer call `canvas.getContext('webgl2')`;
+they call `createSurface()` and get a *surface* — a band of one shared offscreen atlas plus its
+own FBO — then `beginFrame()` / draw / `present()`. Four simultaneous effects on the comic page
+used to mean four live contexts, each with its own GL state and its own share of a hard browser
+cap that evicts the oldest **silently**. It is now one. `direct: true`, or any browser without
+`OffscreenCanvas`, falls back to a private context — pooling is an optimisation and fails closed.
+
+> **`present()` must not flip.** The blit into the atlas is a straight copy. A 2D context reading
+> a WebGL canvas already sees it flipped for display, so "cancelling drawImage's flip" inverts
+> every effect. This was shipped and invisible on the radially symmetric effects (noise gradient,
+> loading ring) until the shelf gave the scene a top and a bottom. The band's `originY` is in GL
+> coordinates and `drawImage`'s source Y is in image coordinates — converting between them is why
+> the source Y is `atlasHeight - (originY + height)` and not `originY`.
+
+**`telemetry.js` answers "why", where the frame budget only answers "whether".** GPU time
+(`EXT_disjoint_timer_query_webgl2`), JS heap, long tasks, worst interaction latency, CLS, and the
+live context count, merged into `gfx.stats()`. Two rules: an unavailable metric reports **null,
+never zero**, and the GPU query tracks `active` (begun, not ended) separately from `pending`
+(ended, result not back) — conflating them calls `endQuery` twice on any frame whose result was
+not ready, which WebGL rejects every frame.
+
+**`perf-hud.js` is the instrument that matters**, because `/diagnostics` is never the page that is
+slow. It draws from inside the shared rAF loop — registered as an ordinary task, so its own cost
+lands in the budget it reports — and repaints at 10Hz while sampling every frame. Toggle with
+`Ctrl+Shift+F`, `?fx=debug`, or `poseeFx.togglePerfHud()`.
+
+**Audio is spatial.** Every voice runs through a `StereoPannerNode` into a dry bus and a shared
+convolver reverb whose impulse response is generated at runtime (decorrelated stereo noise plus
+two early reflections — no asset). The score count-up sweeps left to right, pipeline phases pan
+across the stepper, the resolution chord is spread, and `playTapAt(clientX)` pans a click to where
+it happened. Errors stay dry and centred on purpose. An `AnalyserNode` on the master feeds
+`audio-reactive.js`, which is a **separate module** so the coupling points one way: the gradient
+exposes a setter and knows nothing about audio, and if the driver never runs nothing notices.
+
+**The two heavy scenes were removed, and one came back on different terms.** `hall-shelf.js`
+(Three.js) and `grid-physics.js` (Rapier) cost ~2.4 MB of vendored library for decoration layered
+over a DOM list and a card grid that already worked. Gone with them: `wwwroot/lib/three`,
+`wwwroot/lib/rapier`, the `startHallShelf`/`startGridPhysics` interop, and their lazy-import
+assertions. `wwwroot/lib/bootstrap` went too — 228 KB nothing had referenced since Bootstrap was
+dropped.
+
+`shelf.js` is the replacement, and the conditions are the point: **no library** (hand-rolled
+WebGL2 and 4x4 matrix maths, procedurally generated meshes, no model file), **lazy** (dynamic
+`import()` on one route — `SCRIPTS/fx-perf-check.mjs` asserts it is absent on first load and
+present after `/leaderboard`), **`full` tier only**, and **the DOM list stays** underneath,
+`aria-hidden` + `pointer-events:none`. Two things about it are experience, not taste:
+
+- **`fanSlot()` puts #1 at the centre.** Rank order along the arc puts the winner at the far end,
+  which is the smallest and furthest position in the frame — backwards for a leaderboard.
+- **The plank exists so the shadows have somewhere to land**, and the key light is above and
+  *behind*. A near-overhead light drops each shadow into the card's own footprint, where the
+  shadow pass costs full price and shows nothing. The plank is also mid-tone rather than
+  near-black: a shadow is a contrast, and there is none available below the ambient floor.
 
 Rules that are load-bearing, not stylistic:
 

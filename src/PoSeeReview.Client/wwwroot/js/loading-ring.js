@@ -5,7 +5,7 @@
 // the streaming endpoint was to stop the progress display from guessing. `setProgress` is called
 // with the actual completed fraction; the shader only interpolates between the values it is given.
 
-import { gfx, createGl, compileProgram, FULLSCREEN_VERTEX_SHADER, resizeToDisplay, disposeGl } from './gfx-core.js';
+import { gfx, createSurface, compileProgram, FULLSCREEN_VERTEX_SHADER } from './gfx-core.js';
 
 const FRAGMENT_SHADER = `#version 300 es
 precision mediump float;
@@ -83,8 +83,10 @@ export function start(canvas, options = {}) {
         return 0;
     }
 
-    const gl = createGl(canvas);
-    if (!gl) return 0;
+    const surface = createSurface(canvas, { maxDpr: 2 });
+    if (!surface) return 0;
+
+    const { gl } = surface;
 
     let program;
     try {
@@ -92,7 +94,7 @@ export function start(canvas, options = {}) {
     } catch (err) {
         // The SVG ring underneath is still there and still correct.
         console.warn('[loading-ring] shader unavailable; keeping the SVG ring', err);
-        disposeGl(gl);
+        surface.release();
         return 0;
     }
 
@@ -108,7 +110,7 @@ export function start(canvas, options = {}) {
     const startTime = performance.now();
 
     const instance = {
-        gl, program, vao, canvas,
+        gl, surface, program, vao, canvas,
         progress: 0,
         targetProgress: Math.min(1, Math.max(0, options.progress ?? 0)),
         colorA: parseColor(options.colorA, [0.49, 0.23, 0.93]),
@@ -117,7 +119,10 @@ export function start(canvas, options = {}) {
     };
 
     instance.stop = gfx.addTask(`loading-ring#${id}`, (now) => {
-        resizeToDisplay(canvas, gl, 2);
+        if (!surface.beginFrame()) {
+            stop(id);
+            return;
+        }
 
         // Ease toward the reported phase. Phases arrive as discrete jumps seconds apart; snapping
         // would make the ring look broken between them.
@@ -136,6 +141,11 @@ export function start(canvas, options = {}) {
         gl.uniform3fv(uniforms.colorB, instance.colorB);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindVertexArray(null);
+
+        // Shared pooled context: blend state left on would change how the next effect composites.
+        gl.disable(gl.BLEND);
+
+        surface.present();
     });
 
     instances.set(id, instance);
@@ -157,7 +167,7 @@ export function stop(id) {
     instance.stop?.();
     instance.gl.deleteProgram(instance.program);
     instance.gl.deleteVertexArray(instance.vao);
-    disposeGl(instance.gl);
+    instance.surface.release();
     if (instance.canvas) {
         delete instance.canvas.dataset.ringFx;
     }

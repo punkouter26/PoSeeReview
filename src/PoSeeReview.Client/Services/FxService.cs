@@ -29,8 +29,46 @@ public readonly record struct FxCapabilities(FxTier Tier, bool ReducedMotion, bo
 /// <param name="DroppedFrames">Frames that exceeded the 20ms budget.</param>
 /// <param name="SampledFrames">Total frames measured since the last reset.</param>
 /// <param name="ActiveTasks">Effects currently registered on the scheduler.</param>
+/// <param name="CpuMs">
+/// Mean time per frame spent inside effect callbacks. The gap between this and
+/// <paramref name="FrameMs"/> is everything else on the main thread — Blazor renders, GC, layout.
+/// A large gap means the shaders were never the problem.
+/// </param>
+/// <param name="GpuMs">
+/// Mean GPU time per frame, from EXT_disjoint_timer_query_webgl2. Null where the extension is
+/// unavailable — which is most of Safari and Firefox. Null is not zero.
+/// </param>
+/// <param name="HeapMb">Used JS heap. Chromium only; null elsewhere.</param>
+/// <param name="LongTasks">Main-thread tasks over 50ms since the last reset.</param>
+/// <param name="WorstLongTaskMs">Longest single blocking task seen.</param>
+/// <param name="InpMs">
+/// Worst interaction latency observed. A pessimistic stand-in for true INP, which needs a
+/// session-long 98th percentile — the right direction to be wrong in for a diagnostic.
+/// </param>
+/// <param name="LayoutShift">Cumulative layout shift, excluding shifts following real input.</param>
+/// <param name="GlContexts">Live WebGL contexts, pooled plus direct. Creep here is a leak.</param>
+/// <param name="GlSurfaces">Effects holding a render surface.</param>
+/// <param name="ContextLosses">Times the shared atlas context was lost.</param>
 public readonly record struct FxFrameStats(
-    double Fps, double FrameMs, double WorstFrameMs, int DroppedFrames, int SampledFrames, int ActiveTasks);
+    double Fps, double FrameMs, double WorstFrameMs, int DroppedFrames, int SampledFrames, int ActiveTasks,
+    double CpuMs, double? GpuMs, double? HeapMb, int LongTasks, double WorstLongTaskMs,
+    double? InpMs, double LayoutShift, int GlContexts, int GlSurfaces, int ContextLosses);
+
+/// <param name="BaseMs">AudioContext base latency.</param>
+/// <param name="OutputMs">Output latency, where the browser reports one.</param>
+/// <param name="SampleRate">Context sample rate.</param>
+/// <param name="ContextState">running / suspended / closed.</param>
+public readonly record struct FxAudioLatency(
+    double BaseMs, double OutputMs, double SampleRate, string? ContextState);
+
+/// <summary>
+/// One card on the 3D shelf. Deliberately just rank and score — the shelf renders shapes, not
+/// text, so passing restaurant names or blob URLs across interop would ship data the renderer
+/// cannot use and would put third-party review content into a decorative layer for no reason.
+/// </summary>
+/// <param name="Rank">1-based board position; drives colour and how high the card floats.</param>
+/// <param name="Score">Strangeness score, 0-100.</param>
+public readonly record struct FxShelfEntry(int Rank, double Score);
 
 /// <summary>
 /// Blazor-side facade over <c>wwwroot/js/fx.js</c>.
@@ -136,6 +174,14 @@ public sealed class FxService(IJSRuntime js)
 
     public Task ResetFrameStatsAsync() => SafeVoidAsync("poseeFx.resetStats");
 
+    /// <summary>
+    /// Shows or hides the live performance overlay. Also bound to Ctrl+Shift+F and <c>?fx=debug</c>
+    /// in JS, so this is a convenience for the diagnostics page rather than the only way in.
+    /// </summary>
+    public Task<bool> TogglePerfHudAsync() => SafeAsync("poseeFx.togglePerfHud", false);
+
+    public Task<bool> IsPerfHudVisibleAsync() => SafeAsync("poseeFx.perfHudVisible", false);
+
     // ── Audio ────────────────────────────────────────────────────────────────────────────
 
     public Task<bool> IsAudioEnabledAsync() => SafeAsync("poseeFx.audioEnabled", false);
@@ -149,7 +195,26 @@ public sealed class FxService(IJSRuntime js)
 
     public Task UnlockAudioAsync() => SafeVoidAsync("poseeFx.unlockAudio");
 
+    /// <summary>Output latency and context state, for the diagnostics panel. Null before unlock.</summary>
+    public Task<FxAudioLatency?> GetAudioLatencyAsync() =>
+        SafeAsync<FxAudioLatency?>("poseeFx.audioLatency", null);
+
     public Task PlayTapAsync() => SafeVoidAsync("poseeFx.playTap");
+
+    /// <summary>
+    /// Click panned to where the control actually is on screen. Prefer this over
+    /// <see cref="PlayTapAsync()"/> wherever an <see cref="ElementReference"/> is already to hand:
+    /// a tap that sounds from the side of the screen it happened on is the cheapest spatial cue
+    /// the app has.
+    /// </summary>
+    public Task PlayTapAsync(ElementReference element) => SafeVoidAsync("poseeFx.playTap", element);
+
+    /// <summary>
+    /// Click panned to where the pointer was. The practical form for repeated lists: a click
+    /// handler already receives <see cref="Microsoft.AspNetCore.Components.Web.MouseEventArgs"/>,
+    /// so no per-item <see cref="ElementReference"/> is needed.
+    /// </summary>
+    public Task PlayTapAtAsync(double clientX) => SafeVoidAsync("poseeFx.playTapAt", clientX);
     public Task PlayScoreTickAsync(int value, int target) => SafeVoidAsync("poseeFx.playScoreTick", value, target);
     public Task PlayScoreLandAsync(int score) => SafeVoidAsync("poseeFx.playScoreLand", score);
     public Task PlayPhaseAsync(int index, int total) => SafeVoidAsync("poseeFx.playPhase", index, total);
@@ -185,6 +250,23 @@ public sealed class FxService(IJSRuntime js)
 
     public Task StopLoadingRingAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopLoadingRing", handle);
+
+    // ── Hall of Fame shelf ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Starts the 3D shelf behind the leaderboard list. The module is fetched on demand, so this
+    /// is the one effect whose first call pays a network cost — deliberately, to keep a renderer
+    /// off the first-load path of every other route.
+    /// <para>
+    /// The DOM list underneath must stay exactly where it is. It is the only keyboard-reachable
+    /// and screen-reader-legible form of the leaderboard; this canvas is decoration over it.
+    /// </para>
+    /// </summary>
+    public Task<int> StartShelfAsync(ElementReference canvas, IReadOnlyList<FxShelfEntry> entries) =>
+        SafeAsync("poseeFx.startShelf", 0, canvas, entries);
+
+    public Task StopShelfAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopShelf", handle);
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
 

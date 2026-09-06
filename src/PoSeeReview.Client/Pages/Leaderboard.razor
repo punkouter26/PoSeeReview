@@ -7,6 +7,7 @@
 @inject ILogger<Leaderboard> Logger
 @inject ShareService ShareService
 @inject NavigationManager Navigation
+@inject FxService Fx
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
@@ -156,6 +157,13 @@
             </RadzenButton>
         </div>
 
+        @* Decoration BEHIND the list, never instead of it. The <canvas> is aria-hidden and
+           pointer-events:none; every row below stays a real focusable, selectable, screen-reader
+           legible element. A 3D scene that replaced this list would make the leaderboard
+           unreachable by keyboard and invisible to assistive tech — see shelf.js. *@
+        <div class="shelf-stage">
+            <canvas @ref="_shelfCanvas" class="shelf-canvas" aria-hidden="true"></canvas>
+
         <div class="leaderboard-list cq-list">
             @foreach (var entry in leaderboardEntries ?? [])
             {
@@ -186,6 +194,7 @@
                     </div>
                 </div>
             }
+        </div>
         </div>
     }
 
@@ -241,10 +250,65 @@
     private string? shareToast;
     private System.Threading.Timer? shareToastTimer;
 
-    public ValueTask DisposeAsync()
+    private ElementReference _shelfCanvas;
+    private int _shelfHandle;
+    /// <summary>Entry count the shelf was last built for, so it only restarts when that changes.</summary>
+    private int _shelfBuiltFor = -1;
+
+    public async ValueTask DisposeAsync()
     {
         shareToastTimer?.Dispose();
-        return ValueTask.CompletedTask;
+        await StopShelfAsync();
+    }
+
+    /// <summary>
+    /// Starts or restarts the 3D shelf once the list it sits behind has rendered.
+    /// <para>
+    /// Every failure path here ends with the plain list, which is the complete feature on its
+    /// own — the shelf is decoration and is allowed to simply not happen. A zero handle means it
+    /// did not start, which is also what a device below the 'full' tier gets.
+    /// </para>
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Only the live board has a shelf. The archive is a scrolling list of weeks; a fixed
+        // scene behind it would sit behind whichever week happened to be in view.
+        if (_scope != BoardScope.Live || isLoading)
+        {
+            await StopShelfAsync();
+            return;
+        }
+
+        var entries = leaderboardEntries;
+        if (entries is null || entries.Count == 0)
+        {
+            await StopShelfAsync();
+            return;
+        }
+
+        if (_shelfHandle != 0 && _shelfBuiltFor == entries.Count)
+        {
+            return;
+        }
+
+        await StopShelfAsync();
+
+        _shelfHandle = await Fx.StartShelfAsync(
+            _shelfCanvas,
+            [.. entries.Select(e => new FxShelfEntry(e.Rank, e.StrangenessScore))]);
+        _shelfBuiltFor = entries.Count;
+    }
+
+    private async Task StopShelfAsync()
+    {
+        if (_shelfHandle == 0)
+        {
+            return;
+        }
+
+        await Fx.StopShelfAsync(_shelfHandle);
+        _shelfHandle = 0;
+        _shelfBuiltFor = -1;
     }
     protected override async Task OnInitializedAsync()
     {

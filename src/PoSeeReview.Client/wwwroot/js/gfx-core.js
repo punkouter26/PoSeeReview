@@ -16,6 +16,12 @@
 //   'lite' — audio + CSS materials. No persistent GPU loop.
 //   'full' — everything, including the heavy lazy-loaded scenes.
 
+import { acquireSurface, poolStats } from './gl-pool.js';
+import {
+    startTelemetry, telemetrySnapshot, resetTelemetry,
+    attachGpuTimer, beginGpuSample, endGpuSample
+} from './telemetry.js';
+
 const STORAGE_KEY = 'posee_fx_tier';
 const TIERS = ['off', 'lite', 'full'];
 
@@ -45,11 +51,21 @@ const state = {
         worstFrameMs: 0,
         droppedFrames: 0,
         sampledFrames: 0,
-        activeTasks: 0
+        activeTasks: 0,
+        // Time this loop spent in effect callbacks, as opposed to wall time between frames.
+        // The gap between the two is everything else on the main thread — Blazor renders, GC,
+        // layout — which is exactly what you need to know before optimising a shader that was
+        // never the problem.
+        cpuMs: 0
     },
     // Rolling mean, cheap: no array allocation per frame.
     frameMsAccumulator: 0,
     frameMsCount: 0,
+    cpuMsAccumulator: 0,
+    // A short ring of recent frame times, for the sparkline in the live HUD. Fixed length and
+    // preallocated: an overlay that allocates per frame is a source of the jank it reports.
+    history: new Float32Array(120),
+    historyIndex: 0,
     lastStatsFlush: 0,
     listeners: new Set()
 };
@@ -128,6 +144,11 @@ function frame(now) {
 
     const workStart = performance.now();
 
+    // The GPU sample brackets every effect in the frame, not one of them. A per-effect query
+    // would need one query object per effect per frame and would serialise them against each
+    // other; what the overlay actually needs to answer is "is the GPU or the CPU the wall?".
+    beginGpuSample();
+
     for (const task of state.tasks.values()) {
         try {
             task.callback(now, elapsed);
@@ -137,6 +158,8 @@ function frame(now) {
             state.tasks.delete(task.id);
         }
     }
+
+    endGpuSample();
 
     const workMs = performance.now() - workStart;
     recordFrame(elapsed, workMs, now);
@@ -158,7 +181,11 @@ function recordFrame(elapsedMs, workMs, now) {
 
     stats.sampledFrames++;
     state.frameMsAccumulator += elapsedMs;
+    state.cpuMsAccumulator += workMs;
     state.frameMsCount++;
+
+    state.history[state.historyIndex] = elapsedMs;
+    state.historyIndex = (state.historyIndex + 1) % state.history.length;
 
     if (elapsedMs > stats.worstFrameMs) {
         stats.worstFrameMs = elapsedMs;
@@ -179,8 +206,10 @@ function recordFrame(elapsedMs, workMs, now) {
     // rare enough that the diagnostics overlay is not itself a source of jank.
     if (now - state.lastStatsFlush >= 250) {
         stats.frameMs = state.frameMsAccumulator / Math.max(1, state.frameMsCount);
+        stats.cpuMs = state.cpuMsAccumulator / Math.max(1, state.frameMsCount);
         stats.fps = stats.frameMs > 0 ? 1000 / stats.frameMs : 0;
         state.frameMsAccumulator = 0;
+        state.cpuMsAccumulator = 0;
         state.frameMsCount = 0;
         state.lastStatsFlush = now;
     }
@@ -241,6 +270,7 @@ export const gfx = {
     init() {
         state.reducedMotion = detectReducedMotion();
         state.webgl2 = detectWebGl2();
+        startTelemetry();
 
         const stored = readStoredTier();
         // A stored preference is still overridden by an OS-level reduced-motion request and by
@@ -308,17 +338,41 @@ export const gfx = {
     },
 
     stats() {
-        return { ...state.stats, tier: state.tier, autoDowngraded: state.tierWasAutoDowngraded };
+        const pool = poolStats();
+        return {
+            ...state.stats,
+            ...telemetrySnapshot(),
+            tier: state.tier,
+            autoDowngraded: state.tierWasAutoDowngraded,
+            glContexts: pool.pooledContexts + pool.directContexts,
+            pooledContexts: pool.pooledContexts,
+            directContexts: pool.directContexts,
+            glSurfaces: pool.surfaces,
+            contextLosses: pool.contextLosses
+        };
+    },
+
+    /** Raw frame-time ring for the sparkline, oldest first. Copied, so callers cannot corrupt it. */
+    frameHistory() {
+        const out = new Array(state.history.length);
+        for (let i = 0; i < state.history.length; i++) {
+            out[i] = state.history[(state.historyIndex + i) % state.history.length];
+        }
+        return out;
     },
 
     resetStats() {
         Object.assign(state.stats, {
             fps: 0, frameMs: 0, worstFrameMs: 0, droppedFrames: 0, sampledFrames: 0,
-            activeTasks: state.tasks.size
+            cpuMs: 0, activeTasks: state.tasks.size
         });
         state.frameMsAccumulator = 0;
+        state.cpuMsAccumulator = 0;
         state.frameMsCount = 0;
         state.overBudgetStreak = 0;
+        state.history.fill(0);
+        state.historyIndex = 0;
+        resetTelemetry();
     }
 };
 
@@ -328,6 +382,24 @@ export const gfx = {
 // and one instanced quad batch. That is a few dozen lines, against ~130KB gzipped for a
 // renderer whose feature set this app would not touch.
 
+/**
+ * Preferred way to get a render target. Hands back a pooled surface where the browser supports
+ * one, and a privately-owned context where it does not — the caller's code is identical either
+ * way. Also the point where the GPU timer is bound, since that has to happen on whatever context
+ * the effects actually ended up sharing.
+ *
+ * Usage per frame: `if (!surface.beginFrame()) return;` … draw … `surface.present();`
+ * On teardown: `surface.release()`.
+ */
+export function createSurface(canvas, options = {}) {
+    const surface = acquireSurface(canvas, options);
+    if (surface) {
+        attachGpuTimer(surface.gl);
+    }
+    return surface;
+}
+
+/** @deprecated Use createSurface. Retained for effects that need the default framebuffer. */
 export function createGl(canvas) {
     return canvas.getContext('webgl2', {
         alpha: true,

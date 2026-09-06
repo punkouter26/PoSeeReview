@@ -223,6 +223,57 @@
         /* Minimum comfortable touch target (WCAG 2.5.8 / platform HIG). */
         --tap-target: 2.75rem;  /* 44px */
 
+        /* ── Motion ──────────────────────────────────────────────────────────────────────────
+           Durations and easings, so a transition is chosen from a scale rather than typed from
+           memory. Every hand-rolled `0.2s ease` in this app was a slightly different guess, and
+           the result is that two adjacent controls settle at visibly different times.
+
+           The easings are not interchangeable, and picking the wrong one is the most common way
+           motion goes cheap:
+             --ease-out    things ARRIVING. Fast at first, settling. The default for anything
+                           entering, opening, or responding to a tap.
+             --ease-in     things LEAVING. Nothing should enter with this; it starts slow, which
+                           reads as hesitation.
+             --ease-spring slight overshoot, for a single emphasised element (the score landing).
+                           Applied to a list, overshoot reads as instability.
+
+           Durations scale with distance travelled, not with importance: a 4px chip needs less
+           time than a full-screen sheet or it looks sluggish. */
+        --duration-instant: 80ms;    /* state flips: checked, pressed */
+        --duration-fast: 140ms;      /* hovers, small chips, tooltips */
+        --duration-base: 220ms;      /* the default — cards, buttons, most things */
+        --duration-slow: 340ms;      /* sheets, page-level reveals */
+        --duration-deliberate: 620ms;/* the score count-up and its landing */
+
+        --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+        --ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
+        --ease-in-out: cubic-bezier(0.65, 0.05, 0.36, 1);
+        --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+        /* ── Elevation ───────────────────────────────────────────────────────────────────────
+           An elevation is a PAIR: a shadow and the surface tint that goes under it. Shadow
+           alone is why the design drifted — in dark mode a black shadow on a dark ground is
+           invisible, so depth there has to come from the surface getting *lighter* as it rises,
+           which is the opposite of what happens in light mode. Using --elevation-N-surface
+           together with --elevation-N-shadow gets both right in both themes; reaching past them
+           for a raw --shadow-* only works in one.
+
+           Four steps, matching the four things this app actually stacks:
+             1  resting cards in a list
+             2  a raised or hovered card
+             3  popovers, the install nudge, the toast
+             4  modal dialogs
+
+           Light mode: surfaces stay the same and shadows deepen. */
+        --elevation-1-shadow: var(--shadow-xs);
+        --elevation-2-shadow: var(--shadow-sm);
+        --elevation-3-shadow: var(--shadow-md);
+        --elevation-4-shadow: var(--shadow-lg);
+        --elevation-1-surface: var(--color-card);
+        --elevation-2-surface: var(--color-card);
+        --elevation-3-surface: var(--color-card);
+        --elevation-4-surface: var(--color-card);
+
         --shadow-card: 0 2px 12px rgba(124, 58, 237, 0.08);
         --shadow-card-hover: 0 6px 24px rgba(124, 58, 237, 0.18);
         --gradient-brand: linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%);
@@ -369,12 +420,18 @@
             --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
             --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
             --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.65);
-            --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.4);
-        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
-        --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
-        --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.65);
-        --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.45);
+            --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.45);
             --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.6);
+
+            /* Dark mode inverts how elevation is signalled. A black shadow on a near-black page
+               conveys nothing, so height is carried by the SURFACE getting lighter as it rises —
+               the physical model being that a raised surface catches more ambient light. The
+               shadows stay, but only to anchor the edge; the tint does the actual work. */
+            --elevation-1-surface: color-mix(in srgb, var(--color-card) 100%, white 0%);
+            --elevation-2-surface: color-mix(in srgb, var(--color-card) 96%, white 4%);
+            --elevation-3-surface: color-mix(in srgb, var(--color-card) 92%, white 8%);
+            --elevation-4-surface: color-mix(in srgb, var(--color-card) 87%, white 13%);
+
             --gradient-brand: linear-gradient(135deg, #6D28D9 0%, #3B1078 100%);
             --gradient-sidebar: linear-gradient(180deg, #0F021F 0%, #1B0937 60%, #26104D 100%);
 
@@ -422,6 +479,22 @@
 
         --shadow-card: 0 2px 12px rgba(0, 0, 0, 0.45);
         --shadow-card-hover: 0 6px 24px rgba(0, 0, 0, 0.6);
+
+        /* The media-query block above redefines these four and this one did not, so an EXPLICIT
+           dark choice used to keep light mode's shadows — the 0.08-0.18 alphas, which are
+           invisible on a dark ground. Only ThemeUiTests sets data-theme today, which is why it
+           went unseen; that is exactly the asymmetry the layering note at the top warns about. */
+        --shadow-xs: 0 1px 4px rgba(0, 0, 0, 0.4);
+        --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.45);
+        --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.55);
+        --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.65);
+
+        /* Elevation by surface tint — see the note in the media-query block. */
+        --elevation-1-surface: color-mix(in srgb, var(--color-card) 100%, white 0%);
+        --elevation-2-surface: color-mix(in srgb, var(--color-card) 96%, white 4%);
+        --elevation-3-surface: color-mix(in srgb, var(--color-card) 92%, white 8%);
+        --elevation-4-surface: color-mix(in srgb, var(--color-card) 87%, white 13%);
+
         --gradient-brand: linear-gradient(135deg, #6D28D9 0%, #3B1078 100%);
         --gradient-sidebar: linear-gradient(180deg, #0F021F 0%, #1B0937 60%, #26104D 100%);
 
@@ -1044,6 +1117,23 @@
             transform: none;
         }
 
+        /* Collapse the motion scale rather than hunting down each transition that uses it.
+           Duration goes to zero, so anything written against these tokens becomes an instant
+           state change — the end states stay identical, which is the point: reduced motion means
+           no animation, not a different design. Easings are left alone; they are meaningless at
+           zero duration and overriding them would only add noise to the computed styles. */
+        :root {
+            --duration-instant: 0ms;
+            --duration-fast: 0ms;
+            --duration-base: 0ms;
+            --duration-slow: 0ms;
+            --duration-deliberate: 0ms;
+        }
+
+        .elevation-raise:hover {
+            transform: none;
+        }
+
         .fx-backdrop,
         .fx-overlay {
             display: none;
@@ -1111,6 +1201,33 @@
    ============================================================================================ */
 
 @layer utilities {
+    /* ── Elevation utilities ─────────────────────────────────────────────────────────────────
+       Apply a step as a pair. Reaching for `box-shadow: var(--shadow-md)` on its own is what
+       these exist to replace: it is correct in light mode and invisible in dark, because a black
+       shadow on a near-black surface conveys no height. See the token block for the full note. */
+    .elevation-1 { background: var(--elevation-1-surface); box-shadow: var(--elevation-1-shadow); }
+    .elevation-2 { background: var(--elevation-2-surface); box-shadow: var(--elevation-2-shadow); }
+    .elevation-3 { background: var(--elevation-3-surface); box-shadow: var(--elevation-3-shadow); }
+    .elevation-4 { background: var(--elevation-4-surface); box-shadow: var(--elevation-4-shadow); }
+
+    /* Raising on hover moves BOTH halves of the pair, or the tint and the shadow disagree about
+       how high the card is. Pointer-only: on touch there is no hover state to leave, so the card
+       would stick raised after a tap. */
+    @media (hover: hover) {
+        .elevation-raise {
+            transition:
+                box-shadow var(--duration-base) var(--ease-out),
+                background-color var(--duration-base) var(--ease-out),
+                transform var(--duration-base) var(--ease-out);
+        }
+
+        .elevation-raise:hover {
+            background: var(--elevation-3-surface);
+            box-shadow: var(--elevation-3-shadow);
+            transform: translateY(-2px);
+        }
+    }
+
     /* Narrow slot: stack the card's header so the name is not squeezed against the rating. */
     @container card (max-width: 20rem) {
         .restaurant-card .card-header {

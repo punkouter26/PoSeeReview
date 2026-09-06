@@ -58,6 +58,43 @@ else
                 <span class="fx-stat-value">@_stats.SampledFrames</span>
                 <span class="fx-stat-label">frames sampled</span>
             </div>
+
+            @* ── Beyond frame time ────────────────────────────────────────────────────────
+               A frame-time average says the page is slow; none of it says why. These do.
+               Anything the platform does not expose renders an em dash, never a zero — an
+               absent measurement and a measurement of zero are different claims, and reporting
+               "0ms GPU" on a browser with no timer extension is just a lie. *@
+            <div class="fx-stat @(_stats.CpuMs <= 8 ? "fx-good" : _stats.CpuMs <= 16 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.CpuMs.ToString("F1")</span>
+                <span class="fx-stat-label">cpu in effects ms</span>
+            </div>
+            <div class="fx-stat @(_stats.GpuMs is null ? "" : _stats.GpuMs <= 8 ? "fx-good" : _stats.GpuMs <= 16 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@(_stats.GpuMs?.ToString("F1") ?? "—")</span>
+                <span class="fx-stat-label">gpu ms</span>
+            </div>
+            <div class="fx-stat @(_stats.HeapMb is null ? "" : _stats.HeapMb <= 220 ? "fx-good" : _stats.HeapMb <= 400 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@(_stats.HeapMb?.ToString("F0") ?? "—")</span>
+                <span class="fx-stat-label">js heap mb</span>
+            </div>
+            <div class="fx-stat @(_stats.WorstLongTaskMs <= 100 ? "fx-good" : _stats.WorstLongTaskMs <= 250 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.LongTasks</span>
+                <span class="fx-stat-label">long tasks (worst @_stats.WorstLongTaskMs.ToString("F0")ms)</span>
+            </div>
+            <div class="fx-stat @(_stats.InpMs is null ? "" : _stats.InpMs <= 200 ? "fx-good" : _stats.InpMs <= 500 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@(_stats.InpMs?.ToString("F0") ?? "—")</span>
+                <span class="fx-stat-label">worst interaction ms</span>
+            </div>
+            <div class="fx-stat @(_stats.LayoutShift <= 0.1 ? "fx-good" : _stats.LayoutShift <= 0.25 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.LayoutShift.ToString("F3")</span>
+                <span class="fx-stat-label">layout shift</span>
+            </div>
+            @* Creep here across navigations is a context leak, which ends in the browser
+               silently evicting the oldest context and an effect going dark for no visible
+               reason. It is invisible in every frame-time metric. *@
+            <div class="fx-stat @(_stats.GlContexts <= 3 ? "fx-good" : _stats.GlContexts <= 6 ? "fx-warn" : "fx-bad")">
+                <span class="fx-stat-value">@_stats.GlContexts</span>
+                <span class="fx-stat-label">webgl contexts (@_stats.GlSurfaces surfaces)</span>
+            </div>
         </div>
 
         <div class="fx-controls">
@@ -85,12 +122,44 @@ else
             </div>
 
             <div class="fx-control-row">
+                <span class="fx-control-label">Live overlay</span>
+                <button type="button" class="btn @(_perfHudVisible ? "btn-primary" : "btn-secondary")"
+                        @onclick="TogglePerfHudAsync">
+                    @(_perfHudVisible ? "On" : "Off")
+                </button>
+            </div>
+
+            <div class="fx-control-row">
                 <button type="button" class="btn btn-secondary" @onclick="ResetStatsAsync">Reset counters</button>
             </div>
         </div>
 
         <ul class="fx-notes">
             <li>WebGL2: <strong>@(_caps.WebGl2 ? "available" : "unavailable")</strong></li>
+            @* The overlay is the instrument that matters, because this page is not the page that
+               is slow. It draws from inside the same rAF loop the effects run on, so it measures
+               the frames it is part of rather than polling across interop like this grid does. *@
+            <li>
+                The live overlay works on <em>every</em> page — toggle it with
+                <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, or append <code>?fx=debug</code> to any URL.
+                Watch it on the comic page, not here: this one runs no effects.
+            </li>
+            @if (_audioLatency is { } latency)
+            {
+                <li>
+                    Audio: <strong>@latency.ContextState</strong> at @latency.SampleRate.ToString("F0") Hz,
+                    @((latency.BaseMs + latency.OutputMs).ToString("F1"))ms output latency.
+                </li>
+            }
+            @if (_stats.ContextLosses > 0)
+            {
+                <li class="fx-bad">
+                    <strong>@_stats.ContextLosses WebGL context loss(es).</strong> The shared atlas was
+                    dropped by the driver; effects fell back to private contexts. Usually a GPU reset
+                    or a background tab being reclaimed, not an app bug — but repeated losses on one
+                    device mean the scene is too heavy for it.
+                </li>
+            }
             @if (_caps.ReducedMotion)
             {
                 <li><strong>The OS asked for reduced motion.</strong> The tier is pinned to Off and the control above is disabled — offering a toggle that ignores the system preference would be worse than hiding it.</li>
@@ -301,6 +370,8 @@ else
     private FxFrameStats _stats;
     private FxCapabilities _caps;
     private bool _audioEnabled;
+    private bool _perfHudVisible;
+    private FxAudioLatency? _audioLatency;
     private System.Threading.Timer? _statsTimer;
 
     /// <summary>
@@ -312,6 +383,7 @@ else
     {
         _caps = await Fx.GetCapabilitiesAsync();
         _audioEnabled = await Fx.IsAudioEnabledAsync();
+        _perfHudVisible = await Fx.IsPerfHudVisibleAsync();
 
         _statsTimer = new System.Threading.Timer(_ =>
         {
@@ -319,6 +391,7 @@ else
             {
                 _stats = await Fx.GetFrameStatsAsync();
                 _caps = await Fx.GetCapabilitiesAsync();
+                _audioLatency = await Fx.GetAudioLatencyAsync();
                 StateHasChanged();
             });
         }, null, 250, 250);
@@ -331,6 +404,15 @@ else
         await Fx.SetTierAsync(tier);
         _caps = await Fx.GetCapabilitiesAsync();
         await Fx.ResetFrameStatsAsync();
+    }
+
+    /// <summary>
+    /// The overlay is global, so this only reflects state the user could equally have toggled
+    /// with the keyboard shortcut on any other page.
+    /// </summary>
+    private async Task TogglePerfHudAsync()
+    {
+        _perfHudVisible = await Fx.TogglePerfHudAsync();
     }
 
     private async Task ToggleAudioAsync()

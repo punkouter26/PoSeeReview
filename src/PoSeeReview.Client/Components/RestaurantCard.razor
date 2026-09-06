@@ -1,4 +1,5 @@
 @using PoSeeReview.Shared.Dtos
+@inject FxService Fx
 
 <RadzenCard class="@($"restaurant-card {GetCardClass()}")" 
             title="@GetTooltipText()"
@@ -36,7 +37,7 @@
             @* The whole card is clickable too, so the button's click must not also bubble up
                to it. stopPropagation is only valid on an HTML element, hence the wrapper. *@
             <div class="cta-wrap" @onclick:stopPropagation="true">
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary cta-btn" Disabled="@IsLoading" Click="@(_ => OnClickIfEnabled())" data-testid="comic-generate-btn">
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary cta-btn" Disabled="@IsLoading" Click="@(args => OnClickIfEnabled(args))" data-testid="comic-generate-btn">
                     @(IsLoading ? "Opening Comic..." : "Generate Comic")
                 </RadzenButton>
             </div>
@@ -78,10 +79,22 @@
             : "This restaurant has no reviews yet, so there's nothing to draw from";
     }
 
-    private async Task OnClickIfEnabled()
+    /// <summary>
+    /// Plays the tap panned to where the card actually is, then hands off to the page.
+    /// <para>
+    /// The sound is emitted here rather than in the page's handler for one reason: only this
+    /// component knows the pointer coordinate. Panning by <see cref="ElementReference"/> from the
+    /// page would mean an <c>@@ref</c> per card in a repeated list, and panning from the page's
+    /// handler would centre every card in the grid — which is the behaviour worth improving on.
+    /// </para>
+    /// </summary>
+    private async Task OnClickIfEnabled(MouseEventArgs args)
     {
         if (IsEnabled && !IsLoading)
         {
+            // A click is a trusted gesture, so this is also a valid point to unlock audio.
+            await Fx.UnlockAudioAsync();
+            await Fx.PlayTapAtAsync(args.ClientX);
             await OnRestaurantClick.InvokeAsync(Restaurant);
         }
     }
