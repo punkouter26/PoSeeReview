@@ -16,6 +16,7 @@ using PoSeeReview.Shared;
 using PoSeeReview.Api;
 using Scalar.AspNetCore;
 using Serilog.Events;
+using PoSeeReview.Api.Platform;
 using Serilog;
 
 var isTestMode = Environment.GetEnvironmentVariable("DISABLE_SERILOG") == "true";
@@ -51,10 +52,11 @@ try
             configuration
                 .ReadFrom.Configuration(context.Configuration)
                 .ReadFrom.Services(services)
-                .Enrich.FromLogContext();
+                .Enrich.FromLogContext()
+                .Enrich.WithProperty(PoPlatform.ApplicationProperty, PoPlatform.AppName);
 
             // Route structured logs to Application Insights alongside Console (NET_RULES 6.1).
-            if (!string.IsNullOrEmpty(context.Configuration["ApplicationInsights:ConnectionString"]))
+            if (!string.IsNullOrEmpty(PoPlatform.ResolveAppInsightsConnectionString(context.Configuration)))
             {
                 configuration.WriteTo.ApplicationInsights(
                     services.GetRequiredService<Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration>(),

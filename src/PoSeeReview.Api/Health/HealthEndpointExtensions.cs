@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Platform;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -26,10 +27,9 @@ internal static class HealthEndpointExtensions
             ResponseWriter = (context, report) => WriteDetailedResponse(context, report, includeDetails)
         }).AllowAnonymous();
 
-        app.MapHealthChecks("/health/live", new HealthCheckOptions
-        {
-            Predicate = _ => false // Returns 200 if app is running
-        }).AllowAnonymous();
+        // Replaced this app's bespoke liveness payload with the shared one: three apps each
+        // answered /health/live in a different shape, so nothing could poll them uniformly.
+        app.MapPoLiveness();
 
         app.MapHealthChecks("/health/ready", new HealthCheckOptions
         {

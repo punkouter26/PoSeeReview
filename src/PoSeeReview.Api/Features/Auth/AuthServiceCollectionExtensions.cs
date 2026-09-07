@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Platform;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication;
@@ -38,7 +39,7 @@ internal static class AuthServiceCollectionExtensions
             })
             .AddCookie(options =>
             {
-                options.Cookie.Name = ".PoSeeReview.Auth";
+                options.Cookie.Name = PoPlatform.SessionCookieName(secure: true);
                 options.Cookie.HttpOnly = true;
                 options.Cookie.SameSite = SameSiteMode.Strict;
                 options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
@@ -81,6 +82,14 @@ internal static class AuthServiceCollectionExtensions
                 options.TokenValidationParameters.ValidateIssuer = true;
                 options.TokenValidationParameters.IssuerValidator = (issuer, _, _) =>
                     ValidateIssuerShape(issuer, allowedTenants);
+                // Canonical UserSignedIn record. OnTokenValidated fires exactly once per interactive
+                // sign-in — after validation, before the session cookie is issued — so it needs no
+                // dedupe, and a rejected token never reaches it.
+                options.Events.OnTokenValidated = ctx =>
+                {
+                    SignInTelemetry.TrackFrom(ctx.HttpContext, ctx.Principal, "PoSeeReview");
+                    return Task.CompletedTask;
+                };
             });
         }
 
