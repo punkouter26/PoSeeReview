@@ -352,6 +352,70 @@ public class ApiClient
         }
     }
 
+    /// <summary>
+    /// Which of these places already have a live comic — the ones that will open instantly and
+    /// cost nothing. Returns an empty set on failure, so the map simply shows every pin as
+    /// undrawn rather than promising a free result it cannot confirm.
+    /// </summary>
+    public async Task<HashSet<string>> GetCachedPlaceIdsAsync(
+        IEnumerable<string> placeIds,
+        CancellationToken cancellationToken = default)
+    {
+        var ids = placeIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            var query = Uri.EscapeDataString(string.Join(',', ids));
+            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/cached?placeIds={query}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return [];
+            }
+
+            var payload = await response.Content.ReadFromJsonAsync(
+                AppJsonContext.Default.CachedComicsResponse, cancellationToken);
+
+            return payload is null ? [] : [.. payload.CachedPlaceIds];
+        }
+        catch (HttpRequestException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Mints (or re-reads) this comic's short link.
+    /// <para>
+    /// Returns <c>null</c> on any failure, and the caller shares the canonical URL instead. A
+    /// share must never fail because the nicer address could not be produced — the long URL
+    /// works, it is just uglier.
+    /// </para>
+    /// </summary>
+    public async Task<ShareLinkDto?> CreateShareLinkAsync(
+        string placeId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/share/{placeId}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ShareLinkDto, cancellationToken)
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Reads reaction tallies for a comic, plus the caller's own reaction.</summary>
     public async Task<ReactionCountsDto?> GetReactionsAsync(
         string placeId,

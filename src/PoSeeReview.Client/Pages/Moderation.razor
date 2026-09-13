@@ -1,0 +1,232 @@
+@page "/moderation"
+@attribute [Authorize]
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@inject ModerationClient ModerationApi
+
+<PageTitle>Moderation - PoSeeReview</PageTitle>
+
+@* No nav entry, reached by URL — the same posture as /diagnostics, and for the same reason:
+   operator tooling does not belong in a consumer app's primary navigation, and
+   HeaderContractUiTests asserts that nav is exactly two items. *@
+<PageShell Title="Moderation"
+           Subtitle="Reported comics, and what has been done about them"
+           Width="PageShell.ShellWidth.Wide"
+           Class="moderation-page">
+
+    <AuthorizeView Roles="Moderator">
+        <NotAuthorized>
+            @* UI-only. The server enforces the same role on every endpoint below, so this is a
+               courtesy that saves a round trip, not the control. *@
+            <div class="state-card">
+                <div class="state-card-icon" aria-hidden="true">🔒</div>
+                <h2 class="state-card-title">Moderators only</h2>
+                <p class="state-card-body">Your account does not hold the moderator role.</p>
+                <div class="state-card-actions">
+                    <a href="/" class="btn btn-primary">Back to PoSeeReview</a>
+                </div>
+            </div>
+        </NotAuthorized>
+
+        <Authorized>
+            @if (_error is not null)
+            {
+                <div class="alert alert-danger" role="alert">
+                    <p>@_error</p>
+                    <button type="button" class="btn btn-secondary" @onclick="LoadAsync">Try again</button>
+                </div>
+            }
+
+            @if (_queue is null)
+            {
+                <div class="moderation-loading">
+                    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+                </div>
+            }
+            else if (_queue.Items.Count == 0)
+            {
+                <div class="state-card">
+                    <div class="state-card-icon" aria-hidden="true">✅</div>
+                    <h2 class="state-card-title">Queue is empty</h2>
+                    <p class="state-card-body">
+                        Nothing has been reported or actioned in the last few weeks.
+                    </p>
+                </div>
+            }
+            else
+            {
+                <p class="moderation-summary">
+                    @_queue.Items.Count item@(_queue.Items.Count == 1 ? "" : "s") ·
+                    comics auto-hide at @_queue.AutoHideThreshold independent reports
+                </p>
+
+                <div class="moderation-list cq-list">
+                    @foreach (var item in _queue.Items)
+                    {
+                        <article class="moderation-row elevation-1 @(item.IsReviewed ? "moderation-row--reviewed" : "")">
+                            <header class="moderation-row-head">
+                                <div>
+                                    <h2 class="moderation-name">
+                                        @(string.IsNullOrWhiteSpace(item.RestaurantName) ? "(comic no longer cached)" : item.RestaurantName)
+                                    </h2>
+                                    <p class="moderation-place">@item.PlaceId</p>
+                                </div>
+                                <div class="moderation-badges">
+                                    @if (item.IsSuppressed)
+                                    {
+                                        <span class="moderation-badge moderation-badge--suppressed">Suppressed</span>
+                                    }
+                                    else if (item.IsHidden)
+                                    {
+                                        <span class="moderation-badge moderation-badge--hidden">Hidden</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="moderation-badge moderation-badge--live">Live</span>
+                                    }
+                                    @if (!item.IsReviewed)
+                                    {
+                                        <span class="moderation-badge moderation-badge--new">Unreviewed</span>
+                                    }
+                                </div>
+                            </header>
+
+                            <dl class="moderation-facts">
+                                <div><dt>Reports</dt><dd>@item.ReportCount</dd></div>
+                                <div><dt>Top reason</dt><dd>@item.TopReason</dd></div>
+                                <div><dt>Last activity</dt><dd>@FormatWhen(item.LastReportedAt)</dd></div>
+                                <div><dt>Comic</dt><dd>@(item.HasLiveComic ? "cached" : "expired")</dd></div>
+                            </dl>
+
+                            @if (!string.IsNullOrWhiteSpace(item.Reason))
+                            {
+                                <p class="moderation-note">@item.Reason</p>
+                            }
+
+                            <div class="moderation-actions">
+                                <a class="btn btn-secondary" href="@($"/comic/{item.PlaceId}")" target="_blank" rel="noopener">Open</a>
+
+                                @if (item.IsHidden)
+                                {
+                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
+                                            @onclick="() => ActAsync(item, ModerationAction.Restore)">Clear</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
+                                            @onclick="() => ActAsync(item, ModerationAction.Hide)">Hide</button>
+                                }
+
+                                @if (!item.IsSuppressed)
+                                {
+                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
+                                            @onclick="() => ActAsync(item, ModerationAction.Suppress)"
+                                            title="Blocks anyone from drawing this restaurant again">Suppress</button>
+                                }
+
+                                @* Two steps, and the confirm names what it erases. This deletes the
+                                   comic, the blob, the leaderboard row, the permanent archive entry
+                                   and every user's kept copy, and none of it comes back. *@
+                                @if (_confirmingRemoval == item.PlaceId)
+                                {
+                                    <div class="moderation-confirm" role="alert">
+                                        <span>Erase the comic, its image, its leaderboard and archive entries, and every kept copy? This cannot be undone.</span>
+                                        <div class="moderation-confirm-actions">
+                                            <button type="button" class="btn btn-primary" disabled="@_isBusy"
+                                                    @onclick="() => ActAsync(item, ModerationAction.Remove)">Yes, remove</button>
+                                            <button type="button" class="btn btn-secondary"
+                                                    @onclick="() => _confirmingRemoval = null">Cancel</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-secondary moderation-remove" disabled="@_isBusy"
+                                            @onclick="() => _confirmingRemoval = item.PlaceId">Remove</button>
+                                }
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </Authorized>
+    </AuthorizeView>
+</PageShell>
+
+@code {
+    private enum ModerationAction { Hide, Restore, Suppress, Remove }
+
+    private ModerationQueueDto? _queue;
+    private string? _error;
+    private string? _confirmingRemoval;
+    private bool _isBusy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        _queue = null;
+        StateHasChanged();
+
+        try
+        {
+            _queue = await ModerationApi.GetQueueAsync();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "Your account does not hold the moderator role."
+                : "The moderation queue could not be loaded.";
+        }
+    }
+
+    private async Task ActAsync(ModerationItemDto item, ModerationAction action)
+    {
+        _isBusy = true;
+        _error = null;
+        _confirmingRemoval = null;
+
+        try
+        {
+            var task = action switch
+            {
+                ModerationAction.Hide => ModerationApi.HideAsync(item.PlaceId, "Hidden from the moderation queue."),
+                ModerationAction.Restore => ModerationApi.RestoreAsync(item.PlaceId, "Reviewed and cleared."),
+                ModerationAction.Suppress => ModerationApi.SuppressAsync(item.PlaceId, "Suppressed from the moderation queue."),
+                _ => ModerationApi.RemoveAsync(item.PlaceId, "Removed from the moderation queue.")
+            };
+
+            await task;
+            await LoadAsync();
+        }
+        catch (HttpRequestException)
+        {
+            // Said plainly. A moderator who believes an action landed when it did not will move
+            // on and leave content up.
+            _error = "That action did not go through. Nothing was changed — please try again.";
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private static string FormatWhen(DateTimeOffset when)
+    {
+        if (when == default)
+        {
+            return "—";
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - when;
+
+        return elapsed switch
+        {
+            { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
+            { TotalHours: < 24 } => $"{(int)elapsed.TotalHours}h ago",
+            { TotalDays: < 7 } => $"{(int)elapsed.TotalDays}d ago",
+            _ => when.ToLocalTime().ToString("MMM d")
+        };
+    }
+}

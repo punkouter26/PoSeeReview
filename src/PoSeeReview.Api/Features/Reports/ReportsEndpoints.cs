@@ -2,6 +2,7 @@ using FluentValidation;
 using Microsoft.ApplicationInsights;
 using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Telemetry;
+using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Ids;
 
@@ -39,6 +40,7 @@ internal static class ReportsEndpoints
         ComicReportRequestDto request,
         IValidator<ComicReportRequestDto> validator,
         ComicReportRepository repository,
+        IContentModerationGate moderationGate,
         ICurrentRequestIdentityAccessor identityAccessor,
         TimeProvider timeProvider,
         ILogger<ComicReportRequestDto> logger,
@@ -78,6 +80,22 @@ internal static class ReportsEndpoints
 
         if (recorded)
         {
+            // A report that only ever writes a row is a form that says "we look at these daily"
+            // and then does not. Feeding the count to the moderation gate is what turns enough
+            // independent reports into an automatic hide, pending a human.
+            var distinctReporters = await repository.CountForPlaceAsync(placeId, cancellationToken);
+            var autoHidden = await moderationGate.RecordReportAsync(placeId, distinctReporters, cancellationToken);
+
+            if (autoHidden)
+            {
+                logger.LogWarning("Comic {PlaceId} was auto-hidden after {Count} reports", placeId, distinctReporters);
+                telemetryClient.TrackEvent("ComicAutoHidden", new Dictionary<string, string>
+                {
+                    ["PlaceId"] = placeId.Value,
+                    ["ReportCount"] = distinctReporters.ToString()
+                });
+            }
+
             PoSeeReviewTelemetry.ComicReports.Add(1,
                 [new KeyValuePair<string, object?>("reason", request.Reason.ToString())]);
 

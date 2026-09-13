@@ -58,15 +58,22 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
             return;
         }
 
-        var canonicalUrl = $"{context.Request.Scheme}://{context.Request.Host}{RoutePrefix}{Uri.EscapeDataString(placeId)}";
+        var origin = $"{context.Request.Scheme}://{context.Request.Host}";
+        var canonicalUrl = $"{origin}{RoutePrefix}{Uri.EscapeDataString(placeId)}";
+        // Our own card, not the blob. The blob URL carries a SAS signature that lapses in about
+        // a week, so every share older than that unfurled as an empty card; this one is composed
+        // on demand from whatever the comic still is.
+        var cardUrl = $"{origin}/share/{Uri.EscapeDataString(placeId)}/card.png";
 
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "text/html; charset=utf-8";
-        // Comics expire, and so does the SAS on og:image. Let a crawler re-fetch rather than pin
-        // a card to an image URL that will 403 once the signature lapses.
+        // Comics expire in 24h, so let a crawler re-fetch rather than pin a card to a comic that
+        // may already be gone. og:image no longer needs this protection — it points at
+        // /share/{placeId}/card.png on this origin instead of a SAS-signed blob URL that used to
+        // 403 the moment its signature lapsed — but the tags themselves still go stale.
         context.Response.Headers.CacheControl = "public, max-age=900";
 
-        await context.Response.WriteAsync(BuildDocument(comic, canonicalUrl), Encoding.UTF8);
+        await context.Response.WriteAsync(BuildDocument(comic, canonicalUrl, cardUrl), Encoding.UTF8);
     }
 
     private static bool TryGetPlaceId(HttpRequest request, out string placeId)
@@ -100,11 +107,11 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
     /// every interpolation here is HTML-encoded. An unescaped quote in a restaurant name would
     /// break out of a <c>content="..."</c> attribute.
     /// </summary>
-    private static string BuildDocument(Comic comic, string canonicalUrl)
+    private static string BuildDocument(Comic comic, string canonicalUrl, string cardUrl)
     {
         var title = Encode($"{comic.RestaurantName} — strangeness {comic.StrangenessScore}/100");
         var description = Encode(Summarize(comic.Narrative));
-        var image = Encode(comic.ImageUrl);
+        var image = Encode(cardUrl);
         var url = Encode(canonicalUrl);
         var name = Encode(comic.RestaurantName);
 
@@ -122,7 +129,9 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
             <meta property="og:description" content="{description}">
             <meta property="og:url" content="{url}">
             <meta property="og:image" content="{image}">
-            <meta property="og:image:alt" content="Four-panel comic strip drawn from reviews of {name}">
+            <meta property="og:image:width" content="1200">
+            <meta property="og:image:height" content="630">
+            <meta property="og:image:alt" content="Strangeness score card for {name}, drawn from its reviews">
             <meta name="twitter:card" content="summary_large_image">
             <meta name="twitter:title" content="{title}">
             <meta name="twitter:description" content="{description}">

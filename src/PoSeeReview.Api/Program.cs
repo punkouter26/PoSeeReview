@@ -111,7 +111,7 @@ try
     // same origin (BFF), so cross-origin policy is unnecessary (NET_RULES 2.2).
 
     // Register infrastructure services (Azure clients)
-    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
     builder.Services.AddHostedService<ExpiredComicCleanupService>();
     // Fail-fast guard for required AI/Map secrets in Production (PoFunQuiz pattern).
     builder.Services.AddHostedService<StartupSecretValidator>();

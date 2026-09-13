@@ -10,6 +10,8 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 @inject AnalyticsService Analytics
+@inject MapService Map
+@implements IDisposable
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
@@ -123,10 +125,35 @@
                     }
                 </div>
 
-                <button type="button" class="btn btn-secondary surprise-btn" @onclick="SurpriseMeAsync"
-                        title="Pick somewhere promising at random and draw it">
-                    <span aria-hidden="true">🎲</span> Surprise me
-                </button>
+                <div class="results-actions">
+                    @* Toggles a panel ABOVE the grid; it never replaces it. The grid stays in the
+                       DOM, focusable and readable by a screen reader, for the same reason the
+                       leaderboard list stays under the 3D shelf. *@
+                    <button type="button" class="btn btn-secondary map-toggle" @onclick="ToggleMapAsync"
+                            aria-pressed="@_showMap"
+                            aria-controls="discovery-map"
+                            title="See these on a map, with the ones already drawn marked">
+                        <span aria-hidden="true">🗺️</span> @(_showMap ? "Hide map" : "Show map")
+                    </button>
+
+                    <button type="button" class="btn btn-secondary surprise-btn" @onclick="SurpriseMeAsync"
+                            title="Pick somewhere promising at random and draw it">
+                        <span aria-hidden="true">🎲</span> Surprise me
+                    </button>
+                </div>
+            </div>
+
+            @* Rendered whenever the panel is open so the container has a size before MapLibre
+               measures it. aria-hidden because everything it shows is in the grid below, and a
+               screen reader has no use for a pile of unlabelled pins. *@
+            <div class="map-panel @(_showMap ? "" : "map-panel--closed")" aria-hidden="true">
+                <div id="discovery-map" class="map-canvas"></div>
+                @if (_showMap && _mapFailed)
+                {
+                    <p class="map-fallback">
+                        The map could not load. The list below has everything it would have shown.
+                    </p>
+                }
             </div>
             @foreach (var restaurant in SortedRestaurants)
             {
@@ -160,6 +187,13 @@
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
+
+    private bool _showMap;
+    private bool _mapFailed;
+    private double _centreLat;
+    private double _centreLng;
+    private HashSet<string> _cachedPlaceIds = [];
+    private DotNetObjectReference<Index>? _selfRef;
 
     /// <summary>How the result grid is ordered.</summary>
     private enum ResultSort
@@ -195,6 +229,113 @@
     };
 
     private void SetSort(ResultSort sort) => _sort = sort;
+
+    /// <summary>
+    /// Opens or closes the map panel.
+    /// <para>
+    /// MapLibre is fetched on the first open and never on page load, which is the condition
+    /// under which a library is allowed back into this app at all. A failure to load is not an
+    /// error state — the grid is already on screen — so it degrades to a line of text.
+    /// </para>
+    /// </summary>
+    private async Task ToggleMapAsync()
+    {
+        _showMap = !_showMap;
+
+        if (!_showMap)
+        {
+            await Map.HideAsync();
+            return;
+        }
+
+        await Fx.PlayTapAsync();
+
+        // Rendered before the JS call so the container exists and has a height; MapLibre
+        // measures its container on construction and a zero-height mount stays blank.
+        StateHasChanged();
+        await Task.Yield();
+
+        await RenderMapAsync();
+    }
+
+    private async Task RenderMapAsync()
+    {
+        if (!_showMap || _restaurants.Count == 0)
+        {
+            return;
+        }
+
+        _selfRef ??= DotNetObjectReference.Create(this);
+
+        var styles = new MapStyles();
+        try
+        {
+            // Pin colours come from the real tokens for the same reason the charts do: an SVG or
+            // inline colour cannot resolve var(), and a hardcoded hex renders wrong in the other
+            // theme.
+            var values = await JS.InvokeAsync<string[]>(
+                "poseeTheme.readTokens", new[] { "--color-success", "--color-brand" });
+            styles.Ready = values.ElementAtOrDefault(0) ?? string.Empty;
+            styles.Pending = values.ElementAtOrDefault(1) ?? string.Empty;
+        }
+        catch (JSException)
+        {
+            // map.js falls back to its own defaults when a colour is empty.
+        }
+
+        var payload = new MapPayload
+        {
+            Centre = new MapCentre { Lat = _centreLat, Lng = _centreLng },
+            Places = [.. _restaurants.Select(r => new MapPlace
+            {
+                PlaceId = r.PlaceId,
+                Name = r.Name,
+                Lat = r.Latitude,
+                Lng = r.Longitude,
+                HasComic = _cachedPlaceIds.Contains(r.PlaceId)
+            })]
+        };
+
+        _mapFailed = !await Map.ShowAsync("discovery-map", payload, styles, _selfRef);
+        StateHasChanged();
+    }
+
+    /// <summary>Tapping a pin does exactly what tapping a card does.</summary>
+    [JSInvokable]
+    public async Task OnPlaceSelected(string placeId)
+    {
+        var match = _restaurants.FirstOrDefault(r => r.PlaceId == placeId);
+        if (match is not null)
+        {
+            await HandleRestaurantClick(match);
+        }
+    }
+
+    /// <summary>
+    /// Asks which of the current results are already drawn.
+    /// <para>
+    /// This is the map's whole reason for existing: a cached comic opens instantly and costs
+    /// nothing, a fresh one spends a paid generation and about ten seconds, and the grid had no
+    /// way to say which was which. Best-effort — an empty answer just means no pin claims to be
+    /// ready.
+    /// </para>
+    /// </summary>
+    private async Task RefreshCachedPlacesAsync()
+    {
+        _cachedPlaceIds = _restaurants.Count == 0
+            ? []
+            : await ApiClient.GetCachedPlaceIdsAsync(_restaurants.Select(r => r.PlaceId));
+    }
+
+    public void Dispose()
+    {
+        if (_showMap)
+        {
+            _ = Map.HideAsync();
+        }
+
+        _selfRef?.Dispose();
+    }
 
     /// <summary>
     /// Picks a promising restaurant at random and goes straight to generating it.
@@ -348,6 +489,8 @@
             await RememberDiscoveryModeAsync(GeoMode);
 
             _loadingMessage = "Finding nearby restaurants...";
+            _centreLat = result.Latitude;
+            _centreLng = result.Longitude;
             StateHasChanged();
 
             await LoadNearbyRestaurantsAsync(result.Latitude, result.Longitude);
@@ -393,6 +536,7 @@
 
             SetRestaurantResults(response.Restaurants, "Nearby");
             _flowState = LocationFlowState.Ready;
+            await AfterResultsAsync();
         }
         catch (Exception ex)
         {
@@ -445,6 +589,10 @@
 
             SetRestaurantResults(response.Restaurants, searchTerm);
             _flowState = LocationFlowState.Ready;
+            // A text search has no GPS fix, so the map centres on the results themselves.
+            _centreLat = _restaurants.Average(r => r.Latitude);
+            _centreLng = _restaurants.Average(r => r.Longitude);
+            await AfterResultsAsync();
             await JS.InvokeVoidAsync("localStorage.setItem", LastSearchKey, searchTerm);
             await RememberDiscoveryModeAsync(ZipMode);
             _searchQuery = searchTerm;
@@ -459,6 +607,20 @@
             if (_flowState == LocationFlowState.Loading)
                 _flowState = LocationFlowState.Ready;
             StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Runs after either discovery path lands results: works out which are already drawn, and
+    /// redraws the map if it happens to be open.
+    /// </summary>
+    private async Task AfterResultsAsync()
+    {
+        await RefreshCachedPlacesAsync();
+
+        if (_showMap)
+        {
+            await RenderMapAsync();
         }
     }
 
@@ -537,6 +699,13 @@
 
     private void ClearSearch()
     {
+        if (_showMap)
+        {
+            _showMap = false;
+            _ = Map.HideAsync();
+        }
+
+        _cachedPlaceIds = [];
         _restaurants = new();
         _lastSearch = string.Empty;
         _searchQuery = string.Empty;

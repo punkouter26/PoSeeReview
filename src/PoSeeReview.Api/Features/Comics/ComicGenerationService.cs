@@ -25,6 +25,8 @@ public partial class ComicGenerationService : IComicGenerationService
     private readonly IBlobStorageService _blobStorageService;
     private readonly IComicRepository _comicRepository;
     private readonly ILeaderboardService _leaderboardService;
+    private readonly IContentSafetyScreener _contentSafetyScreener;
+    private readonly IContentModerationGate _moderationGate;
     private readonly ILogger<ComicGenerationService> _logger;
     private readonly TelemetryClient _telemetryClient;
     private readonly TimeProvider _timeProvider;
@@ -39,6 +41,8 @@ public partial class ComicGenerationService : IComicGenerationService
         IBlobStorageService blobStorageService,
         IComicRepository comicRepository,
         ILeaderboardService leaderboardService,
+        IContentSafetyScreener contentSafetyScreener,
+        IContentModerationGate moderationGate,
         ILogger<ComicGenerationService> logger,
         TelemetryClient telemetryClient,
         IOptions<ComicOptions> options,
@@ -51,6 +55,8 @@ public partial class ComicGenerationService : IComicGenerationService
         _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
         _comicRepository = comicRepository ?? throw new ArgumentNullException(nameof(comicRepository));
         _leaderboardService = leaderboardService ?? throw new ArgumentNullException(nameof(leaderboardService));
+        _contentSafetyScreener = contentSafetyScreener ?? throw new ArgumentNullException(nameof(contentSafetyScreener));
+        _moderationGate = moderationGate ?? throw new ArgumentNullException(nameof(moderationGate));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
@@ -188,6 +194,29 @@ public partial class ComicGenerationService : IComicGenerationService
                 strangenessScore, _options.MinimumStrangenessScore, placeId);
             _telemetryClient.GetMetric("Comics.RejectedTooOrdinary").TrackValue(1);
             throw new InsufficientStrangenessException(strangenessScore, _options.MinimumStrangenessScore);
+        }
+
+        // Pre-publish content screen. Positioned here for two reasons: it is the first point at
+        // which the model-authored prose exists, and it is still before the paid image call, so
+        // a refusal costs nothing. The app publishes AI-written text about real, named businesses
+        // and until now nothing looked at it between the model and the reader.
+        var screen = await _contentSafetyScreener.ScreenAsync(narrative, cancellationToken);
+
+        if (screen.IsBlocked)
+        {
+            _logger.LogWarning("Content screen blocked the narrative for placeId {PlaceId} ({Category})",
+                placeId, screen.Category);
+            _telemetryClient.GetMetric("Comics.ContentBlocked").TrackValue(1);
+            throw new ContentBlockedException(screen.Category ?? "unknown");
+        }
+
+        if (screen.IsFlagged)
+        {
+            // Publishes, and lands in the moderation queue. Withholding on this signal alone
+            // would refuse the app's best comics — allegation language is ordinary in the
+            // one-star reviews the whole product mines.
+            await _moderationGate.FlagForReviewAsync(placeId, screen.Category ?? "unknown", cancellationToken);
+            _telemetryClient.GetMetric("Comics.ContentFlagged").TrackValue(1);
         }
 
         // Generate comic image (panel count capped at 2)

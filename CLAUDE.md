@@ -73,7 +73,8 @@ $env:BASE_URL = "https://app-poseereview.azurewebsites.net"; node SCRIPTS/post-d
 src/PoSeeReview.Api        ASP.NET Core host; also serves the WASM client
   Features/<Slice>/        endpoints + handlers + entities + repositories + services together
                            (Auth, Comics, Restaurants, Leaderboard, DevSessions, Diagnostics,
-                            Takedowns, Reports, Reactions, Analytics)
+                            Takedowns, Reports, Reactions, Analytics, Insights, Collections,
+                            Moderation, ShareLinks)
   Storage/                 cross-slice TableStorageRepository, BlobStorageService
   Identity/                ICurrentRequestIdentityAccessor + HttpContext impl
   Telemetry/               App Insights + OpenTelemetry, RoleNameTelemetryInitializer
@@ -85,9 +86,20 @@ src/PoSeeReview.Shared     wire DTOs, Ids/, Enums/, Contracts/, FluentValidation
 **Slices must not reference each other.** Anything two slices need lives in
 `PoSeeReview.Shared/Contracts/` (`Comic`, `Restaurant`, `Review`, `LeaderboardEntry`;
 `IComicRepository`, `ILeaderboardRepository`, `IRestaurantService`, `ILeaderboardService`,
-`IHallOfFameArchive`). `IHallOfFameArchive` exists for exactly the reason `ILeaderboardRepository`
-does: Takedowns must erase archived entries without referencing the Leaderboard slice that owns
-them. Only the delete is exposed there — reads stay in the slice.
+`IHallOfFameArchive`, `IKeptComicArchive`, `IContentModerationGate`, `IContentSafetyScreener`).
+`IHallOfFameArchive` exists for exactly the reason `ILeaderboardRepository` does: Takedowns must
+erase archived entries without referencing the Leaderboard slice that owns them. Only the delete
+is exposed there — reads stay in the slice. `IKeptComicArchive` is the same shape for kept
+comics, and for the same reason: they are the *other* thing built to outlive expiry.
+`IContentModerationGate` is read by Comics, written by Reports and Takedowns, and owned by
+Moderation; `IContentSafetyScreener` is called by Comics and implemented by Moderation.
+
+Two slices read another slice's **table** rather than its repository — Insights over
+`PoSeeReviewHallOfFame`, Moderation over `PoSeeReviewReports`. Each declares its own read-only
+row projection (`ArchivedScoreRow`, `ModerationReportRow`). Table Storage is schemaless per row,
+so a POCO with a subset of the columns reads the same rows without owning them, and no slice
+reference is created. Note what Moderation deliberately does *not* project: the reporter's
+`Details` and `ContactEmail`.
 [Features/FeatureEndpoints.cs](src/PoSeeReview.Api/Features/FeatureEndpoints.cs) is the composition
 root and is the only file allowed to reference every slice. `Abstractions/IMockable.cs` is a
 cross-cutting marker deliberately outside any slice. Each slice owns its own options type.
@@ -448,7 +460,148 @@ billing problem. Rendered on `/diagnostics`.
 Five tables were added and are created by `TableStorageInitializer` alongside the originals:
 `PoSeeReviewReports`, `PoSeeReviewReactions`, `PoSeeReviewHallOfFame`, `PoSeeReviewBudget`,
 `PoSeeReviewAnalytics`. The initializer now creates them concurrently — eight serial round trips
-were all on the startup critical path.
+were all on the startup critical path. Three more followed with the slices below —
+`PoSeeReviewShareLinks`, `PoSeeReviewCollections`, `PoSeeReviewModeration` — for ten in total,
+plus a **second blob container**, `comics-kept`, created the same way.
+
+### Insights
+
+`GET /api/insights` and `/insights`: four charts over every score the app has ever recorded —
+strangeness against star rating, score distribution, region comparison, weekly trend. It spends
+nothing; every number comes from rows already written, so there is no Maps call and no AI call.
+
+- Reads are **cross-partition scans**, honest at current volume and bounded by
+  `InsightsOptions.MaxRowsScanned` (5000). The response carries `Truncated` and the page says so
+  — a chart drawn from a capped sample is a different claim.
+- `CachedAt` is deliberately **not** consulted. The Restaurants slice treats an old row as stale;
+  for a historical chart the rating as it stood when the comic was drawn is the correct value.
+- **Per-place dedup differs by chart, on purpose.** The distribution and the scatter take each
+  place's highest score once, so a restaurant somebody regenerates weekly cannot weight the
+  population by how often they hit redraw. The weekly trend keeps every week a place appears in,
+  because that chart is about activity over time and the dedup would erase what it measures.
+- Empty histogram buckets are **emitted with count 0**; quiet weeks are **omitted**, never
+  zero-filled. A gap in a histogram means "none scored here"; a zero on a trend line asserts an
+  average strangeness of zero for restaurants nobody drew.
+- Each chart declares its own minimum sample and is judged alone — a thin scatter must not blank
+  a region comparison that has enough to say something.
+- **Chart colours are resolved at runtime from the real tokens**, via `theme-tokens.js`. They
+  cannot be `var(--color-brand)`: Radzen writes the value onto the SVG as a presentation
+  attribute and SVG attributes do not resolve custom properties. Hardcoding hex is the other
+  option and it freezes light mode into a page that also renders dark. A `prefers-color-scheme`
+  listener re-resolves and re-keys the chart.
+
+### The share card, and short links
+
+`og:image` used to point straight at the comic's blob URL. That URL carries a SAS signature that
+lapses in about a week, while the Hall of Fame row it came from is designed to outlive
+everything — so **every share older than the signature unfurled as a blank card**.
+
+`GET /share/{placeId}/card.png` (`ShareCardService`, ImageSharp) composes a 1200x630 card on
+demand: the comic cropped to fill, a gradient scrim, the score in a ring, the wordmark. Notes:
+
+- **Not under `/api`.** `UserAgentValidationMiddleware` only lets social crawlers through on
+  non-`/api` paths, so an `og:image` under `/api` would be fetched by exactly the clients that
+  get a 400 there. Anonymous for the same reason a 401 is useless on a preview fetch.
+- Composed rather than stored. It is a deterministic function of a comic that already exists, and
+  caching it would add a second blob lifecycle for takedown to know about. One hour of
+  `Cache-Control`, short enough that a takedown stops being served within the hour.
+- A **missing blob is not a failure**: the card still renders brand ground, score and name, which
+  is precisely the case the old blob-URL `og:image` could not survive.
+
+`POST /api/share/{placeId}` mints a seven-character code and `GET /s/{code}` resolves it.
+Idempotent per place (a reverse row), minted with `RandomNumberGenerator` (a guessable sequence
+would let anyone enumerate every shared comic), from an alphabet with no `0/O` or `1/I/l` — these
+get retyped off screenshots. **302, never 301**: a permanent redirect is cached past a takedown.
+Malformed codes are rejected without a storage read, since the resolver is public.
+
+### Kept comics (Collections)
+
+`ComicHistoryService` remembers what a browser has seen; comics expire in 24h, so that list is
+dead links on a device the user may not be holding. `/api/collections` is the other half: **Keep**
+copies the artwork into the `comics-kept` container — which `ExpiredComicCleanupService` never
+visits — and files it against the principal.
+
+- A separate container is the feature. Sharing `comics` and exempting individual blobs would mean
+  the cleanup service had to understand collections.
+- Capped (`CollectionsOptions.MaxKeptPerUser`, 50). Keeping is the one action that opts a blob out
+  of cleanup, and an unbounded keep is an unbounded bill on a free feature.
+- Served by `GET /api/collections/{placeId}/image` behind the owning session, never a SAS. The
+  ownership check is the authorization.
+- Blob paths use a **hash of the principal**, not the principal: a principal is often an email,
+  and blob paths turn up in storage explorers and access logs.
+- The copy happens at Keep time, while the source still exists. Deferring it would be a keep that
+  kept nothing.
+- `/my-comics` renders both lists, labelled — kept is server-side and cross-device, history never
+  leaves the browser.
+
+### Moderation
+
+`/api/reports` wrote rows nothing read, and the only way to act was `/api/takedowns`: a shared
+admin key, an unreviewed hard delete, and **nothing stopping the next visitor from regenerating
+the same comic about the same named business**. `Features/Moderation` closes both gaps.
+
+- Actions are graded. **Hide** is reversible and is what unreviewed reports get. **Suppress**
+  blocks generation and is what makes a removal stick. **Remove** erases the comic, blob,
+  leaderboard row, Hall of Fame entry and every kept copy — and suppresses in the same call,
+  suppression **first**, so a part-way failure leaves the safe half-state.
+- `/api/takedowns` now suppresses before it erases. That was the actual bug: a completed takedown
+  undid itself on the next tap.
+- Auto-hide at **three** distinct reporters (`ModerationOptions.AutoHideReportThreshold`), not
+  one — a single report is a signal, and unilateral unpublishing is a griefing tool. Never
+  overrides a human verdict, or the queue becomes a voting mechanism.
+- Gated by a **role**, not a shared key: a key names nobody, and an audit trail whose actor column
+  reads "whoever had the key" cannot be audited. The policy is registered by the slice
+  (`AddModerationAuthorization`) so the Auth slice does not have to know it exists.
+- The gate **fails open**. It is consulted on every comic read; failing closed would turn a
+  transient storage error into a total outage. Deletion is the durable enforcement.
+- A withheld comic is **451, not 404** — the comic is not missing, it is being withheld — except
+  on the share card, where a crawler-facing image should simply not exist.
+- A row exists only once something has happened, so the table stays proportional to the problem
+  rather than to the catalogue.
+
+**Pre-publish content screening.** `IContentSafetyScreener` runs on the generated narrative after
+the chat call and **before** the paid image call, so a refusal costs nothing.
+`LexicalContentSafetyScreener` is a lexical floor, not a classifier — Azure AI Content Safety
+implements the same interface and slots in without a caller changing, which is a deployment
+decision (resource, endpoint, Key Vault secret) rather than a code one.
+
+> **Two outcomes, and that is the whole design.** Blocking every risky narrative would break the
+> product: "rats", "food poisoning" and "shut down by the health department" are ordinary content
+> in the one-star reviews this app exists to mine. But the same sentence, restated by a model as
+> a claim about a named business, is defamation-shaped. So allegation language **flags** —
+> publishes, and lands in the queue for a human — and only categories with no legitimate reading
+> **block**. Terms are word-boundary matched so "ratatouille" is not "rat", and words English
+> uses figuratively about food (`assault`, `stole`, `drugged`) are excluded outright, because a
+> boundary does not help when the whole word is the metaphor and a queue full of false positives
+> is a queue nobody reads.
+
+### Map discovery
+
+A **Show map** panel on `/` (`map.js` + `MapService`), with pins coloured by whether a place
+already has a live comic — read from `GET /api/comics/cached?placeIds=...`. That distinction is
+the point: a cache hit is instant and free, a miss spends a paid image call and about ten
+seconds, and the grid had no way to say which was which.
+
+**Why a library is back after three.js and Rapier were deleted.** Those were ~2.4 MB of vendored
+decoration over a DOM list and a card grid that already worked — the scene said nothing the
+markup did not. A map answers a question the grid physically cannot. So the `shelf.js` conditions
+apply instead of the verdict, and they are load-bearing:
+
+- **Lazy.** MapLibre is a pinned dynamic `import()` from a CDN on first open, never on load.
+  `map.js` itself is a few KB.
+- **The grid stays.** The map is a panel *above* the results, not a replacement. The list remains
+  in the DOM, focusable and screen-reader-readable; the panel is `aria-hidden`.
+- **Fails quiet.** No CDN, no WebGL, no network: `show()` returns false and the panel says so in
+  one line. `MapService` mirrors `FxService` — nothing may throw into .NET, and `SafeAsync<T>`
+  carries the same `[DynamicallyAccessedMembers]` annotation for the same `IL2091` reason.
+- It gets its **own WebGL context**, outside `gl-pool.js`. That is a documented exception on one
+  route, not a regression: MapLibre owns its context and cannot draw into a shared atlas.
+- Pin colours resolve from tokens via `theme-tokens.js`, same as the Insights charts.
+
+> **Tile provider.** The default style points at OpenStreetMap's own raster tiles, which have a
+> usage policy that rules out heavy application use. It is there so the feature works with no key
+> and no account; point it at a paid provider before real traffic, and update the attribution in
+> the style to match.
 
 ### PWA
 
@@ -489,6 +642,14 @@ both put ops tooling (machine name, .NET version, masked config) into a consumer
 navigation and broke `HeaderContractUiTests`, which asserts exactly two nav items. Note `/diag` sits behind
 `UserAgentValidationMiddleware`, so anonymous scripted fetches get a 400 — that is why the smoke
 script no longer asserts on it.
+
+`/moderation` has no nav entry either, for the same reason, and is additionally gated on the
+`Moderator` role. `/insights` and `/my-comics` are linked from the **right-hand session zone**,
+never `nav.nav-links` — `HeaderContractUiTests` asserts the primary nav is exactly two items.
+
+Public, unauthenticated, and outside `/api` on purpose: `/s/{code}` (short links) and
+`/share/{placeId}/card.png` (link-preview card). Both are fetched by clients that `/api` is built
+to turn away.
 
 ## Conventions
 
@@ -533,6 +694,11 @@ These govern how the agent operates in this repo, not how the code is written.
   appsettings file that is committed.
 - **Never push to remote unless asked.** Committing locally is fine; `git push` is not, until the
   user says so.
-- **On "git sync": commit and push.** Short American-slang message that reads like a human wrote it
+- **On "git sync": stage everything, commit, push.** Commit *all* outstanding changes first — a
+  sync leaves nothing dirty behind. Short American-slang message that reads like a human wrote it
   ("fixed the busted nav", "cleaned up that css mess"), then push.
+- **Only run the tests that cover the change.** Never run the full suite after a code change —
+  pick the project and `--filter` that exercise what was touched.
+- **Run the commands yourself.** Don't hand the user a command to paste when the agent can execute
+  it; only ask when it genuinely needs their machine, credentials, or a decision.
 - **TL;DR any answer over 100 words** with a ~20-word summary at the end.

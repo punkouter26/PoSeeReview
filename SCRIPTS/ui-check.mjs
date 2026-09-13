@@ -90,6 +90,10 @@ const OVERFLOW_ROUTES = [
     ['/', '.index-container'],
     ['/leaderboard', '.leaderboard-container'],
     ['/diagnostics', '.diagnostics-container'],
+    // Charts are the other thing that cannot shrink on its own. An SVG in a grid column will
+    // happily push the document wider than the viewport without an explicit min-width: 0.
+    ['/insights', '.insights-page'],
+    ['/my-comics', '.my-comics-container'],
 ];
 
 for (const width of [320, 390]) {

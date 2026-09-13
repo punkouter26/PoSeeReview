@@ -3,14 +3,72 @@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @inject ComicHistoryService History
+@inject CollectionsClient Collections
 @inject NavigationManager Navigation
 
 <PageTitle>My Comics - PoSeeReview</PageTitle>
 
 <PageShell Title="My Comics"
-           Subtitle="Every strip you've opened, kept on this device"
+           Subtitle="What you have kept, and what this browser remembers"
            Width="PageShell.ShellWidth.Wide"
            Class="my-comics-container">
+
+    @* Two lists, and the split is the point. Kept comics live on the server: they survive the
+       24-hour expiry, follow the account to another device, and are capped. History is whatever
+       this browser has seen and never leaves it. *@
+    @if (_kept is { Count: > 0 })
+    {
+        <section class="kept-section">
+            <header class="kept-head">
+                <h2 class="kept-title">Kept</h2>
+                <p class="kept-sub">
+                    @_kept.Count of @_keptLimit · saved to your account, and they outlast the 24-hour expiry
+                </p>
+            </header>
+
+            <div class="my-comics-grid cq-list">
+                @foreach (var comic in _kept)
+                {
+                    <article class="history-card glass">
+                        <a class="history-thumb" href="@($"/comic/{comic.PlaceId}")" aria-label="@($"Open the comic for {comic.RestaurantName}")">
+                            @if (comic.HasImage)
+                            {
+                                <img src="@comic.ImageUrl" alt="@($"Comic for {comic.RestaurantName}")" loading="lazy" />
+                            }
+                            else
+                            {
+                                @* The row is a bookmark whose stored copy could not be written.
+                                   Showing the score beats a broken image icon. *@
+                                <div class="history-thumb-expired">
+                                    <span class="history-expired-score">@comic.StrangenessScore</span>
+                                    <span class="history-expired-label">no image</span>
+                                </div>
+                            }
+                        </a>
+
+                        <div class="history-details">
+                            <h3 class="history-name">@comic.RestaurantName</h3>
+                            <p class="history-meta">
+                                <span class="history-score">@comic.StrangenessScore weird</span>
+                                <span class="history-seen">· kept @FormatSeen(comic.KeptAt)</span>
+                            </p>
+
+                            <div class="history-actions">
+                                <a href="@($"/comic/{comic.PlaceId}")" class="btn btn-primary history-open">Open</a>
+                                <button type="button"
+                                        class="btn btn-icon history-forget"
+                                        @onclick="() => ForgetKeptAsync(comic.PlaceId)"
+                                        title="@($"Stop keeping {comic.RestaurantName}")"
+                                        aria-label="@($"Stop keeping {comic.RestaurantName}")">
+                                    <span aria-hidden="true">×</span>
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
 
     @if (_entries is null)
     {
@@ -60,7 +118,8 @@
         @* This list never leaves the browser. Saying so plainly is the honest counterpart to
            storing it without asking, and it explains why it is empty on the user's other phone. *@
         <p class="my-comics-privacy">
-            Stored only in this browser — never uploaded, and not shared between your devices.
+            This history is stored only in this browser — never uploaded, and not shared between
+            your devices. Keep a comic to save it to your account instead.
         </p>
 
         <div class="my-comics-grid cq-list">
@@ -112,6 +171,8 @@
 
 @code {
     private List<ComicHistoryEntry>? _entries;
+    private List<KeptComicDto>? _kept;
+    private int _keptLimit;
     private bool _confirmingClear;
 
     private int _expiredCount;
@@ -122,6 +183,19 @@
     {
         _entries = await History.GetAllAsync();
         _expiredCount = _entries.Count(e => e.IsExpired);
+
+        // A failed read renders as "nothing kept" rather than an error banner. The local history
+        // below is the part of this page that always works, and it should not be taken down by a
+        // server call.
+        var collection = await Collections.GetAsync();
+        _kept = collection?.Comics ?? [];
+        _keptLimit = collection?.Limit ?? 0;
+    }
+
+    private async Task ForgetKeptAsync(string placeId)
+    {
+        await Collections.ForgetAsync(placeId);
+        await ReloadAsync();
     }
 
     /// <summary>

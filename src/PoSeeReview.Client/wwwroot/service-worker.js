@@ -62,12 +62,19 @@ self.addEventListener('activate', event => {
  * `/api` and `/auth` are obvious. `/diag` is included because a cached diagnostics snapshot is
  * actively misleading — it is the page someone opens precisely when they need to know the
  * current state of the system.
+ *
+ * `/s/` and `/share/` are here for a different reason: both resolve content that moderation can
+ * withdraw. A cached short-link redirect or a cached preview card would keep serving a comic
+ * after it had been taken down, which is exactly the outcome the takedown path exists to
+ * prevent. The card's own `Cache-Control` is already short for the same reason.
  */
 function isNeverCached(url) {
     return url.pathname.startsWith('/api/')
         || url.pathname.startsWith('/auth/')
         || url.pathname.startsWith('/diag')
-        || url.pathname.startsWith('/health');
+        || url.pathname.startsWith('/health')
+        || url.pathname.startsWith('/s/')
+        || url.pathname.startsWith('/share/');
 }
 
 /** Static assets worth keeping a copy of for offline use. */

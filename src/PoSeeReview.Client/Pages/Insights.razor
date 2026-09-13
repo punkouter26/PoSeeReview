@@ -1,0 +1,360 @@
+@page "/insights"
+@attribute [Authorize]
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@using Microsoft.JSInterop
+@implements IDisposable
+@inject InsightsClient InsightsApi
+@inject IJSRuntime JS
+
+<PageTitle>Insights - PoSeeReview</PageTitle>
+
+<PageShell Title="Insights"
+           Subtitle="What every comic this app has drawn adds up to"
+           Width="PageShell.ShellWidth.Wide"
+           Class="insights-page">
+
+    @if (_state == LoadState.Loading)
+    {
+        <div class="insights-loading">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
+        </div>
+    }
+    else if (_state == LoadState.Failed)
+    {
+        @* No partial charts on failure. A chart drawn from a half-loaded read is worse than
+           no chart, because it looks like an answer. *@
+        <div class="alert alert-danger" role="alert">
+            <p>Insights could not be loaded right now.</p>
+            <button type="button" class="btn btn-secondary" @onclick="LoadAsync">Try again</button>
+        </div>
+    }
+    else if (_data is null || _data.Summary.ScoredRestaurants == 0)
+    {
+        <div class="state-card">
+            <div class="state-card-icon" aria-hidden="true">📊</div>
+            <h2 class="state-card-title">Nothing to measure yet</h2>
+            <p class="state-card-body">
+                These charts are built from comics that have already been drawn. Make the first one
+                and this page starts filling in.
+            </p>
+            <div class="state-card-actions">
+                <a href="/" class="btn btn-primary">Find Restaurants</a>
+            </div>
+        </div>
+    }
+    else
+    {
+        @if (_data.Summary.IsMockData)
+        {
+            <div class="alert alert-warning insights-mock" role="status">
+                Sample data. These charts are a fixture, not measurements.
+            </div>
+        }
+
+        <div class="insights-grid">
+            <section class="insights-panel cq-card elevation-1">
+                <header class="insights-panel-head">
+                    <h2 class="insights-panel-title">Strangeness vs star rating</h2>
+                    <p class="insights-panel-question">Are strange restaurants also badly rated?</p>
+                </header>
+
+                @if (_scatter.Count == 0)
+                {
+                    @EmptyPanel("10 scored restaurants with a Google rating", _data.Summary.ScoredRestaurants)
+                }
+                else
+                {
+                    <RadzenChart @key="_chartEpoch" class="insights-chart">
+                        <RadzenBubbleSeries Data="@_scatter"
+                                            CategoryProperty="StarRating"
+                                            ValueProperty="StrangenessScore"
+                                            SizeProperty="BubbleSize"
+                                            Title="Restaurants"
+                                            Fill="@_brand"
+                                            Stroke="@_brand" />
+                        <RadzenCategoryAxis Min="@(0d)" Max="@(5d)" Step="@(1d)">
+                            <RadzenAxisTitle Text="Google rating" />
+                        </RadzenCategoryAxis>
+                        <RadzenValueAxis Min="@(0d)" Max="@(100d)" Step="@(20d)">
+                            <RadzenGridLines Visible="true" />
+                            <RadzenAxisTitle Text="Strangeness" />
+                        </RadzenValueAxis>
+                    </RadzenChart>
+                    <p class="insights-sample">@_scatter.Count restaurants · bubble size is review count</p>
+                }
+            </section>
+
+            <section class="insights-panel cq-card elevation-1">
+                <header class="insights-panel-head">
+                    <h2 class="insights-panel-title">Score distribution</h2>
+                    <p class="insights-panel-question">Does the scorer discriminate, or cluster everything mid-range?</p>
+                </header>
+
+                @if (_buckets.Count == 0)
+                {
+                    @EmptyPanel("10 scored restaurants", _data.Summary.ScoredRestaurants)
+                }
+                else
+                {
+                    <RadzenChart @key="_chartEpoch" class="insights-chart">
+                        <RadzenColumnSeries Data="@_buckets"
+                                            CategoryProperty="Label"
+                                            ValueProperty="Count"
+                                            Title="Restaurants"
+                                            Fill="@_accent" />
+                        <RadzenColumnOptions Radius="3" />
+                        <RadzenCategoryAxis Padding="8">
+                            <RadzenAxisTitle Text="Strangeness band" />
+                        </RadzenCategoryAxis>
+                        <RadzenValueAxis Min="@(0d)" Step="@((double)_bucketStep)">
+                            <RadzenGridLines Visible="true" />
+                            <RadzenAxisTitle Text="Restaurants" />
+                        </RadzenValueAxis>
+                    </RadzenChart>
+                    <p class="insights-sample">@_data.Summary.ScoredRestaurants restaurants, highest score each</p>
+                }
+            </section>
+
+            <section class="insights-panel cq-card elevation-1">
+                <header class="insights-panel-head">
+                    <h2 class="insights-panel-title">Region comparison</h2>
+                    <p class="insights-panel-question">Which region produces the weirdest reviews?</p>
+                </header>
+
+                @if (_data.Regions.Count == 0)
+                {
+                    @EmptyPanel("2 regions", _data.Summary.RegionCount)
+                }
+                else
+                {
+                    <RadzenChart @key="_chartEpoch" class="insights-chart">
+                        <RadzenBarSeries Data="@_data.Regions"
+                                         CategoryProperty="Region"
+                                         ValueProperty="AverageScore"
+                                         Title="Average strangeness"
+                                         Fill="@_brand" />
+                        <RadzenBarOptions Radius="3" />
+                        <RadzenValueAxis Min="@(0d)" Max="@(100d)" Step="@(25d)">
+                            <RadzenGridLines Visible="true" />
+                            <RadzenAxisTitle Text="Average strangeness" />
+                        </RadzenValueAxis>
+                    </RadzenChart>
+                    <p class="insights-sample">@_data.Summary.RegionCount regions</p>
+                }
+            </section>
+
+            <section class="insights-panel cq-card elevation-1">
+                <header class="insights-panel-head">
+                    <h2 class="insights-panel-title">Weekly trend</h2>
+                    <p class="insights-panel-question">Is peak strangeness rising or falling?</p>
+                </header>
+
+                @if (_data.WeeklyTrend.Count == 0)
+                {
+                    @EmptyPanel("3 weeks of scores", _data.Summary.WeekCount)
+                }
+                else
+                {
+                    <RadzenChart @key="_chartEpoch" class="insights-chart">
+                        <RadzenLineSeries Data="@_data.WeeklyTrend"
+                                          CategoryProperty="WeekKey"
+                                          ValueProperty="PeakScore"
+                                          Title="Peak"
+                                          Stroke="@_accent"
+                                          StrokeWidth="2"
+                                          Smooth="false" />
+                        <RadzenLineSeries Data="@_data.WeeklyTrend"
+                                          CategoryProperty="WeekKey"
+                                          ValueProperty="AverageScore"
+                                          Title="Average"
+                                          Stroke="@_brand"
+                                          StrokeWidth="2"
+                                          Smooth="false" />
+                        <RadzenCategoryAxis Padding="8" />
+                        <RadzenValueAxis Min="@(0d)" Max="@(100d)" Step="@(25d)">
+                            <RadzenGridLines Visible="true" />
+                            <RadzenAxisTitle Text="Strangeness" />
+                        </RadzenValueAxis>
+                    </RadzenChart>
+                    <p class="insights-sample">@_data.WeeklyTrend.Count weeks with at least one comic</p>
+                }
+            </section>
+        </div>
+
+        <footer class="insights-scope">
+            <p>
+                All time, all regions. @_data.Summary.ScoredRestaurants scored restaurant@(_data.Summary.ScoredRestaurants == 1 ? "" : "s")
+                across @_data.Summary.RegionCount region@(_data.Summary.RegionCount == 1 ? "" : "s").
+            </p>
+            @if (_data.Summary.Truncated)
+            {
+                @* Said out loud rather than hidden: these are cross-partition scans with a row
+                   cap, and a chart drawn from a capped sample is a different claim. *@
+                <p class="insights-truncated">
+                    Based on the most recent rows only — the read hit its row cap, so older history is not included.
+                </p>
+            }
+        </footer>
+    }
+</PageShell>
+
+@code {
+    private enum LoadState { Loading, Ready, Failed }
+
+    private LoadState _state = LoadState.Loading;
+    private InsightsDto? _data;
+
+    private List<ScatterPoint> _scatter = [];
+    private List<BucketPoint> _buckets = [];
+    private int _bucketStep = 1;
+
+    /// <summary>
+    /// Chart colours, resolved from the real design tokens at runtime.
+    /// <para>
+    /// They cannot be written as <c>var(--color-brand)</c>: Radzen puts the value straight onto
+    /// the SVG as a presentation attribute, and SVG attributes do not resolve custom properties.
+    /// Hardcoding hex here is the other option and it is the one the design system forbids —
+    /// it would freeze light-mode colours into a page that also renders dark.
+    /// </para>
+    /// </summary>
+    private string _brand = string.Empty;
+    private string _accent = string.Empty;
+
+    /// <summary>
+    /// Bumped when the theme flips. Radzen reads a series colour once at render; re-keying the
+    /// chart is what forces it to pick up the newly-resolved token.
+    /// </summary>
+    private int _chartEpoch;
+
+    private DotNetObjectReference<Insights>? _selfRef;
+    private bool _watchingScheme;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ResolveTokensAsync();
+
+        _selfRef = DotNetObjectReference.Create(this);
+        try
+        {
+            _watchingScheme = await JS.InvokeAsync<bool>("poseeTheme.watchScheme", _selfRef);
+        }
+        catch (JSException)
+        {
+            // A page whose charts keep one theme's palette is still a working page.
+        }
+
+        await LoadAsync();
+    }
+
+    /// <summary>Re-resolves the palette after an OS colour-scheme change and redraws.</summary>
+    [JSInvokable]
+    public async Task OnThemeChanged()
+    {
+        await ResolveTokensAsync();
+        _chartEpoch++;
+        StateHasChanged();
+    }
+
+    private async Task ResolveTokensAsync()
+    {
+        try
+        {
+            var values = await JS.InvokeAsync<string[]>(
+                "poseeTheme.readTokens", new[] { "--color-brand", "--color-accent-dark" });
+
+            // An unresolved token comes back empty; leaving the parameter empty lets Radzen use
+            // its own default rather than painting with the string "".
+            _brand = values.ElementAtOrDefault(0) ?? string.Empty;
+            _accent = values.ElementAtOrDefault(1) ?? string.Empty;
+        }
+        catch (JSException)
+        {
+            _brand = string.Empty;
+            _accent = string.Empty;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _state = LoadState.Loading;
+        StateHasChanged();
+
+        try
+        {
+            _data = await InsightsApi.GetInsightsAsync();
+            Project(_data);
+            _state = LoadState.Ready;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+        {
+            _data = null;
+            _state = LoadState.Failed;
+        }
+    }
+
+    private void Project(InsightsDto data)
+    {
+        _scatter = data.ScoreVsRating
+            .Select(p => new ScatterPoint
+            {
+                RestaurantName = p.RestaurantName,
+                StarRating = p.StarRating,
+                StrangenessScore = p.StrangenessScore,
+                TotalReviews = p.TotalReviews,
+                // Clamped for display only — the row keeps the real count. A place with no
+                // reviews would otherwise be a zero-radius circle, i.e. an invisible data point.
+                BubbleSize = Math.Max(1, p.TotalReviews)
+            })
+            .ToList();
+
+        _buckets = data.ScoreDistribution
+            .Select(b => new BucketPoint { Label = $"{b.BucketStart}-{b.BucketEnd}", Count = b.Count })
+            .ToList();
+
+        // An integer axis: a histogram of whole restaurants must not tick in halves.
+        var tallest = _buckets.Count == 0 ? 0 : _buckets.Max(b => b.Count);
+        _bucketStep = Math.Max(1, (int)Math.Ceiling(tallest / 5.0));
+    }
+
+    /// <summary>
+    /// The per-chart empty state. Each chart is evaluated independently, so a thin scatter does
+    /// not hide a region comparison that has enough data to be worth reading.
+    /// </summary>
+    private RenderFragment EmptyPanel(string requirement, int current) => __builder =>
+    {
+        <div class="insights-empty">
+            <p class="insights-empty-title">Needs at least @requirement.</p>
+            <p class="insights-empty-body">You have @current so far.</p>
+            <a href="/" class="btn btn-secondary">Draw another comic</a>
+        </div>
+    };
+
+    /// <summary>Chart-facing shapes. Radzen resolves its bindings by reflection over properties.</summary>
+    private sealed class ScatterPoint
+    {
+        public string RestaurantName { get; set; } = string.Empty;
+        public double StarRating { get; set; }
+        public double StrangenessScore { get; set; }
+        public int TotalReviews { get; set; }
+        public int BubbleSize { get; set; }
+    }
+
+    private sealed class BucketPoint
+    {
+        public string Label { get; set; } = string.Empty;
+        public int Count { get; set; }
+    }
+
+    public void Dispose()
+    {
+        if (_watchingScheme)
+        {
+            // Fire and forget: the component is going away and a failed detach on a page that no
+            // longer exists is not worth an exception during disposal.
+            _ = JS.InvokeVoidAsync("poseeTheme.unwatchScheme");
+        }
+
+        _selfRef?.Dispose();
+    }
+}

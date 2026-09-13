@@ -32,7 +32,10 @@ internal sealed class TableStorageInitializer(
             storageOptions.ReactionsTableName,
             storageOptions.HallOfFameTableName,
             storageOptions.BudgetTableName,
-            storageOptions.AnalyticsTableName
+            storageOptions.AnalyticsTableName,
+            storageOptions.ShareLinksTableName,
+            storageOptions.CollectionsTableName,
+            storageOptions.ModerationTableName
         ];
 
         // Created concurrently: these are independent round trips, and running eight of them in
@@ -45,9 +48,17 @@ internal sealed class TableStorageInitializer(
             logger.LogInformation("Verified table storage table {TableName}", tableName);
         }));
 
-        var containerClient = blobServiceClient.GetBlobContainerClient(storageOptions.ComicsContainerName);
-        await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
-        logger.LogInformation("Verified blob container {ContainerName}", storageOptions.ComicsContainerName);
+        // Two containers: the expiring one the pipeline writes to, and the kept one that the
+        // cleanup service never touches. Created together and concurrently for the same reason
+        // the tables are — both are on the startup critical path.
+        string[] containerNames = [storageOptions.ComicsContainerName, storageOptions.KeptComicsContainerName];
+
+        await Task.WhenAll(containerNames.Select(async containerName =>
+        {
+            var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+            await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+            logger.LogInformation("Verified blob container {ContainerName}", containerName);
+        }));
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -38,6 +38,8 @@ internal static class TakedownsEndpoints
         IBlobStorageService blobStorageService,
         ILeaderboardRepository leaderboardRepository,
         IHallOfFameArchive hallOfFameArchive,
+        IKeptComicArchive keptComicArchive,
+        IContentModerationGate moderationGate,
         ILogger<TakedownRequestDto> logger,
         TelemetryClient telemetryClient,
         CancellationToken cancellationToken)
@@ -59,6 +61,13 @@ internal static class TakedownsEndpoints
 
         var placeId = PlaceId.From(request.PlaceId);
         var region = RegionCode.From(request.Region);
+
+        // Suppressed BEFORE anything is erased. Without this the endpoint deleted a comic and
+        // the next visitor regenerated the same one about the same named business on the next
+        // tap — a takedown that undid itself. Doing it first also means a failure part-way
+        // through the erases leaves the safe half-state rather than the reversible one.
+        await moderationGate.SuppressAsync(
+            placeId, $"Takedown request received for {request.Region}.", cancellationToken);
 
         var existingComic = await comicRepository.GetByPlaceIdAsync(placeId);
         if (existingComic != null)
@@ -83,6 +92,12 @@ internal static class TakedownsEndpoints
         // already expired — and leaving it would mean a completed takedown that still shows the
         // restaurant's name and score on a page designed never to expire.
         await hallOfFameArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
+
+        // Kept copies are the other thing built to outlive the comic — a private copy in a
+        // container the cleanup service never visits. A takedown that removed the live comic,
+        // the leaderboard row and the archive but left those behind would be a takedown that
+        // did not take the content down.
+        await keptComicArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
 
         return Results.Accepted(value: new
         {

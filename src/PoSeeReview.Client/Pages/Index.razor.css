@@ -436,3 +436,79 @@
         flex: 1 1 100%;
     }
 }
+
+/* ── Discovery map ───────────────────────────────────────────────────────────────────────────
+   A panel above the results grid, never a replacement for it. Collapsed with max-height rather
+   than display:none so the container keeps a box MapLibre can measure, and so opening it is a
+   movement rather than a jump. */
+.results-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+}
+
+.map-panel {
+    overflow: hidden;
+    max-height: 60dvh;
+    margin-bottom: var(--space-md);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    /* Duration tracks distance travelled: this is a full panel, so it gets a slow, and
+       --ease-out because it is arriving. */
+    transition: max-height var(--duration-slow) var(--ease-out);
+}
+
+.map-panel--closed {
+    max-height: 0;
+    margin-bottom: 0;
+    border-color: transparent;
+}
+
+.map-canvas {
+    width: 100%;
+    /* Tall enough to be a map, short enough to leave the list visible on a phone — the panel is
+       an aid to the grid, not a takeover. */
+    height: min(60dvh, 22rem);
+    background: var(--color-surface-alt);
+}
+
+.map-fallback {
+    margin: 0;
+    padding: var(--space-sm);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+/* Pin colour is set per-marker from a resolved design token; only the shape lives here.
+   Not scoped-safe on its own — map.js builds these elements outside the component's markup —
+   so ::deep is required for the scoped attribute to reach them. */
+::deep .map-pin {
+    width: 1.125rem;
+    height: 1.125rem;
+    padding: 0;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: var(--pin-colour, #7C3AED);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+    cursor: pointer;
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+
+::deep .map-pin:hover,
+::deep .map-pin:focus-visible {
+    transform: scale(1.25);
+}
+
+/* A ring on the ones that are already drawn: they open instantly and cost nothing, which is the
+   single most useful thing this view can tell someone. */
+::deep .map-pin--ready {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--pin-colour, #16A34A) 35%, transparent),
+                0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .map-panel,
+    ::deep .map-pin {
+        transition: none;
+    }
+}

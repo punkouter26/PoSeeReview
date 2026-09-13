@@ -57,6 +57,10 @@
                         <span aria-hidden="true">🗂️</span>
                         <span class="nav-mycomics-label">My Comics</span>
                     </NavLink>
+                    <NavLink class="nav-insights" href="insights" title="Insights">
+                        <span aria-hidden="true">📊</span>
+                        <span class="nav-insights-label">Insights</span>
+                    </NavLink>
                     @if (_devSession != null)
                     {
                         <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">

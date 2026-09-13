@@ -6,14 +6,20 @@ using Azure.Storage.Blobs;
 using Azure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Api.Features.Analytics;
 using PoSeeReview.Api.Features.Reactions;
 using PoSeeReview.Api.Features.Reports;
+using PoSeeReview.Api.Features.Collections;
 using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Features.Insights;
 using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
+using PoSeeReview.Api.Features.ShareLinks;
 using PoSeeReview.Api.Storage;
 using Polly.Retry;
 using Polly;
@@ -40,7 +46,8 @@ public static class InfrastructureServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         // Configure options
         services.Configure<AzureStorageOptions>(
@@ -55,6 +62,12 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(LeaderboardOptions.SectionName));
         services.Configure<HuggingFaceOptions>(
             configuration.GetSection(HuggingFaceOptions.SectionName));
+        services.Configure<InsightsOptions>(
+            configuration.GetSection(InsightsOptions.SectionName));
+        services.Configure<CollectionsOptions>(
+            configuration.GetSection(CollectionsOptions.SectionName));
+        services.Configure<ModerationOptions>(
+            configuration.GetSection(ModerationOptions.SectionName));
 
         // Master switch: selects BOTH AI providers together — chat (Azure OpenAI → Qwen) and
         // image generation (Google Imagen → FLUX). Gemini by default; Google Maps (restaurant
@@ -154,6 +167,21 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ComicReportRepository>();
         services.AddScoped<ReactionRepository>();
         services.AddScoped<FunnelRepository>();
+        services.AddScoped<InsightsRepository>();
+        services.AddScoped<ShareLinkRepository>();
+        services.AddScoped<ModerationRepository>();
+        // Same instance behind both, mirroring HallOfFameRepository: the slice reads through the
+        // concrete type, Comics/Reports/Takedowns go through the Shared contract.
+        services.AddScoped<IContentModerationGate>(sp => sp.GetRequiredService<ModerationRepository>());
+        services.AddScoped<ModerationQueueReader>();
+        services.AddScoped<IContentSafetyScreener, LexicalContentSafetyScreener>();
+        services.AddModerationAuthorization(configuration);
+
+        services.AddScoped<KeptComicBlobStore>();
+        services.AddScoped<KeptComicRepository>();
+        // Same instance behind both, mirroring HallOfFameRepository: the slice reads through the
+        // concrete type, Takedowns erases through the Shared contract.
+        services.AddScoped<IKeptComicArchive>(sp => sp.GetRequiredService<KeptComicRepository>());
         services.AddScoped<IGenerationBudgetService, GenerationBudgetService>();
 
         // Register services
@@ -221,8 +249,23 @@ public static class InfrastructureServiceCollectionExtensions
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
                     sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
+        services.AddScoped<IShareCardService, ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
+
+        // Insights. The mock is gated on the environment as well as the flag: a stray
+        // Insights:UseMockData in production config must not be able to replace real numbers
+        // with a fixture, which is the same posture FakeAuthHandler takes.
+        if (!environment.IsProduction() && configuration.GetValue<bool>($"{InsightsOptions.SectionName}:UseMockData"))
+        {
+            services.AddScoped<MockInsightsService>();
+            services.AddScoped<IInsightsService>(sp => sp.GetRequiredService<MockInsightsService>());
+            services.AddScoped<IMockable>(sp => sp.GetRequiredService<MockInsightsService>());
+        }
+        else
+        {
+            services.AddScoped<IInsightsService, InsightsService>();
+        }
 
         return services;
     }

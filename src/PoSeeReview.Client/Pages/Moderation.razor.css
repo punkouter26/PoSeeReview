@@ -1,0 +1,151 @@
+/* Moderation. Scoped sheet — @layer page, before `shared`, so nothing here forks .btn/.alert. */
+
+.moderation-loading {
+    display: grid;
+    place-items: center;
+    min-height: 40dvh;
+}
+
+.moderation-summary {
+    margin: 0 0 var(--space-md);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.moderation-list {
+    display: grid;
+    gap: var(--space-md);
+}
+
+.moderation-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border-radius: var(--radius-lg);
+    min-width: 0;
+}
+
+/* Settled rows recede rather than disappear — a moderator needs to be able to find what they
+   already decided, just not to trip over it. */
+.moderation-row--reviewed {
+    opacity: 0.72;
+}
+
+.moderation-row-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-sm);
+}
+
+.moderation-name {
+    margin: 0;
+    font-size: var(--text-lg);
+    color: var(--color-text-primary);
+}
+
+.moderation-place {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: var(--text-2xs);
+    color: var(--color-text-muted);
+    overflow-wrap: anywhere;
+}
+
+.moderation-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3xs);
+}
+
+.moderation-badge {
+    padding: var(--space-3xs) var(--space-2xs);
+    border-radius: var(--radius-pill);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* Surface/ink pairs, never a bare colour: --color-danger is a border/graphic weight and
+   --color-danger-text is the readable one on --color-danger-surface. */
+.moderation-badge--suppressed {
+    background: var(--color-danger-surface);
+    color: var(--color-danger-text);
+    border: 1px solid var(--color-danger);
+}
+
+.moderation-badge--hidden {
+    background: var(--color-highlight);
+    color: var(--color-accent-ink);
+    border: 1px solid var(--color-accent);
+}
+
+.moderation-badge--live {
+    background: var(--color-success-surface);
+    color: var(--color-success-text);
+    border: 1px solid var(--color-success);
+}
+
+.moderation-badge--new {
+    background: var(--color-brand-surface);
+    color: var(--color-brand-ink);
+    border: 1px solid var(--color-brand);
+}
+
+.moderation-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+    gap: var(--space-2xs) var(--space-md);
+    margin: 0;
+}
+
+.moderation-facts dt {
+    font-size: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+}
+
+.moderation-facts dd {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.moderation-note {
+    margin: 0;
+    padding: var(--space-2xs) var(--space-sm);
+    border-left: 3px solid var(--color-border-strong);
+    background: var(--color-surface-alt);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.moderation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2xs);
+}
+
+.moderation-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2xs);
+    flex: 1 1 100%;
+    padding: var(--space-sm);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-sm);
+    background: var(--color-danger-surface);
+    color: var(--color-danger-text);
+    font-size: var(--text-sm);
+}
+
+.moderation-confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2xs);
+}

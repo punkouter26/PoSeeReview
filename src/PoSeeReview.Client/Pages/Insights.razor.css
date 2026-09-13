@@ -1,0 +1,122 @@
+/* Insights. Scoped sheet — lands in @layer page, which sits BEFORE `shared`, so nothing here
+   can fork a shared primitive (.btn, .alert, .state-card). Only page-specific classes below. */
+
+.insights-loading {
+    display: grid;
+    place-items: center;
+    min-height: 40dvh;
+}
+
+/* One column on a phone, two once the page has the room. A media query rather than a container
+   query on purpose: this is the page's own layout, not a component asking how much room it has. */
+.insights-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-md);
+}
+
+@media (min-width: 64rem) {
+    .insights-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.insights-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    padding: var(--space-md);
+    border-radius: var(--radius-lg);
+    /* Surface and shadow come from the shared .elevation-1 utility on the element — elevation is
+       a PAIR, and restating it here would fork it. minmax(0,1fr) above still lets an SVG push
+       the column wide without min-width. */
+    min-width: 0;
+}
+
+.insights-panel-head {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3xs);
+}
+
+.insights-panel-title {
+    margin: 0;
+    font-size: var(--text-lg);
+    color: var(--color-text-primary);
+}
+
+.insights-panel-question {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+/* A fixed height keeps the two columns aligned and stops the chart from collapsing to zero
+   before Radzen has measured itself. */
+.insights-chart {
+    width: 100%;
+    height: 18rem;
+    min-width: 0;
+}
+
+@media (min-width: 48rem) {
+    .insights-chart {
+        height: 22rem;
+    }
+}
+
+.insights-sample {
+    margin: 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.insights-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2xs);
+    padding: var(--space-md);
+    border: 1px dashed var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-alt);
+}
+
+.insights-empty-title {
+    margin: 0;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.insights-empty-body {
+    margin: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}
+
+.insights-mock {
+    margin-bottom: var(--space-md);
+}
+
+.insights-scope {
+    margin-top: var(--space-lg);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--color-border);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+}
+
+.insights-scope p {
+    margin: 0;
+}
+
+.insights-truncated {
+    margin-top: var(--space-3xs);
+    color: var(--color-warning-text);
+}
+
+/* Radzen renders the chart's own markup, which a scoped sheet cannot reach without ::deep. */
+.insights-chart ::deep .rz-chart {
+    width: 100%;
+    height: 100%;
+}

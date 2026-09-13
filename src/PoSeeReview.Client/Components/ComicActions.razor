@@ -12,6 +12,8 @@
 @using Microsoft.JSInterop
 @implements IDisposable
 @inject ShareService ShareService
+@inject ApiClient ApiClient
+@inject CollectionsClient Collections
 @inject AnalyticsService Analytics
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
@@ -23,6 +25,14 @@
 
     <button type="button" class="btn btn-secondary" @onclick="SaveAsync" disabled="@_isBusy">
         <span aria-hidden="true">💾</span> Save image
+    </button>
+
+    @* Keeping copies the image into a container the 24-hour cleanup never touches and files it
+       against the account rather than the browser. Save image writes to the device; this is the
+       one that survives the comic expiring and follows the user to another phone. *@
+    <button type="button" class="btn btn-secondary" @onclick="KeepAsync" disabled="@(_isBusy || _isKept)"
+            title="@(_isKept ? "Already in your collection" : "Keep this comic after it expires")">
+        <span aria-hidden="true">@(_isKept ? "★" : "☆")</span> @(_isKept ? "Kept" : "Keep")
     </button>
 
     <button type="button" class="btn btn-secondary" @onclick="OpenInMapsAsync">
@@ -85,6 +95,7 @@
     public GenerationBudgetDto? Budget { get; set; }
 
     private bool _isBusy;
+    private bool _isKept;
     private bool _confirmingRegenerate;
     private string? _toast;
     private Timer? _toastTimer;
@@ -107,7 +118,13 @@
         {
             // The canonical comic URL, not the current one: the page may carry a ?from= or
             // ?generate= that would make a shared link re-run the flow for whoever opens it.
-            var url = Navigation.ToAbsoluteUri($"/comic/{Comic.PlaceId}").ToString();
+            var canonical = Navigation.ToAbsoluteUri($"/comic/{Comic.PlaceId}").ToString();
+
+            // A place id is thirty opaque characters, which is fine in an href and hostile in a
+            // message or a caption. The short form is best-effort: a null falls back to the long
+            // URL rather than blocking the share.
+            var shareLink = await ApiClient.CreateShareLinkAsync(Comic.PlaceId);
+            var url = string.IsNullOrWhiteSpace(shareLink?.ShortUrl) ? canonical : shareLink!.ShortUrl;
             var text = $"{Comic.RestaurantName} scored {Comic.StrangenessScore}/100 on the strangeness scale. Look at this.";
 
             var outcome = await ShareService.ShareComicAsync(Comic.RestaurantName, text, url);
@@ -128,6 +145,36 @@
                     await ShareService.CopyToClipboardAsync(url);
                     Analytics.Track(FunnelSteps.ComicShared);
                     ShowToast("Link copied to clipboard");
+                    break;
+            }
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private async Task KeepAsync()
+    {
+        _isBusy = true;
+
+        try
+        {
+            switch (await Collections.KeepAsync(Comic.PlaceId))
+            {
+                case KeepOutcome.Kept:
+                    _isKept = true;
+                    ShowToast("Kept — this one will still be here after it expires.");
+                    break;
+
+                case KeepOutcome.CollectionFull:
+                    // The only failure the user can act on, so it is the only one that names a
+                    // next step.
+                    ShowToast("Your collection is full. Forget one in My Comics to make room.");
+                    break;
+
+                default:
+                    ShowToast("Couldn't keep that one. Try again in a moment.");
                     break;
             }
         }

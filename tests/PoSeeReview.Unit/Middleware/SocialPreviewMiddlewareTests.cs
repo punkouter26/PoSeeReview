@@ -89,7 +89,13 @@ public class SocialPreviewMiddlewareTests
 
         var html = Encoding.UTF8.GetString(body.ToArray());
         Assert.Contains("og:image", html, StringComparison.Ordinal);
-        Assert.Contains("https://example.blob.core.windows.net/comics/comic-1.png?sig=abc", html, StringComparison.Ordinal);
+
+        // og:image points at our own card endpoint, NOT at the blob. The blob URL carries a SAS
+        // signature that lapses after about a week, so pinning a preview to it meant every share
+        // older than the signature unfurled as a blank card on a page whose Hall of Fame entry
+        // is designed to outlive everything.
+        Assert.Contains("https://poseereview.example/share/place-1/card.png", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("https://example.blob.core.windows.net/comics/comic-1.png?sig=abc", html, StringComparison.Ordinal);
         Assert.Contains("summary_large_image", html, StringComparison.Ordinal);
         Assert.Contains("https://poseereview.example/comic/place-1", html, StringComparison.Ordinal);
         Assert.Contains("strangeness 87/100", html, StringComparison.Ordinal);

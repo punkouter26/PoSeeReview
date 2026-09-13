@@ -29,6 +29,8 @@ public class ComicGenerationServiceTests
     private readonly Mock<IBlobStorageService> _mockBlobStorageService;
     private readonly Mock<IComicRepository> _mockComicRepository;
     private readonly Mock<ILeaderboardService> _mockLeaderboardService;
+    private readonly Mock<IContentSafetyScreener> _mockContentSafetyScreener;
+    private readonly Mock<IContentModerationGate> _mockModerationGate;
     private readonly Mock<ILogger<ComicGenerationService>> _mockLogger;
     private readonly TelemetryClient _telemetryClient;
 
@@ -41,6 +43,8 @@ public class ComicGenerationServiceTests
         _mockBlobStorageService = new Mock<IBlobStorageService>();
         _mockComicRepository = new Mock<IComicRepository>();
         _mockLeaderboardService = new Mock<ILeaderboardService>();
+        _mockContentSafetyScreener = new Mock<IContentSafetyScreener>();
+        _mockModerationGate = new Mock<IContentModerationGate>();
         _mockLogger = new Mock<ILogger<ComicGenerationService>>();
         _telemetryClient = new TelemetryClient(new TelemetryConfiguration());
     }
@@ -55,6 +59,11 @@ public class ComicGenerationServiceTests
             It.IsAny<CancellationToken>()))
             .ReturnsAsync((byte[] imageBytes, string narrative, int panelCount, CancellationToken ct) => imageBytes);
 
+        // Default: the content screen allows. Tests that care about the screen override this.
+        _mockContentSafetyScreener
+            .Setup(x => x.ScreenAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(ContentScreenResult.Allowed);
+
         return new ComicGenerationService(
             _mockRestaurantService.Object,
             _mockOpenAIService.Object,
@@ -63,6 +72,8 @@ public class ComicGenerationServiceTests
             _mockBlobStorageService.Object,
             _mockComicRepository.Object,
             _mockLeaderboardService.Object,
+            _mockContentSafetyScreener.Object,
+            _mockModerationGate.Object,
             _mockLogger.Object,
             _telemetryClient,
             Options.Create(options ?? new ComicOptions())

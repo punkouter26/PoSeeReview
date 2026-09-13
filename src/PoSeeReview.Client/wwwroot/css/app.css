@@ -812,6 +812,16 @@
         color: var(--color-danger-text);
     }
 
+    /* Two pages needed a non-fatal notice — the mock-data banner on Insights and the hidden /
+       suppressed states on Moderation. That is exactly the shape `.btn-primary` forked in
+       last time, so it is defined here once rather than twice in scoped sheets.
+       --color-accent is a SURFACE; the readable text pairing is --color-accent-ink. */
+    .alert-warning {
+        background: var(--color-highlight);
+        border: 1px solid var(--color-accent);
+        color: var(--color-accent-ink);
+    }
+
     /* ── Error / empty state ─────────────────────────────────────────────────────────────────
        `.error-message` was defined in 4 scoped sheets and `.error-container` in 3, all slightly
        different. One definition now, and pages cannot fork it. */

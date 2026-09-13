@@ -26,6 +26,13 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(HallOfFameResponse))]
 [JsonSerializable(typeof(FunnelEventDto))]
 [JsonSerializable(typeof(FunnelSnapshotDto))]
+[JsonSerializable(typeof(InsightsDto))]
+[JsonSerializable(typeof(ShareLinkDto))]
+[JsonSerializable(typeof(KeptComicsResponse))]
+[JsonSerializable(typeof(KeptComicDto))]
+[JsonSerializable(typeof(ModerationQueueDto))]
+[JsonSerializable(typeof(ModerationActionDto))]
+[JsonSerializable(typeof(CachedComicsResponse))]
 // Not a wire DTO: the locally-stored comic history. It lives here for the same reason the rest
 // do — the client is trim-analyzed, so every type it serializes needs generated metadata.
 [JsonSerializable(typeof(List<ComicHistoryEntry>))]

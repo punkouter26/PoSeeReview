@@ -25,15 +25,100 @@ internal static class ComicsEndpoints
         // stream would be a way around the 3/min cap on the one endpoint that spends money.
         group.MapPost("/{placeId}/stream", GenerateComicStream).RequireRateLimiting("comics-post");
 
-        // Literal segments outrank route parameters, so "/budget" is matched here rather than
-        // being swallowed by "/{placeId}" below. Both are free reads and stay off the limiter.
+        // Literal segments outrank route parameters, so "/budget" and "/cached" are matched here
+        // rather than being swallowed by "/{placeId}" below. Both are free reads and stay off
+        // the limiter.
         group.MapGet("/budget", GetBudget);
+        group.MapGet("/cached", GetCachedPlaceIds);
         group.MapGet("/{placeId}/stats", GetComicStats);
         group.MapGet("/{placeId}/image", DownloadComicImage);
         group.MapGet("/{placeId}", GetCachedComic);
 
+        // The link-preview card. Deliberately NOT under /api: UserAgentValidationMiddleware only
+        // lets social crawlers through on non-/api paths, so an og:image under /api would be
+        // fetched by exactly the clients that get a 400 there. Anonymous for the same reason —
+        // a 401 on a preview fetch unfurls as the same blank card as no tags at all.
+        app.MapGet("/share/{placeId}/card.png", GetShareCard)
+            .WithTags("Comics")
+            .AllowAnonymous();
+
         return app;
     }
+
+    /// <summary>
+    /// Renders the 1200x630 image a shared link unfurls as.
+    /// <para>
+    /// <c>og:image</c> used to point at the comic's blob URL directly, and that URL carries a SAS
+    /// signature that lapses in about a week. Every share older than the signature unfurled as a
+    /// blank card, on a page whose Hall of Fame row is designed to last forever.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> GetShareCard(
+        string placeId,
+        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IShareCardService shareCardService,
+        IContentModerationGate moderationGate,
+        ILogger<GetCachedComicQueryHandler> logger,
+        HttpContext http)
+    {
+        if (string.IsNullOrWhiteSpace(placeId))
+        {
+            return Results.NotFound();
+        }
+
+        // A plain 404 here, not a 451. This is a crawler-facing image: a withheld comic should
+        // simply produce no card, and a legal-reasons status inside an img tag is noise nobody
+        // reads.
+        var cardVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!cardVerdict.IsServable)
+        {
+            return Results.NotFound();
+        }
+
+        try
+        {
+            var comic = await getCachedComicQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
+            if (comic is null)
+            {
+                return Results.NotFound();
+            }
+
+            var png = await shareCardService.RenderAsync(comic, http.RequestAborted);
+            if (png is null)
+            {
+                return Results.NotFound();
+            }
+
+            // Long enough that a crawler re-fetching a popular link does not re-render it, short
+            // enough that a takedown stops being served within the hour. The card is composed
+            // from a comic, so it must not outlive one by much.
+            http.Response.Headers.CacheControl = "public, max-age=3600";
+
+            return Results.File(png, "image/png");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to serve the share card for placeId: {PlaceId}", placeId);
+            return Results.NotFound();
+        }
+    }
+
+    /// <summary>
+    /// The 451 a caller gets when moderation has withheld a place.
+    /// <para>
+    /// 451 rather than 404: the comic is not missing, it is being withheld, and a moderator
+    /// reading logs needs those two cases to be distinguishable. The detail deliberately does
+    /// not name a report or a rule - that is operator information.
+    /// </para>
+    /// </summary>
+    private static IResult ModerationRefusal(ModerationVerdict verdict, HttpContext http) => Results.Problem(
+        type: "https://tools.ietf.org/html/rfc7725#section-3",
+        title: "Unavailable For Legal Reasons",
+        statusCode: StatusCodes.Status451UnavailableForLegalReasons,
+        detail: verdict.IsSuppressed
+            ? "This restaurant has been removed from PoSeeReview after a takedown or a review."
+            : "This comic is unavailable while it is being reviewed.",
+        instance: http.Request.Path);
 
     /// <summary>
     /// Maps a generation failure onto the response the client already knows how to render.
@@ -52,6 +137,10 @@ internal static class ComicsEndpoints
         InsufficientReviewsException e => (
             StatusCodes.Status400BadRequest, "Bad Request",
             e.Message, "https://tools.ietf.org/html/rfc7231#section-6.5.1", "insufficient_reviews"),
+
+        ContentBlockedException e => (
+            StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
+            e.Message, "https://tools.ietf.org/html/rfc4918#section-11.2", "content_blocked"),
 
         InsufficientStrangenessException => (
             StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
@@ -119,7 +208,8 @@ internal static class ComicsEndpoints
     /// would let a failing downstream burn quota for free.
     /// </summary>
     private static bool IsRefundableFailure(string errorType) =>
-        errorType is "restaurant_not_found" or "insufficient_reviews" or "insufficient_strangeness";
+        errorType is "restaurant_not_found" or "insufficient_reviews" or "insufficient_strangeness"
+            or "content_blocked";
 
     /// <summary>
     /// The 429 a caller gets when a daily ceiling — not the per-minute limiter — stopped them.
@@ -159,6 +249,62 @@ internal static class ComicsEndpoints
     }
 
     /// <summary>
+    /// Maximum place ids one lookup will accept. Each one is a point read, and discovery never
+    /// shows more than a screenful.
+    /// </summary>
+    private const int MaxCachedLookupIds = 30;
+
+    /// <summary>
+    /// Which of these places already have a live comic.
+    /// <para>
+    /// Free, and the reason it exists is that a cache hit and a cache miss are wildly different
+    /// products — one is instant and costs nothing, the other spends a paid image call and about
+    /// ten seconds — and discovery had no way to tell a user which was which. The map view
+    /// colours its pins from this.
+    /// </para>
+    /// <para>
+    /// Point reads rather than a query: the ids come from the caller, and a filter built from
+    /// caller input over a single partition is a scan waiting to be abused.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> GetCachedPlaceIds(
+        string? placeIds,
+        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IContentModerationGate moderationGate,
+        HttpContext http)
+    {
+        var ids = (placeIds ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxCachedLookupIds)
+            .ToList();
+
+        var cached = new List<string>(ids.Count);
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var id in ids)
+        {
+            var placeId = PlaceId.From(id);
+
+            // A withheld comic must not be advertised as instantly available: the pin would
+            // promise a free result and the tap would land on a 451.
+            var verdict = await moderationGate.EvaluateAsync(placeId, http.RequestAborted);
+            if (!verdict.IsServable)
+            {
+                continue;
+            }
+
+            var comic = await getCachedComicQueryHandler.ExecuteAsync(placeId, http.RequestAborted);
+            if (comic is not null && comic.ExpiresAt > now)
+            {
+                cached.Add(id);
+            }
+        }
+
+        return Results.Ok(new CachedComicsResponse { CachedPlaceIds = cached });
+    }
+
+    /// <summary>
     /// Regional context for a comic's score. Free — reads only rows this app already wrote.
     /// </summary>
     private static async Task<IResult> GetComicStats(
@@ -192,6 +338,7 @@ internal static class ComicsEndpoints
         string placeId,
         GenerateComicCommandHandler generateComicCommandHandler,
         IGenerationBudgetService budgetService,
+        IContentModerationGate moderationGate,
         ILogger<GenerateComicCommandHandler> logger,
         HttpContext http,
         bool forceRegenerate = false)
@@ -214,6 +361,15 @@ internal static class ComicsEndpoints
         var startTime = Stopwatch.GetTimestamp();
         logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
             placeId, forceRegenerate);
+
+        // Checked before the budget is charged. A suppressed place is one the app has decided
+        // not to draw at all, so charging the caller for that refusal would be charging them for
+        // our own decision.
+        var verdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!verdict.IsServable)
+        {
+            return ModerationRefusal(verdict, http);
+        }
 
         // Charged before the pipeline runs, because the pipeline is what costs money. A cache
         // hit or a pre-artwork rejection refunds below — this is a spend counter, not a
@@ -267,6 +423,7 @@ internal static class ComicsEndpoints
         string placeId,
         GenerateComicCommandHandler generateComicCommandHandler,
         IGenerationBudgetService budgetService,
+        IContentModerationGate moderationGate,
         ILogger<GenerateComicCommandHandler> logger,
         HttpContext http,
         bool forceRegenerate = false)
@@ -296,6 +453,24 @@ internal static class ComicsEndpoints
         var startTime = Stopwatch.GetTimestamp();
         logger.LogInformation("Streaming comic generation for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
             placeId, forceRegenerate);
+
+        // The same moderation gate the plain POST applies. The stream has already committed a
+        // 200 by this point, so the refusal travels in the payload ErrorStatus rather than in a
+        // status line - which is exactly what that field exists for.
+        var streamVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!streamVerdict.IsServable)
+        {
+            await WriteEventAsync(http, new ComicGenerationEventDto
+            {
+                Kind = ComicGenerationEventDto.ErrorKind,
+                ErrorStatus = StatusCodes.Status451UnavailableForLegalReasons,
+                ErrorTitle = "Unavailable For Legal Reasons",
+                ErrorDetail = streamVerdict.IsSuppressed
+                    ? "This restaurant has been removed from PoSeeReview after a takedown or a review."
+                    : "This comic is unavailable while it is being reviewed."
+            });
+            return;
+        }
 
         // The same daily ceiling the plain POST enforces. Checked before the first phase event
         // so a refused caller gets one error frame rather than a stepper that runs and then
@@ -441,6 +616,7 @@ internal static class ComicsEndpoints
         string placeId,
         GetCachedComicQueryHandler getCachedComicQueryHandler,
         IBlobStorageService blobStorageService,
+        IContentModerationGate moderationGate,
         ILogger<GetCachedComicQueryHandler> logger,
         HttpContext http)
     {
@@ -452,6 +628,12 @@ internal static class ComicsEndpoints
                 statusCode: StatusCodes.Status400BadRequest,
                 detail: "Place ID is required",
                 instance: http.Request.Path);
+        }
+
+        var downloadVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!downloadVerdict.IsServable)
+        {
+            return ModerationRefusal(downloadVerdict, http);
         }
 
         try
@@ -512,6 +694,7 @@ internal static class ComicsEndpoints
     private static async Task<IResult> GetCachedComic(
         string placeId,
         GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IContentModerationGate moderationGate,
         ILogger<GetCachedComicQueryHandler> logger,
         HttpContext http)
     {
@@ -523,6 +706,12 @@ internal static class ComicsEndpoints
                 statusCode: StatusCodes.Status400BadRequest,
                 detail: "Place ID is required",
                 instance: http.Request.Path);
+        }
+
+        var readVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!readVerdict.IsServable)
+        {
+            return ModerationRefusal(readVerdict, http);
         }
 
         try
