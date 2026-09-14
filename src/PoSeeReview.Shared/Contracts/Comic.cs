@@ -86,4 +86,12 @@ public class Comic
     /// array says. Never used for display.
     /// </summary>
     public float[] Embedding { get; set; } = [];
+
+    /// <summary>
+    /// Cached serialised <c>ComicAudioSkit</c>, written by <c>POST /api/comics/{placeId}/audio</c>
+    /// the first time the skit is requested for this comic, and round-tripped on subsequent
+    /// requests so the chat call is paid for once. Empty for comics drawn before the feature
+    /// existed, and for comics that have never had a skit request.
+    /// </summary>
+    public string AudioSkitJson { get; set; } = string.Empty;
 }

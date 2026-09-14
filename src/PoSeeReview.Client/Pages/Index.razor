@@ -19,10 +19,21 @@
     @* The h1 stays — it is the page's heading, not decoration. What went is the kicker that
        restated the header's own tagline, which cost ~110px of hero above the fold on every
        visit to buy a sentence the user had already read. *@
-    <header class="app-header">
-        <h1>PoSeeReview</h1>
-        <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
-    </header>
+    @* The hero is the landing page's identity, and only the landing page needs it: with results on
+       screen it was a band of gradient restating a wordmark the top nav already carries, and that
+       wordmark is itself the link home. The page keeps a top-level heading either way — invisibly,
+       because the alternative is a results view with no h1 at all. *@
+    @if (_restaurants.Count == 0)
+    {
+        <header class="app-header">
+            <h1>PoSeeReview</h1>
+            <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
+        </header>
+    }
+    else
+    {
+        <h1 class="visually-hidden">PoSeeReview</h1>
+    }
 
     @* The error banner renders ABOVE the prompt card, and the prompt card stays mounted in
        the Error state. Previously Error replaced the whole form, so a failed text search left
@@ -118,78 +129,50 @@
 
     @if (_restaurants.Count > 0)
     {
-        <div class="restaurants-grid">
-            <div class="results-chip-bar">
-                <span class="search-chip">
-                    &#128205; @_lastSearch
-                    <button class="chip-clear btn-icon" @onclick="ClearSearch" title="New search">&#215;</button>
-                </span>
+        <div class="results-layout">
+            @* The chip that sat here carried the search label ("📍 Nearby") as well as the reset,
+               so dropping the label alone would have taken the only way back to the prompt with
+               it. What is left is the reset, said out loud. *@
+            <div class="results-header">
+                <button type="button" class="btn btn-secondary new-search-btn" @onclick="ClearSearch"
+                        title="Search a different area">
+                    <span aria-hidden="true">&#215;</span> New search
+                </button>
                 @* Not "comic-ready" any more: the client no longer pre-filters by review
                    count, so this is simply what the search returned. *@
                 <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
             </div>
 
-            @* Ordering was fixed at whatever the API returned, with no way to ask a different
-               question of the same results. "Best odds" is the one that matters most here:
-               strangeness is drawn from review text, so review volume is the closest thing to
-               a predictor the client can compute without spending a generation. *@
-            <div class="results-controls">
-                <div class="sort-chips" role="group" aria-label="Sort results">
-                    @foreach (var option in SortOptions)
-                    {
-                        <button type="button"
-                                class="chip-toggle @(_sort == option.Sort ? "chip-toggle--active" : "")"
-                                aria-pressed="@(_sort == option.Sort)"
-                                title="@option.Hint"
-                                @onclick="() => SetSort(option.Sort)">
-                            @option.Label
-                        </button>
-                    }
-                </div>
-
-                <div class="results-actions">
-                    @* Toggles a panel ABOVE the grid; it never replaces it. The grid stays in the
-                       DOM, focusable and readable by a screen reader, for the same reason the
-                       leaderboard list stays under the 3D shelf. *@
-                    <button type="button" class="btn btn-secondary map-toggle" @onclick="ToggleMapAsync"
-                            aria-pressed="@_showMap"
-                            aria-controls="discovery-map"
-                            title="See these on a map, with the ones already drawn marked">
-                        <span aria-hidden="true">🗺️</span> @(_showMap ? "Hide map" : "Show map")
-                    </button>
-
-                    <button type="button" class="btn btn-secondary surprise-btn" @onclick="SurpriseMeAsync"
-                            title="Pick somewhere promising at random and draw it">
-                        <span aria-hidden="true">🎲</span> Surprise me
-                    </button>
-                </div>
-            </div>
-
-            @* Rendered whenever the panel is open so the container has a size before MapLibre
-               measures it. aria-hidden because everything it shows is in the grid below, and a
-               screen reader has no use for a pile of unlabelled pins. *@
-            <div class="map-panel @(_showMap ? "" : "map-panel--closed")" aria-hidden="true">
+            @* Always on, and beside the list rather than above it. The toggle is gone because a
+               map nobody opens tells nobody anything, and because the button that opened it
+               cost the results a whole row of height to be permanently unopened.
+               aria-hidden because everything it shows is in the list next to it, and a screen
+               reader has no use for a pile of unlabelled pins. *@
+            <div class="map-panel" aria-hidden="true">
                 <div id="discovery-map" class="map-canvas"></div>
-                @if (_showMap && _mapFailed)
+                @if (_mapFailed)
                 {
                     <p class="map-fallback">
                         The map could not load. The list below has everything it would have shown.
                     </p>
                 }
             </div>
-            @foreach (var restaurant in SortedRestaurants)
-            {
-                @* cq-card makes each slot a query container so the card inside can size itself
-                   from the room it actually has (see @container card in app.css). A container
-                   cannot query itself, hence the wrapper. *@
-                <div class="cq-card">
-                    <RestaurantCard
-                        Restaurant="restaurant"
-                        IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
-                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
-                        OnRestaurantClick="HandleRestaurantClick" />
-                </div>
-            }
+
+            <div class="restaurants-grid">
+                @foreach (var restaurant in _restaurants)
+                {
+                    @* cq-card makes each slot a query container so the card inside can size itself
+                       from the room it actually has (see @container card in app.css). A container
+                       cannot query itself, hence the wrapper. *@
+                    <div class="cq-card">
+                        <RestaurantCard
+                            Restaurant="restaurant"
+                            IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
+                            IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                            OnRestaurantClick="HandleRestaurantClick" />
+                    </div>
+                }
+            </div>
         </div>
     }
 </div>
@@ -211,82 +194,31 @@
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
 
-    private bool _showMap;
     private bool _mapFailed;
     private double _centreLat;
     private double _centreLng;
     private HashSet<string> _cachedPlaceIds = [];
     private DotNetObjectReference<Index>? _selfRef;
 
-    /// <summary>How the result grid is ordered.</summary>
-    private enum ResultSort
-    {
-        /// <summary>Closest first — the PRD's proximity-first default.</summary>
-        Distance,
-
-        /// <summary>Most reviews first: the best available predictor of a strange comic.</summary>
-        BestOdds,
-
-        /// <summary>Highest Google rating first.</summary>
-        Rating
-    }
-
-    private static readonly (ResultSort Sort, string Label, string Hint)[] SortOptions =
-    [
-        (ResultSort.Distance, "Closest", "Nearest first"),
-        (ResultSort.BestOdds, "Best odds", "Most reviews — more material means a stranger comic"),
-        (ResultSort.Rating, "Top rated", "Highest Google rating first")
-    ];
-
-    private ResultSort _sort = ResultSort.Distance;
-
     /// <summary>
-    /// The grid's order. Sorting a copy rather than the backing list keeps the API's own
-    /// ordering intact, so switching back to Closest is exact rather than approximately right.
-    /// </summary>
-    private IEnumerable<RestaurantDto> SortedRestaurants => _sort switch
-    {
-        ResultSort.BestOdds => _restaurants.OrderByDescending(r => r.TotalReviews),
-        ResultSort.Rating => _restaurants.OrderByDescending(r => r.AverageRating).ThenByDescending(r => r.TotalReviews),
-        _ => _restaurants.OrderBy(r => r.Distance)
-    };
-
-    private void SetSort(ResultSort sort) => _sort = sort;
-
-    /// <summary>
-    /// Opens or closes the map panel.
+    /// Draws the results on the map.
     /// <para>
-    /// MapLibre is fetched on the first open and never on page load, which is the condition
-    /// under which a library is allowed back into this app at all. A failure to load is not an
-    /// error state — the grid is already on screen — so it degrades to a line of text.
+    /// The map is always on, so this runs for every result set rather than behind a toggle. A
+    /// failure to load is still not an error state — the list is already on screen — so it
+    /// degrades to a line of text.
     /// </para>
     /// </summary>
-    private async Task ToggleMapAsync()
-    {
-        _showMap = !_showMap;
-
-        if (!_showMap)
-        {
-            await Map.HideAsync();
-            return;
-        }
-
-        await Fx.PlayTapAsync();
-
-        // Rendered before the JS call so the container exists and has a height; MapLibre
-        // measures its container on construction and a zero-height mount stays blank.
-        StateHasChanged();
-        await Task.Yield();
-
-        await RenderMapAsync();
-    }
-
     private async Task RenderMapAsync()
     {
-        if (!_showMap || _restaurants.Count == 0)
+        if (_restaurants.Count == 0)
         {
             return;
         }
+
+        // Rendered first so the container exists and has a height: MapLibre measures its
+        // container on construction, and a zero-height mount stays blank.
+        StateHasChanged();
+        await Task.Yield();
 
         _selfRef ??= DotNetObjectReference.Create(this);
 
@@ -352,37 +284,8 @@
 
     public void Dispose()
     {
-        if (_showMap)
-        {
-            _ = Map.HideAsync();
-        }
-
+        _ = Map.HideAsync();
         _selfRef?.Dispose();
-    }
-
-    /// <summary>
-    /// Picks a promising restaurant at random and goes straight to generating it.
-    /// <para>
-    /// This is the PRD's "serendipity, not utility" thesis as a single tap. Random over the
-    /// top half by review count rather than the whole list: a place with two reviews reliably
-    /// produces a weak comic, and spending someone's generation on it to preserve the purity
-    /// of the shuffle is a bad trade.
-    /// </para>
-    /// </summary>
-    private async Task SurpriseMeAsync()
-    {
-        if (_restaurants.Count == 0 || _isNavigatingToComic)
-        {
-            return;
-        }
-
-        var candidates = _restaurants
-            .OrderByDescending(r => r.TotalReviews)
-            .Take(Math.Max(1, _restaurants.Count / 2))
-            .ToList();
-
-        var pick = candidates[Random.Shared.Next(candidates.Count)];
-        await HandleRestaurantClick(pick);
     }
 
     private const string LastSearchKey = "posee_last_search";
@@ -560,7 +463,7 @@
                 return;
             }
 
-            SetRestaurantResults(response.Restaurants, "Nearby");
+            SetRestaurantResults(response.Restaurants);
             _flowState = LocationFlowState.Ready;
             await AfterResultsAsync();
         }
@@ -613,7 +516,7 @@
                 return;
             }
 
-            SetRestaurantResults(response.Restaurants, searchTerm);
+            SetRestaurantResults(response.Restaurants);
             _flowState = LocationFlowState.Ready;
             // A text search has no GPS fix, so the map centres on the results themselves.
             _centreLat = _restaurants.Average(r => r.Latitude);
@@ -649,10 +552,8 @@
         // whole state landing rather than of the HTTP response returning.
         await Fx.PlayArrivalAsync(_restaurants.Count);
 
-        if (_showMap)
-        {
-            await RenderMapAsync();
-        }
+        // Always, not conditionally: there is no toggle to ask about any more.
+        await RenderMapAsync();
     }
 
     /// <summary>
@@ -741,11 +642,9 @@
 
     private void ClearSearch()
     {
-        if (_showMap)
-        {
-            _showMap = false;
-            _ = Map.HideAsync();
-        }
+        // Fire-and-forget: the map goes with the results it was showing, and the teardown must
+        // not hold up the re-render that takes the panel off the page.
+        _ = Map.HideAsync();
 
         _cachedPlaceIds = [];
         _restaurants = new();
@@ -756,20 +655,22 @@
         _flowState = LocationFlowState.Idle;
     }
 
-    private void SetRestaurantResults(IEnumerable<RestaurantDto> restaurants, string label)
+    private void SetRestaurantResults(IEnumerable<RestaurantDto> restaurants)
     {
         // No client-side review threshold. This used to drop anything under 5 reviews while
         // the API's ComicOptions.MinimumReviewsRequired was 1, so the client hid places the
         // server would happily draw. The only genuinely unusable case — zero reviews — is
         // handled by RestaurantCard, which matches the server's floor.
-        _restaurants = restaurants.ToList();
+        //
+        // Nearest first, unconditionally. Proximity is the only order the grid offers now that
+        // the sort chips are gone, and a single order belongs where the list is built rather
+        // than in a projection the render has to remember to use.
+        _restaurants = [.. restaurants.OrderBy(r => r.Distance)];
 
         if (_restaurants.Count > 0)
         {
             Analytics.Track(FunnelSteps.ResultsShown);
         }
-
-        _lastSearch = label;
 
         if (_restaurants.Count == 0)
         {

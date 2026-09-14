@@ -18,6 +18,15 @@ public interface ILeaderboardRepository
     Task<List<LeaderboardEntry>> GetTopEntriesAsync(RegionCode region, int limit);
 
     /// <summary>
+    /// Retrieves the top N entries across every region. A cross-partition scan, honest at this
+    /// app's volume and capped well below anything that could timeout — the same posture as the
+    /// Insights slice's reads.
+    /// </summary>
+    /// <param name="limit">Maximum number of entries to return</param>
+    /// <returns>List of leaderboard entries sorted by score (highest first)</returns>
+    Task<List<LeaderboardEntry>> GetTopEntriesGlobalAsync(int limit);
+
+    /// <summary>
     /// Gets a specific leaderboard entry by place identifier and region.
     /// </summary>
     /// <param name="placeId">Google Maps place identifier</param>

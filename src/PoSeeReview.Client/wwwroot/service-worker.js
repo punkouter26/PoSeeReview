@@ -16,7 +16,12 @@
 // through.
 // ============================================================================================
 
-const VERSION = 'v1';
+// Bump on any change to cached assets (wwwroot JS/CSS/icons). A new VERSION orphans the old
+// posee-* caches on activate, which is the ONLY reliable way an already-controlled client
+// stops running yesterday's audio.js/fx.js — network-first still answers from the runtime
+// cache whenever a request fails, and a re-deployed file the worker never re-requested stays
+// stale in that cache until this string changes.
+const VERSION = 'v2';
 const SHELL_CACHE = `posee-shell-${VERSION}`;
 const RUNTIME_CACHE = `posee-runtime-${VERSION}`;
 

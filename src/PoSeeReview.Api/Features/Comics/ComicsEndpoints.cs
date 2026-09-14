@@ -25,6 +25,11 @@ internal static class ComicsEndpoints
         // Same paid pipeline as the POST above, so it carries the same limiter — otherwise the
         // stream would be a way around the 3/min cap on the one endpoint that spends money.
         group.MapPost("/{placeId}/stream", GenerateComicStream).RequireRateLimiting("comics-post");
+        // The audio skit calls the chat model the first time a comic's skit is requested, so it
+        // rides the same limiter. A cache hit is free but indistinguishable before the read;
+        // three taps a minute is generous for a play button, and the cap is what stops the
+        // skit from becoming a second unbounded spend path.
+        group.MapPost("/{placeId}/audio", GenerateComicAudioSkit).RequireRateLimiting("comics-post");
 
         // Literal segments outrank route parameters, so "/budget" and "/cached" are matched here
         // rather than being swallowed by "/{placeId}" below. Both are free reads and stay off
@@ -844,6 +849,110 @@ internal static class ComicsEndpoints
                 title: "Internal Server Error",
                 statusCode: StatusCodes.Status500InternalServerError,
                 detail: "Failed to retrieve cached comic",
+                instance: http.Request.Path);
+        }
+    }
+
+    /// <summary>
+    /// Returns the comic's invented-conversation skit, generating and persisting it on first
+    /// request. The comic itself must be live — a skit for an expired comic is a voice for
+    /// artwork that no longer exists.
+    /// <para>
+    /// Two simultaneous first taps can both reach the chat model (the generation lock guards
+    /// the image pipeline, not this), and the second upsert wins. That is bounded by the
+    /// comics-post limiter and the cost of one chat call, so a distributed lease is not bought
+    /// for it — same reasoning as ComicGenerationLock being in-process.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> GenerateComicAudioSkit(
+        string placeId,
+        IComicRepository comicRepository,
+        IChatCompletionService chatService,
+        IContentModerationGate moderationGate,
+        ILogger<GenerateComicCommandHandler> logger,
+        HttpContext http)
+    {
+        if (string.IsNullOrWhiteSpace(placeId))
+        {
+            return Results.Problem(
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                title: "Bad Request",
+                statusCode: StatusCodes.Status400BadRequest,
+                detail: "Place ID is required",
+                instance: http.Request.Path);
+        }
+
+        var readVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
+        if (!readVerdict.IsServable)
+        {
+            return ModerationRefusal(readVerdict, http);
+        }
+
+        try
+        {
+            var comic = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
+            if (comic is null || comic.ExpiresAt <= DateTimeOffset.UtcNow)
+            {
+                return Results.Problem(
+                    type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+                    title: "Not Found",
+                    statusCode: StatusCodes.Status404NotFound,
+                    detail: "No live comic found for this restaurant",
+                    instance: http.Request.Path);
+            }
+
+            if (!string.IsNullOrEmpty(comic.AudioSkitJson))
+            {
+                var cached = JsonSerializer.Deserialize<PoSeeReview.Shared.Dtos.ComicAudioSkit>(comic.AudioSkitJson);
+                if (cached is { Lines.Count: > 0 })
+                {
+                    return Results.Ok(cached);
+                }
+                // A row that parses to nothing falls through and regenerates — an empty skit
+                // persisted once should not be permanent.
+            }
+
+            var skit = await chatService.GenerateSkitAsync(
+                comic.RestaurantName,
+                comic.Narrative,
+                captions: null, // captions live only inside the generation pipeline; the narrative is the durable input
+                http.RequestAborted);
+
+            if (skit.Lines.Count == 0)
+            {
+                return Results.Problem(
+                    type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                    title: "Bad Request",
+                    statusCode: StatusCodes.Status422UnprocessableEntity,
+                    detail: "The model returned no dialogue for this comic",
+                    instance: http.Request.Path);
+            }
+
+            // Persist before returning: the column round-trips through UpsertAsync, and a lost
+            // write costs one repeat chat call rather than a broken response.
+            comic.AudioSkitJson = JsonSerializer.Serialize(skit);
+            await comicRepository.UpsertAsync(comic);
+
+            return Results.Ok(skit);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
+        {
+            logger.LogWarning(ex, "Skit generation failed for placeId: {PlaceId}", placeId);
+            return Results.Problem(
+                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                title: "Bad Request",
+                statusCode: StatusCodes.Status422UnprocessableEntity,
+                detail: "Could not produce a conversation for this comic",
+                instance: http.Request.Path);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error generating audio skit for placeId: {PlaceId}", placeId);
+            return Results.Problem(
+                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                title: "Internal Server Error",
+                statusCode: StatusCodes.Status500InternalServerError,
+                detail: "Failed to generate audio skit",
                 instance: http.Request.Path);
         }
     }

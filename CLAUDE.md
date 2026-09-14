@@ -21,7 +21,15 @@ dotnet watch --project src/PoSeeReview.Api --launch-profile https   # code-only 
 Config changes (appsettings, Key Vault) need a full restart — hot reload will not pick them up.
 
 VS Code tasks `start-api-clean` / `start-api-watch-clean` do the correct sequence:
-kill stray `dotnet` processes → start Azurite → start the API.
+stop the running API → start Azurite → start the API.
+
+**Never kill every `dotnet` process.** The Bicep, C#/Roslyn, MSSQL and Unity language servers are
+all framework-dependent .NET apps launched through a `dotnet` host, so a blanket
+`Get-Process dotnet | Stop-Process` takes the editor's tooling down with the app — it crashed the
+Bicep server five times in three minutes before VS Code gave up restarting it. That old task was
+useless anyway: the app runs as `PoSeeReview.Api.exe`, not `dotnet`, so it left the DLL lock that
+breaks the next `dotnet build` (MSB3021/MSB3027) exactly where it was. `kill-api-processes` stops
+`PoSeeReview.Api` and only those `dotnet` hosts whose command line names this project.
 
 ### Tests
 
@@ -300,8 +308,9 @@ modes and blocked-cookie configurations, and a history list is never worth takin
 for. The type is registered in `AppJsonContext` like every wire DTO — the client is
 trim-analyzed, so reflection-based serialization fails the build.
 
-`/my-comics` is linked from the **right-hand session zone**, not `nav.nav-links`: it is per-user
-state, and `HeaderContractUiTests` asserts the primary nav is exactly two items.
+`/my-comics` has **no nav entry**: not in `nav.nav-links`, which `HeaderContractUiTests` pins at
+exactly two items, and no longer in the right-hand session zone either. It is reached by URL,
+the way `/diagnostics` and `/moderation` are.
 
 `BoardMemoryService` is the same pattern for a different question — where each place sat on the
 leaderboard last visit, keyed per region under `posee_board_ranks_<region>`. Both are registered in
@@ -430,15 +439,20 @@ separate module rather than a branch inside `audio.js`. `propagateAudioState()` 
 place that fans a sound-preference change out to the visual driver, haptics and the bed; missing
 any one of the three produces a muted app that still pulses, buzzes, or drones.
 
-**The sound switch lives in the header's right-hand session zone.** Audio defaults to off and can
-only be unlocked from a trusted event, so until it was put there the *only* control was on
-`/diagnostics` — a page with no nav entry, reached by typing a URL. The entire audio layer was in
-practice unreachable. It is a `<button>`, not a `NavLink`, and it is in the session zone, so
-`HeaderContractUiTests` still sees exactly two primary nav items. On a phone it collapses to a
-30px circle with a `::after` hit box restoring the 44px target: `.nav-links` is `flex: 1;
-min-width: 0` against a session zone that cannot shrink, so anything added on the right comes
-straight out of the primary nav — a full-size button squeezed it to zero width and the header
-contract test caught it as "hidden".
+**There is no sound switch in the header, and sound now defaults to on.** The switch was put in
+the session zone because audio defaulted to off and can only be unlocked from a trusted event, so
+the *only* control was on `/diagnostics` — a page with no nav entry, reached by typing a URL. That
+made the default the problem, not the placement: flipping the default fixes the reachability, and
+then the control earns nothing. Removing it also returns width, because `.nav-links` is `flex: 1;
+min-width: 0` against a session zone that cannot shrink, so anything parked on the right comes
+straight out of the primary nav — the mobile 30px-circle-with-a-`::after`-hit-box treatment
+(including the header contract test that caught a full-size button squeezing the nav to zero
+width) went with the button.
+
+Sound, haptics and the ambient bed all default to on (`audio.js` reads an explicit `posee_audio_enabled`
+of only `'false'` as off), and all three keep their switches on `/diagnostics`. Nothing is heard
+before a gesture regardless — an AudioContext cannot start outside a trusted event, so the first
+cue lands on the first tap. An explicit reduced-motion request still forces silence.
 
 ### Refractive glass, and the one reason it is possible
 
@@ -643,6 +657,19 @@ A negative age is the inactive sentinel, so the branch is cold the rest of the t
   enters the AudioContext, so it works before unlock and is gated on the preference alone — and it
   must be cancelled explicitly on teardown, because the queue is browser-global and would follow
   the user to the next route. `cancel()` before every `speak()`: Chrome queues indefinitely.
+- **The skit is narration's queuing "bug" turned into a feature.** `POST /api/comics/{placeId}/audio`
+  asks the chat model to invent a short conversation between the strip's characters
+  (`ChatPrompts.BuildSkitPrompt`, one call alongside the analysis contract
+  `IChatCompletionService.GenerateSkitAsync`), serializes it onto the comic row as
+  `AudioSkitJson`, and serves every later tap from that column — the chat call is paid once per
+  comic. It rides the `comics-post` limiter, because the first tap spends tokens and a cache hit
+  is indistinguishable before the read. The client does not chain utterances on `boundary`
+  events: `speak()` enqueues, so the whole dialogue is queued in one pass and existing
+  `stopNarration()` stops it — the same cancel that narration needs anyway. Speakers are
+  differentiated by pitch slot in order of first appearance (deterministic per character), and
+  the skit crosses interop as a **string** pre-serialized by `AppJsonContext`, because a complex
+  type as a JS-interop argument is serialized reflectively — the exact thing the source
+  generator exists to avoid on a trim-analyzed client.
 - **Graded moderation cues.** Hide / suppress / remove sound different because they are one mis-tap
   apart and a moderator working a queue should hear which one landed. Restore gets the plain
   confirmation cue — it is the only action there that puts something back.
@@ -775,8 +802,13 @@ Rules that are load-bearing, not stylistic:
 - **Nothing in `fx.js` may throw into .NET.** A graphics failure surfacing through interop shows
   the framework's red error strip over a working page. `FxService` swallows `JSException` and
   returns a benign default; a `0` handle means "not running".
-- Audio defaults to **off** and needs a real user gesture to unlock — `AudioContext` created
-  outside a trusted event stays `suspended` forever. Unlock is hung off existing button handlers.
+- Audio defaults to **on** and still needs a real user gesture to unlock — `AudioContext` created
+  outside a trusted event stays `suspended` forever. Unlock is hung off existing button handlers,
+  which is why there is no switch to find. That is also why `unlock()` **races** the resume against
+  a short deadline instead of awaiting it: Chrome does not reject a resume it will not honour, it
+  leaves the promise pending, and the discovery flow calls unlock from its own async path (a
+  remembered ZIP resumes the search on load, before any tap). Awaiting it there hung the whole
+  search — no request, no error, no clue — the moment sound stopped defaulting to off.
 - `FxService.SafeAsync<T>` carries a `[DynamicallyAccessedMembers]` annotation. It is required:
   `InvokeAsync<TValue>` deserializes reflectively, and without it the client fails `IL2091` under
   `EnableTrimAnalyzer` + `TreatWarningsAsErrors`.
@@ -966,21 +998,31 @@ decision (resource, endpoint, Key Vault secret) rather than a code one.
 
 ### Map discovery
 
-A **Show map** panel on `/` (`map.js` + `MapService`), with pins coloured by whether a place
+An always-on map pane on `/` (`map.js` + `MapService`), with pins coloured by whether a place
 already has a live comic — read from `GET /api/comics/cached?placeIds=...`. That distinction is
 the point: a cache hit is instant and free, a miss spends a paid image call and about ten
 seconds, and the grid had no way to say which was which.
+
+**It is a pane beside the list, not a panel above it, and there is no longer a button.** A map
+nobody opens tells nobody anything, and the toggle was worse than useless to the layout: its row
+plus the collapsed panel's own grid cell meant the results grid started one cell along, so every
+card was pushed out of place by an empty box. `.results-layout` is now a two-column grid at
+≥64rem — sticky map left, cards right — and one column below it, with `align-items: start` doing
+the real work, because a stretched column has no room to stick.
 
 **Why a library is back after three.js and Rapier were deleted.** Those were ~2.4 MB of vendored
 decoration over a DOM list and a card grid that already worked — the scene said nothing the
 markup did not. A map answers a question the grid physically cannot. So the `shelf.js` conditions
 apply instead of the verdict, and they are load-bearing:
 
-- **Lazy.** MapLibre is a pinned dynamic `import()` from a CDN on first open, never on load.
-  `map.js` itself is a few KB.
-- **The grid stays.** The map is a panel *above* the results, not a replacement. The list remains
-  in the DOM, focusable and screen-reader-readable; the panel is `aria-hidden`.
-- **Fails quiet.** No CDN, no WebGL, no network: `show()` returns false and the panel says so in
+- **Lazy in the module, not in the moment.** MapLibre is a pinned dynamic `import()` from a CDN
+  and `map.js` itself is a few KB, but the fetch now happens on the first result set rather than
+  on a click. A CDN round trip and a WebGL context land on every search that returns places;
+  that is the price of the map being on by default, and it is the one thing to weigh before
+  adding a second always-on library.
+- **The list stays.** The map is a pane *beside* the results, never a replacement. The list
+  remains in the DOM, focusable and screen-reader-readable; the pane is `aria-hidden`.
+- **Fails quiet.** No CDN, no WebGL, no network: `show()` returns false and the pane says so in
   one line. `MapService` mirrors `FxService` — nothing may throw into .NET, and `SafeAsync<T>`
   carries the same `[DynamicallyAccessedMembers]` annotation for the same `IL2091` reason.
 - It gets its **own WebGL context**, outside `gl-pool.js`. That is a documented exception on one
@@ -1033,8 +1075,9 @@ navigation and broke `HeaderContractUiTests`, which asserts exactly two nav item
 script no longer asserts on it.
 
 `/moderation` has no nav entry either, for the same reason, and is additionally gated on the
-`Moderator` role. `/insights` and `/my-comics` are linked from the **right-hand session zone**,
-never `nav.nav-links` — `HeaderContractUiTests` asserts the primary nav is exactly two items.
+`Moderator` role. `/insights` is linked from the **right-hand session zone**, never
+`nav.nav-links` — `HeaderContractUiTests` asserts the primary nav is exactly two items. `/my-comics`
+is linked from nowhere.
 
 Public, unauthenticated, and outside `/api` on purpose: `/s/{code}` (short links) and
 `/share/{placeId}/card.png` (link-preview card). Both are fetched by clients that `/api` is built
@@ -1060,9 +1103,11 @@ to turn away.
   **Never hardcode a colour in scoped CSS** — a literal `white` under token-driven text renders
   white-on-white in dark mode, and the theme tests assert token *values*, not rendered contrast.
 - Shared `.btn`/`.btn-primary`/`.btn-secondary`/`.alert*`/`.chip-toggle`/`.toast` primitives belong
-  in `app.css`, not in scoped page CSS. `.chip-toggle` (discovery sort + Hall of Fame scope) and
+  in `app.css`, not in scoped page CSS. `.chip-toggle` (Hall of Fame scope) and
   `.toast` (comic actions + Hall of Fame share) are shared for exactly the reason this file already
-  documents: two pages needing the same control is how `.btn-primary` forked last time. Scoped sheets load after `app.css` and carry a `[b-*]` attribute, so a page-level
+  documents: two pages needing the same control is how `.btn-primary` forked last time — discovery's
+  sort chips were `.chip-toggle`'s other caller and are gone, and the primitive stayed in `app.css`
+  rather than moving into a scoped sheet for the sake of a single caller. Scoped sheets load after `app.css` and carry a `[b-*]` attribute, so a page-level
   redefinition silently wins — that is how Diagnostics and the Hall of Fame drifted apart.
 
 ## Working rules (NET_AGENTS)
@@ -1074,20 +1119,22 @@ These govern how the agent operates in this repo, not how the code is written.
   (`dotnet run --project src/PoSeeReview.Api --launch-profile https`, or the
   `start-api-clean` VS Code task), and confirm it actually came up before reporting done.
   Config/appsettings/Key Vault changes need a full restart — `dotnet watch` will not pick them up.
-- **No `docs/` directory exists yet.** The generated reports were cleared out and are due to be
-  rebuilt. This file and [README.md](README.md) are the authoritative overview — do not go looking
-  for `docs/index.html`.
+- **Look for a root `docs/` folder first, and fall back when it is not there.** If one exists, read
+  it for the overall project summary before exploring the code. It does not exist right now — the
+  generated reports were cleared out and are due to be rebuilt — so [README.md](README.md) (the PRD)
+  and this file are the authoritative overview, and `docs/index.html` is not worth hunting for.
 - **No `dotnet user-secrets`.** Non-secret config goes in `appsettings*.json`; real secrets go in
   Key Vault `kv-poshared` under the `PoSeeReview--` prefix. The one existing exception is
   `Takedowns:ApiKey` for local dev — it is a live credential, so it must never land in an
   appsettings file that is committed.
 - **Never push to remote unless asked.** Committing locally is fine; `git push` is not, until the
-  user says so.
+  user says so — or until they type "git sync".
 - **On "git sync": stage everything, commit, push.** Commit *all* outstanding changes first — a
   sync leaves nothing dirty behind. Short American-slang message that reads like a human wrote it
   ("fixed the busted nav", "cleaned up that css mess"), then push.
-- **Only run the tests that cover the change.** Never run the full suite after a code change —
-  pick the project and `--filter` that exercise what was touched.
+- **Only run the tests that cover the change.** Pick the project and `--filter` that exercise what
+  was touched; for a change with no test surface — a copy tweak, a CSS value — run none at all.
+  Never reach for the full suite after a code change.
 - **Run the commands yourself.** Don't hand the user a command to paste when the agent can execute
   it; only ask when it genuinely needs their machine, credentials, or a decision.
 - **TL;DR any answer over 100 words** with a ~20-word summary at the end.

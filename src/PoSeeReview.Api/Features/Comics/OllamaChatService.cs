@@ -96,4 +96,30 @@ public sealed class OllamaChatService : IChatCompletionService
 
         return result.Analysis;
     }
+
+    /// <inheritdoc />
+    public async Task<PoSeeReview.Shared.Dtos.ComicAudioSkit> GenerateSkitAsync(
+        string restaurantName,
+        string narrative,
+        IReadOnlyList<string>? captions,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(narrative))
+        {
+            throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
+        }
+
+        var result = await OpenAiWireChat.GenerateSkitAsync(
+            _chatClient,
+            restaurantName,
+            narrative,
+            captions,
+            temperature: 0.7f,
+            maxCompletionTokens: _options.MaxCompletionTokens,
+            isReasoningModel: false,
+            cancellationToken);
+
+        _costTracker.Track(ProviderLabel, _options.ChatModel, result.InputTokens, result.OutputTokens);
+        return result.Skit;
+    }
 }

@@ -78,6 +78,55 @@ public class LeaderboardRepository : ILeaderboardRepository
         }
     }
 
+    /// <summary>Rows a global read will scan before giving up on ordering the rest.</summary>
+    private const int MaxGlobalScanRows = 500;
+
+    /// <inheritdoc />
+    public async Task<List<LeaderboardEntry>> GetTopEntriesGlobalAsync(int limit)
+    {
+        if (limit < 1 || limit > 50)
+            throw new ArgumentException("Limit must be between 1 and 50", nameof(limit));
+
+        _logger.LogInformation("Fetching top {Limit} entries across all regions", limit);
+
+        try
+        {
+            // No partition filter: the table holds only leaderboard rows. The inverted RowKey
+            // sorts within a partition, not across them, so the global order is assembled here.
+            var query = _tableClient.QueryAsync<LeaderboardEntity>(maxPerPage: 100);
+
+            var entries = new List<LeaderboardEntry>();
+
+            await foreach (var entity in query)
+            {
+                entries.Add(entity.ToDomain(0));
+
+                if (entries.Count >= MaxGlobalScanRows)
+                {
+                    break;
+                }
+            }
+
+            var top = entries
+                .OrderByDescending(e => e.StrangenessScore)
+                .Take(limit)
+                .ToList();
+
+            for (var i = 0; i < top.Count; i++)
+            {
+                top[i].Rank = i + 1;
+            }
+
+            _logger.LogInformation("Retrieved {Count} global leaderboard entries from {Scanned} rows", top.Count, entries.Count);
+            return top;
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            _logger.LogWarning("No leaderboard entries found for the global board");
+            return new List<LeaderboardEntry>();
+        }
+    }
+
     /// <summary>
     /// Gets a specific entry by placeId and region
     /// </summary>

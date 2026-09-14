@@ -289,18 +289,17 @@
     }
 }
 
-/* ── My Comics ───────────────────────────────────────────────────────────────────────────────
-   Lives in the right-hand session zone, not in nav.nav-links: it is per-user state, and the
-   primary nav is contractually two items (HeaderContractUiTests asserts exactly that).
-   Colour comes from the on-dark tokens because this bar is dark in BOTH themes. */
-/* These two are <NavLink>, not plain anchors, and that is why every selector below is prefixed
-   with `.nav-user-zone ::deep`. Blazor's CSS isolation stamps the scope attribute onto elements
-   in THIS component's markup, but NavLink renders its own <a> — so the anchor came out with no
+/* ── Insights ────────────────────────────────────────────────────────────────────────────────
+   Lives in the right-hand session zone, not in nav.nav-links: the primary nav is contractually
+   two items (HeaderContractUiTests asserts exactly that). Colour comes from the on-dark tokens
+   because this bar is dark in BOTH themes. */
+/* It is a <NavLink>, not a plain anchor, and that is why every selector below is prefixed with
+   `.nav-user-zone ::deep`. Blazor's CSS isolation stamps the scope attribute onto elements in
+   THIS component's markup, but NavLink renders its own <a> — so the anchor came out with no
    `b-*` attribute, none of these rules matched, and the link was a bare 22x25 emoji: below the
    44px --tap-target, with no pill, no hover and — worst of the three — no `.active` state, so the
-   header gave no indication of the current route. `::deep` emits `.nav-user-zone[b-*] .nav-mycomics`
+   header gave no indication of the current route. `::deep` emits `.nav-user-zone[b-*] .nav-insights`
    instead, which matches the child component's root. The nav items above already did this. */
-.nav-user-zone ::deep .nav-mycomics,
 .nav-user-zone ::deep .nav-insights {
     display: inline-flex;
     align-items: center;
@@ -315,8 +314,6 @@
     white-space: nowrap;
 }
 
-.nav-user-zone ::deep .nav-mycomics:hover,
-.nav-user-zone ::deep .nav-mycomics.active,
 .nav-user-zone ::deep .nav-insights:hover,
 .nav-user-zone ::deep .nav-insights.active {
     background: var(--overlay-on-dark);
@@ -327,22 +324,20 @@
 /* On a phone the label is dropped and the glyph carries it — the session zone already competes
    with the brand and the sign-out control for a very narrow bar. */
 @media (max-width: 48rem) {
-    .nav-mycomics-label,
     .nav-insights-label {
         display: none;
     }
 }
 
-/* Both links collapse to the same 30px circle the sound switch already uses, and for the same
-   measured reason: `.nav-links` is `flex: 1; min-width: 0` against a session zone that cannot
-   shrink, so a full-size pill on the right is taken straight out of the primary nav. 30px visual
-   with an inset -7px hit box keeps the real target at 44px. Shrinking the visual and shrinking
-   the target are different things.
+/* The link collapses to a 30px circle for the same measured reason the badge beside it does:
+   `.nav-links` is `flex: 1; min-width: 0` against a session zone that cannot shrink, so a
+   full-size pill on the right is taken straight out of the primary nav. 30px visual with an inset
+   -7px hit box keeps the real target at 44px. Shrinking the visual and shrinking the target are
+   different things.
 
    The bug above hid this problem rather than solving it: an unstyled 22px anchor happened to fit,
    so the squeeze only appears once these rules start applying. */
 @media (max-width: 40rem) {
-    .nav-user-zone ::deep .nav-mycomics,
     .nav-user-zone ::deep .nav-insights {
         position: relative;
         justify-content: center;
@@ -353,71 +348,9 @@
         padding: 0;
     }
 
-    .nav-user-zone ::deep .nav-mycomics::after,
     .nav-user-zone ::deep .nav-insights::after {
         content: "";
         position: absolute;
-        inset: -7px;
-    }
-}
-
-/* The sound switch. Sized and coloured to match the two session-zone links beside it rather than
-   the sign-out button: it is a state toggle, not a destructive action, and it should read as
-   part of the same group. */
-.nav-sound-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: var(--tap-target);
-    min-height: var(--tap-target);
-    padding: var(--space-2xs);
-    border: none;
-    border-radius: var(--radius-pill);
-    background: transparent;
-    color: var(--color-on-dark-secondary);
-    font-size: var(--text-base);
-    line-height: 1;
-    cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease-out),
-                color var(--duration-fast) var(--ease-out);
-}
-
-.nav-sound-btn:hover,
-.nav-sound-btn:focus-visible {
-    background: var(--overlay-on-dark);
-    color: var(--color-on-dark);
-}
-
-/* On is a real state change, not a hover, so it gets a persistent tint. Without it the only
-   difference between on and off is a glyph swap, which at this size is easy to misread. */
-.nav-sound-btn--on {
-    background: var(--overlay-on-dark-strong);
-    color: var(--color-on-dark);
-}
-
-/* On a phone the session zone cannot grow, and `.nav-links` is `flex: 1; min-width: 0` — so
-   anything added on the right is taken straight out of the primary nav, and a 44px button was
-   enough to squeeze it to zero width. HeaderContractUiTests caught exactly that: nav.nav-links
-   resolved but reported "hidden".
-
-   So the switch collapses to a 30px circle here, the same move the user badge already makes, and
-   the 44px touch area is restored with an invisible expanded hit box. Shrinking the visual and
-   shrinking the target are different things, and only the first one is acceptable. */
-@media (max-width: 40rem) {
-    .nav-sound-btn {
-        position: relative;
-        min-width: 30px;
-        min-height: 30px;
-        width: 30px;
-        height: 30px;
-        padding: 0;
-        font-size: var(--text-sm);
-    }
-
-    .nav-sound-btn::after {
-        content: "";
-        position: absolute;
-        /* (44 - 30) / 2 = 7px of invisible margin on every side. */
         inset: -7px;
     }
 }

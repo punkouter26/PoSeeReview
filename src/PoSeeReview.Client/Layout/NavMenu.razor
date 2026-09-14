@@ -9,7 +9,6 @@
 @inject DevSessionClient DevSessionClient
 @inject DevSessionStateService SessionState
 @inject NavigationManager Navigation
-@inject FxService Fx
 
 <div class="top-row">
     <div class="nav-shell">
@@ -50,33 +49,21 @@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-user-zone">
-                    @* Deliberately in the right-hand session zone, NOT in nav.nav-links. My
-                       Comics is per-user state, and the primary nav is contractually two items
-                       (HeaderContractUiTests asserts exactly that) — a third would both break
-                       the test and dilute a two-destination app. *@
-                    <NavLink class="nav-mycomics" href="my-comics" title="My Comics">
-                        <span aria-hidden="true">🗂️</span>
-                        <span class="nav-mycomics-label">My Comics</span>
-                    </NavLink>
+                    @* Deliberately in the right-hand session zone, NOT in nav.nav-links: the
+                       primary nav is contractually two items (HeaderContractUiTests asserts
+                       exactly that) and a third would both break the test and dilute a
+                       two-destination app.
+
+                       There is no sound switch here any more, and none is needed. Sound,
+                       haptics and the ambient bed all default to on, so there is nothing to
+                       unlock, and the only switches for them live on /diagnostics. What that
+                       buys is width: `.nav-links` is `flex: 1; min-width: 0` against a session
+                       zone that cannot shrink, so every control parked here is taken straight
+                       out of the primary nav. *@
                     <NavLink class="nav-insights" href="insights" title="Insights">
                         <span aria-hidden="true">📊</span>
                         <span class="nav-insights-label">Insights</span>
                     </NavLink>
-
-                    @* The sound switch, and it belongs here rather than on /diagnostics.
-                       Audio defaults to off and needs a real user gesture to unlock, so until
-                       now the ONLY control for it lived on a page with no nav entry that is
-                       reached by typing a URL — which meant the entire audio layer was, in
-                       practice, unreachable. This is a button, not a NavLink, and it is in the
-                       right-hand session zone: the primary nav stays contractually two items. *@
-                    <button type="button"
-                            class="nav-sound-btn @(_audioEnabled ? "nav-sound-btn--on" : "")"
-                            @onclick="ToggleAudioAsync"
-                            title="@(_audioEnabled ? "Turn sound off" : "Turn sound on")"
-                            aria-pressed="@_audioEnabled"
-                            aria-label="@(_audioEnabled ? "Turn sound off" : "Turn sound on")">
-                        <span aria-hidden="true">@(_audioEnabled ? "🔊" : "🔇")</span>
-                    </button>
                     @if (_devSession != null)
                     {
                         <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">
@@ -117,7 +104,6 @@
 @code {
     private DevSessionDto? _devSession;
     private bool _isMockData;
-    private bool _audioEnabled;
 
     protected override async Task OnInitializedAsync()
     {
@@ -131,8 +117,6 @@
         {
             _isMockData = false;
         }
-
-        _audioEnabled = await Fx.IsAudioEnabledAsync();
 
         if (IsDevOrTest)
         {
@@ -163,20 +147,11 @@
     /// a timer, an await continuation, a stored preference applied at startup — leaves the app
     /// permanently silent while reporting that sound is on.
     /// <para>
-    /// The confirmation is audible on purpose. A speaker icon changing state is not evidence
-    /// that anything reached the speakers.
+    /// That switch is no longer in this header. Sound now defaults on, and the unlock happens on
+    /// the first real gesture the user makes anyway — the discovery button, a card, the comic
+    /// action bar — which is why removing the control cost nothing and freed the width.
     /// </para>
     /// </summary>
-    private async Task ToggleAudioAsync()
-    {
-        _audioEnabled = await Fx.SetAudioEnabledAsync(!_audioEnabled);
-
-        if (_audioEnabled)
-        {
-            await Fx.PlayConfirmAsync();
-        }
-    }
-
     private async Task LogoutAsync()
     {
         if (IsDevOrTest)

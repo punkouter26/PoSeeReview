@@ -350,6 +350,8 @@ export const fx = {
     canNarrate: () => guard(() => audio.canNarrate(), false),
     narrate: (text) => guard(() => audio.narrate(text), false),
     stopNarration: () => guard(() => audio.stopNarration()),
+    // The skit rides the same speechSynthesis output and the same stopNarration() stop.
+    playSkit: (json) => guard(() => audio.playSkitJson(json), false),
 
     // ── Ambient bed ──────────────────────────────────────────────────────────────────────
     startAmbient: (score) => guardAsync(() => ambient.start(score ?? 50), false),

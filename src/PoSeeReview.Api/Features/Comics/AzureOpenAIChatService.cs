@@ -140,4 +140,58 @@ public class AzureOpenAIChatService : IChatCompletionService
             result.Narrative,
             ChatPrompts.NormalizeCaptions(result.Captions, result.Narrative, panelCount));
     }
+
+    /// <inheritdoc />
+    public async Task<PoSeeReview.Shared.Dtos.ComicAudioSkit> GenerateSkitAsync(
+        string restaurantName,
+        string narrative,
+        IReadOnlyList<string>? captions,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(narrative))
+        {
+            throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
+        }
+
+        var chatClient = _openAIClient.GetChatClient(_options.DeploymentName);
+
+        var chatMessages = new List<ChatMessage>
+        {
+            new SystemChatMessage(ChatPrompts.SkitSystemMessage),
+            new UserChatMessage(ChatPrompts.BuildSkitPrompt(restaurantName, narrative, captions))
+        };
+
+        // The skit is creative writing, not a deterministic score, so the temperature here is
+        // higher than the analysis path's 0.3. The cap reaches the wire only on an instruct
+        // deployment — reasoning models reject it, and ChatTokenBudget is what makes that safe.
+        var chatOptions = ChatTokenBudget.Build(
+            temperature: 0.7f,
+            maxCompletionTokens: _options.MaxCompletionTokens,
+            isReasoningModel: _options.IsReasoningModel);
+
+        var response = await _chatRetryPolicy.ExecuteAsync(
+            ct => chatClient.CompleteChatAsync(chatMessages, chatOptions, ct),
+            cancellationToken);
+
+        _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
+
+        if (response.Value.Content.Count == 0)
+        {
+            throw new InvalidOperationException("Azure OpenAI returned an empty completion.");
+        }
+
+        var jsonResponse = response.Value.Content[0].Text;
+        // Same lenient parse as the OpenAiWireChat providers: the skit prompt shows the model
+        // lowercase keys and the model answers in exactly that casing, so the strict
+        // PascalCase deserialize used by the analysis path reads the reply back as all-null —
+        // which surfaced as a 422 "no dialogue" with the model's answer sitting right there.
+        var skit = OpenAiWireChat.ParseSkitResponse(jsonResponse);
+
+        if (response.Value.Usage is { } usage)
+        {
+            _costTracker.Track(ProviderLabel, _options.DeploymentName, usage.InputTokenCount, usage.OutputTokenCount);
+        }
+
+        return skit;
+    }
 }

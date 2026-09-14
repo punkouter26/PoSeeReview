@@ -23,6 +23,25 @@ internal static class OpenAiWireChat
     /// <summary>One analysis call plus what it cost in tokens.</summary>
     internal sealed record Result(StrangenessAnalysis Analysis, long InputTokens, long OutputTokens);
 
+    /// <summary>One skit call plus what it cost in tokens.</summary>
+    internal sealed record SkitResult(PoSeeReview.Shared.Dtos.ComicAudioSkit Skit, long InputTokens, long OutputTokens);
+
+    /// <summary>
+    /// Wire shape the model returns. Lenient fields — a missing title becomes "" rather than
+    /// throwing, because the model's prior for inventing title punctuation is unreliable.
+    /// </summary>
+    internal sealed class SkitWireDto
+    {
+        public string Title { get; set; } = string.Empty;
+        public List<SkitLineWireDto> Lines { get; set; } = new();
+    }
+
+    internal sealed class SkitLineWireDto
+    {
+        public string Speaker { get; set; } = string.Empty;
+        public string Text { get; set; } = string.Empty;
+    }
+
     public static async Task<Result> AnalyzeAsync(
         ChatClient client,
         List<string> reviews,
@@ -76,6 +95,89 @@ internal static class OpenAiWireChat
     }
 
     /// <summary>
+    /// One skit call. Same lenient-parse and token-accounting infrastructure as the analyser
+    /// call; the prompt lives in <see cref="ChatPrompts"/> for the same reason the analysis
+    /// prompt does. Pricing is reported under the caller's provider label (AzureOpenAI,
+    /// HuggingFace, Ollama) so the cost is traceable back to the model that produced it.
+    /// </summary>
+    public static async Task<SkitResult> GenerateSkitAsync(
+        ChatClient client,
+        string restaurantName,
+        string narrative,
+        IReadOnlyList<string>? captions,
+        float temperature,
+        int? maxCompletionTokens,
+        bool isReasoningModel,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(narrative))
+        {
+            // A missing narrative here is a generation that landed a skit call before it had
+            // anything to write about; the comic service should not invoke us in that state.
+            throw new ArgumentException("Skit needs a narrative", nameof(narrative));
+        }
+
+        var messages = new List<ChatMessage>
+        {
+            new SystemChatMessage(ChatPrompts.SkitSystemMessage),
+            new UserChatMessage(ChatPrompts.BuildSkitPrompt(restaurantName, narrative, captions))
+        };
+
+        var response = await client.CompleteChatAsync(
+            messages,
+            ChatTokenBudget.Build(temperature, maxCompletionTokens, isReasoningModel),
+            cancellationToken);
+
+        var completion = response.Value;
+
+        if (completion.Content.Count == 0)
+        {
+            throw new InvalidOperationException("Chat provider returned an empty completion.");
+        }
+
+        var parsed = DeserializeLenient<SkitWireDto>(completion.Content[0].Text);
+        var skit = ParseSkit(parsed);
+
+        return new SkitResult(
+            skit,
+            completion.Usage?.InputTokenCount ?? 0,
+            completion.Usage?.OutputTokenCount ?? 0);
+    }
+
+    /// <summary>
+    /// Normalises a parsed wire skit into the domain shape: trims, drops empty lines. Shared
+    /// with <see cref="AzureOpenAIChatService"/>, whose skit parse must tolerate the same
+    /// casing drift — the prompt shows lowercase keys and the model copies them exactly, which
+    /// a PascalCase POCO reads back as nothing at all.
+    /// </summary>
+    internal static PoSeeReview.Shared.Dtos.ComicAudioSkit ParseSkitResponse(string content)
+    {
+        var parsed = DeserializeLenient<SkitWireDto>(content);
+        return ParseSkit(parsed);
+    }
+
+    private static PoSeeReview.Shared.Dtos.ComicAudioSkit ParseSkit(SkitWireDto? parsed)
+    {
+        if (parsed is null)
+        {
+            return new PoSeeReview.Shared.Dtos.ComicAudioSkit();
+        }
+
+        return new PoSeeReview.Shared.Dtos.ComicAudioSkit
+        {
+            Title = (parsed.Title ?? string.Empty).Trim(),
+            Lines = (parsed.Lines ?? new List<SkitLineWireDto>())
+                .Select(l => new PoSeeReview.Shared.Dtos.ComicAudioSkitLine
+                {
+                    Speaker = (l.Speaker ?? string.Empty).Trim(),
+                    Text = (l.Text ?? string.Empty).Trim()
+                })
+                .Where(l => l.Text.Length > 0)
+                .ToList()
+        };
+    }
+
+    /// <summary>
     /// Tolerant JSON parse: open models sometimes wrap JSON in a ```json fence, or bracket it
     /// with a sentence of preamble, despite the <c>response_format</c> hint.
     /// </summary>
@@ -105,6 +207,17 @@ internal static class OpenAiWireChat
             text = text[start..(end + 1)];
         }
 
-        return JsonSerializer.Deserialize<T>(text);
+        return JsonSerializer.Deserialize<T>(text, LenientJsonOptions);
     }
+
+    /// <summary>
+    /// Case-insensitive on purpose: the prompt shows the model a JSON shape and the model
+    /// copies the key casing it was shown, so the wire casing is whatever the prompt says it is
+    /// — not whatever the POCO says. Default (strict) options read a camelCase reply into a
+    /// PascalCase POCO as all-null, which surfaces as "empty completion" far from the cause.
+    /// </summary>
+    private static readonly JsonSerializerOptions LenientJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 }

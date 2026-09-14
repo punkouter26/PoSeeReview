@@ -5,6 +5,7 @@
 @using PoSeeReview.Shared.Enums
 @using PoSeeReview.Client.Services
 @using System.Threading
+@using System.Text.Json
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject FxService Fx
@@ -130,13 +131,7 @@
                         StrangenessScore="@_comic.StrangenessScore" />
 
             <ComicActions Comic="_comic"
-                          Budget="_budget"
-                          OnRegenerate="RegenerateAsync"
                           OnReport="() => _isReporting = true" />
-
-            @* The page relays the throw because the bar and the strip are siblings — the pile
-               lives on a canvas over the artwork, and the bar has no reference to it. *@
-            <ReactionBar PlaceId="@_comic.PlaceId" OnReacted="ThrowReactionAsync" />
 
             <div class="comic-narrative-block">
                 <p class="comic-narrative">@_comic.Narrative</p>
@@ -154,6 +149,27 @@
                             aria-label="@(_isNarrating ? "Stop reading the narrative aloud" : "Read the narrative aloud")">
                         <span aria-hidden="true">@(_isNarrating ? "■" : "🔊")</span>
                     </button>
+
+                    @* The strip's own invented conversation: the characters talking about what
+                       is happening to them. First tap asks the server to write it (a chat call,
+                       so it rides the same rate limiter as generation); every later tap is
+                       served from the comic row. Shares speechSynthesis with narration, so
+                       stopping either stops both. *@
+                    <button type="button" class="btn btn-icon narrate-btn skit-btn"
+                            disabled="@_isSkitLoading"
+                            @onclick="ToggleSkitAsync"
+                            title="@SkitButtonTitle"
+                            aria-label="@(_isSkitPlaying ? "Stop the conversation" : "Play the strip's conversation")">
+                        <span aria-hidden="true">@(_isSkitPlaying ? "■" : _isSkitLoading ? "…" : "🎭")</span>
+                    </button>
+
+                    @* A skit the server could not stage is otherwise a button that does
+                       nothing, which reads as broken rather than as refused. One muted line,
+                       cleared by the next successful play. *@
+                    @if (_skitStatus is not null)
+                    {
+                        <span class="skit-status" role="status">@_skitStatus</span>
+                    }
                 }
             </div>
 
@@ -272,6 +288,14 @@
     private bool _canNarrate;
     private bool _isNarrating;
     private bool _ambientStarted;
+    private bool _isSkitPlaying;
+    private bool _isSkitLoading;
+    private string? _skitStatus;
+
+    /// <summary>Skits need speechSynthesis; the narrate probe already answers exactly that.</summary>
+    private string SkitButtonTitle => _isSkitPlaying ? "Stop the conversation"
+        : _isSkitLoading ? "Staging the conversation..."
+        : "Play the strip's conversation";
 
     // Aligned one-to-one with the phases the API streams. The order here IS the progress order,
     // so a new pipeline phase must be added here too or the stepper misreports. Phase and copy
@@ -388,16 +412,6 @@
         // on a first visit this is a no-op and the reveal's own cues unlock the context. That is
         // the correct order: a drone is not what should greet someone who has not tapped yet.
         _ambientStarted = await Fx.StartAmbientAsync(_comic.StrangenessScore);
-    }
-
-    /// <summary>
-    /// Redraws the comic. Only reachable through the confirmation step in
-    /// <see cref="ComicActions"/>, because it spends one of the user's daily generations.
-    /// </summary>
-    private async Task RegenerateAsync()
-    {
-        await LoadComic(forceRegenerate: true);
-        _budget = await ReadBudgetAsync();
     }
 
     /// <summary>
@@ -555,23 +569,6 @@
     }
 
     /// <summary>
-    /// Throws a reaction onto the comic: a handful of emoji bodies that arc off the bar, tumble
-    /// down the strip and pile up unevenly on whatever is already there.
-    /// <para>
-    /// A reaction is the only thing a viewer can give a comic that expires in 24 hours, and a
-    /// tally next to a glyph reports how many people pressed it while saying nothing at all about
-    /// the fact that you just did.
-    /// </para>
-    /// </summary>
-    private async Task ThrowReactionAsync(ReactionBar.ReactionThrown reaction)
-    {
-        if (_strip is not null)
-        {
-            await _strip.ThrowReactionAsync(reaction.Glyph, reaction.ClientX);
-        }
-    }
-
-    /// <summary>
     /// Reads the narrative aloud, or stops. Speech does not pass through the AudioContext, so it
     /// needs no unlock — but it does follow the audio preference, which is why a muted app
     /// silently declines here rather than talking.
@@ -587,6 +584,62 @@
 
         await Fx.UnlockAudioAsync();
         _isNarrating = await Fx.NarrateAsync(_comic?.Narrative ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Plays the comic's conversation, or stops it. Follows the narration button's shape
+    /// exactly — including its honesty about not resetting when speech finishes on its own:
+    /// the button stays a stop button until tapped, which is the existing narration UX.
+    /// A skit that cannot be staged is a missing flourish, never a page error, so the fetch
+    /// is guarded rather than wired into the error card.
+    /// </summary>
+    private async Task ToggleSkitAsync()
+    {
+        if (_isSkitPlaying)
+        {
+            await Fx.StopNarrationAsync();
+            _isSkitPlaying = false;
+            return;
+        }
+
+        if (_comic is null || _isSkitLoading)
+        {
+            return;
+        }
+
+        _isSkitLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            var skit = await ApiClient.GetComicSkitAsync(_comic.PlaceId);
+            if (skit is { Lines.Count: > 0 })
+            {
+                await Fx.UnlockAudioAsync();
+                var json = JsonSerializer.Serialize(skit, AppJsonContext.Default.ComicAudioSkit);
+                _isSkitPlaying = await Fx.PlaySkitJsonAsync(json);
+                _skitStatus = _isSkitPlaying ? null : "Couldn't start speech — check the browser's sound settings.";
+            }
+            else
+            {
+                _skitStatus = "No conversation available for this one right now.";
+            }
+        }
+        catch (Exception)
+        {
+            // Surfaced, not thrown: a 429 or a model refusal costs the user nothing to retry
+            // later, and an error card over a working comic would be the wrong trade. But a
+            // silent swallow reads as a broken button, so the status line says what happened.
+            _skitStatus = "Couldn't stage a conversation — try again in a moment.";
+        }
+        finally
+        {
+            _isSkitLoading = false;
+            if (!_disposed)
+            {
+                StateHasChanged();
+            }
+        }
     }
 
     private async Task GenerateFromPromptAsync()

@@ -7,12 +7,19 @@
 //  1. An AudioContext created before a user gesture starts 'suspended' and never recovers on
 //     its own. So the context is created lazily on the first real interaction, and every play
 //     call is a no-op until then rather than an error.
-//  2. Sound is opt-out-able and must default to quiet. Audio that a user did not ask for, on a
-//     page they opened in a shared space, is a hostile surprise.
+//  2. Sound defaults ON — a reversal of the rule this file used to state ("opt-out-able and must
+//     default to quiet"). The cues are part of the product rather than a garnish, and a switch
+//     nobody finds is not much of an opt-out. What keeps it honest is rule 1: a context cannot
+//     start before a gesture, so nothing is heard until the user has tapped something. Haptics
+//     and the ambient bed inherit this preference, all three keep switches on /diagnostics, and
+//     an explicit reduced-motion request still forces silence.
 
 import { gfx } from './gfx-core.js';
 
 const STORAGE_KEY = 'posee_audio_enabled';
+
+// How long unlock() will wait for a resume that may never arrive. See the note in unlock().
+const RESUME_GRACE_MS = 200;
 
 const state = {
     ctx: null,
@@ -23,17 +30,19 @@ const state = {
     wet: null,
     analyser: null,    // Tap for audio-reactive visuals; see analyse().
     analyserBins: null,
-    enabled: false,
+    enabled: true,
     unlocked: false,
     // Guards against a burst of identical sounds (a fast count-up) stacking into clipping.
     lastPlayedAt: new Map()
 };
 
+// Only an explicit "false" is off. An absent key means the user has never decided, and the
+// default is on; a browser that blocks localStorage keeps that default rather than muting.
 function readStoredEnabled() {
     try {
-        return localStorage.getItem(STORAGE_KEY) === 'true';
+        return localStorage.getItem(STORAGE_KEY) !== 'false';
     } catch {
-        return false;
+        return true;
     }
 }
 
@@ -430,7 +439,16 @@ export const audio = {
 
         try {
             if (ctx.state === 'suspended') {
-                await ctx.resume();
+                // Chrome will not start a context without user activation, and it does not reject:
+                // the resume promise just stays pending until a gesture arrives — forever, if none
+                // does. Nothing may wait on that. This is called from the discovery flow's own
+                // async path (a remembered ZIP resumes the search on load, before any tap), so a
+                // sound that has not started yet must not be able to stop a request being made.
+                // The next real gesture unlocks properly; this call reports honestly either way.
+                await Promise.race([
+                    ctx.resume(),
+                    new Promise(resolve => setTimeout(resolve, RESUME_GRACE_MS))
+                ]);
             }
             state.unlocked = ctx.state === 'running';
         } catch {
@@ -1013,6 +1031,61 @@ export const audio = {
 
     stopNarration() {
         try { window.speechSynthesis?.cancel(); } catch { /* nothing speaking */ }
+    },
+
+    /**
+     * Plays the comic's invented conversation. Each line is its own utterance, and speak()
+     * ENQUEUES rather than interrupts — which is normally the bug the narrate() cancel-first
+     * guards against, and here it is the whole feature: the browser walks the dialogue at its
+     * own pace, and stopNarration() still stops it dead with one cancel().
+     *
+     * Takes the skit as a JSON STRING, not an object: the .NET side serializes it with its
+     * source-generated context, and parsing here keeps complex types out of the interop
+     * boundary, where reflection-based serialization would fight the trimmer.
+     *
+     * Speakers are differentiated by pitch slot in order of first appearance, so the same
+     * character keeps the same voice for the whole skit and a two-hander reads as two people.
+     */
+    playSkitJson(json) {
+        if (!state.enabled || !this.canNarrate()) return false;
+
+        let lines;
+        try {
+            const parsed = JSON.parse(String(json ?? '[]'));
+            // The .NET client serializes the whole skit object ({ title, lines }), so the
+            // array lives one level down; accept a bare array too, because both are a
+            // reasonable thing for a caller to reach for and only one of them is documented.
+            lines = Array.isArray(parsed) ? parsed
+                : Array.isArray(parsed?.lines) ? parsed.lines
+                : null;
+        } catch { return false; }
+        if (!Array.isArray(lines) || lines.length === 0) return false;
+
+        try {
+            // One cancel before the queue is built. Cancelling BETWEEN lines would work, but
+            // there is no between: the queue is constructed in this one synchronous pass.
+            window.speechSynthesis.cancel();
+
+            const slots = new Map();
+            for (const line of lines) {
+                const text = String(line?.text ?? '').trim();
+                if (!text) continue;
+
+                const speaker = String(line?.speaker ?? '').trim() || 'Voice';
+                if (!slots.has(speaker)) slots.set(speaker, slots.size);
+
+                const utterance = new SpeechSynthesisUtterance(text.slice(0, 300));
+                // Pitch slots walk 0.75 → 1.05 → 1.35 for three speakers, then wrap — distinct
+                // without sliding into cartoon ranges, and deterministic per speaker.
+                utterance.pitch = 0.75 + (slots.get(speaker) % 3) * 0.3;
+                utterance.rate = 1.02;
+                utterance.volume = 0.9;
+                window.speechSynthesis.speak(utterance);
+            }
+            return slots.size > 0;
+        } catch {
+            return false;
+        }
     },
 
     // ── Hooks for composed modules ───────────────────────────────────────────────────────

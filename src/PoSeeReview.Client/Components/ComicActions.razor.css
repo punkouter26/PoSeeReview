@@ -26,37 +26,6 @@
     color: var(--color-danger-ink);
 }
 
-.regenerate-confirm {
-    flex: 1 1 100%;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-sm);
-    padding: var(--space-sm) var(--space-md);
-    border: 1.5px solid var(--color-accent-dark);
-    border-radius: var(--radius-card);
-    background: var(--color-highlight);
-}
-
-.regenerate-warning {
-    flex: 1 1 12rem;
-    font-size: var(--text-sm);
-    font-weight: 600;
-    /* warning-text, not accent: this sits on --color-highlight, which is the surface the
-       warning ink was tuned against. */
-    color: var(--color-warning-text);
-}
-
-.regenerate-confirm-actions {
-    display: flex;
-    gap: var(--space-xs);
-}
-
-.regenerate-confirm-actions .btn {
-    padding-inline: var(--space-md);
-    font-size: var(--text-sm);
-}
-
 /* On a phone every action goes full width rather than wrapping into ragged pairs. */
 @media (max-width: 40rem) {
     .comic-actions .btn:not(.btn-icon) {

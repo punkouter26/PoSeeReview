@@ -48,25 +48,25 @@ public class LeaderboardService : ILeaderboardService
     /// </summary>
     public async Task<List<LeaderboardEntry>> GetTopComicsAsync(RegionCode region, int limit = 10)
     {
-        if (region.IsEmpty)
-        {
-            _logger.LogWarning("GetTopComicsAsync called with empty region");
-            throw new ArgumentException("Region cannot be empty", nameof(region));
-        }
-
+        // An empty region is now the worldwide board rather than a caller error: the page has no
+        // region picker any more, and RegionCode.From maps empty to US, so the sentinel has to be
+        // tested before anything "helpfully" fills it in.
         if (limit < 1 || limit > 50)
         {
             _logger.LogWarning("GetTopComicsAsync called with invalid limit: {Limit}", limit);
             throw new ArgumentException("Limit must be between 1 and 50", nameof(limit));
         }
 
-        _logger.LogInformation("Getting top {Limit} comics for region {Region}", limit, region);
+        _logger.LogInformation("Getting top {Limit} comics for {Scope}", limit,
+            region.IsEmpty ? "all regions" : $"region {region.Value}");
 
         try
         {
             // Probe the full page size so expired-blob rows (empty ComicBlobUrl after the
             // existence check) do not occupy the slots the Hall of Fame actually paints.
-            var entries = await _repository.GetTopEntriesAsync(region, MaxProbeCount);
+            var entries = region.IsEmpty
+                ? await _repository.GetTopEntriesGlobalAsync(MaxProbeCount)
+                : await _repository.GetTopEntriesAsync(region, MaxProbeCount);
 
             // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel
             var sasRefreshTasks = entries

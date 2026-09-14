@@ -46,11 +46,6 @@
        ring above: that one is sized to the ring, and ink has to fall the height of the strip to
        read as falling at all. *@
     <canvas @ref="_inkCanvas" class="fx-overlay fx-ink-canvas" aria-hidden="true"></canvas>
-
-    @* The reaction pile. A third canvas rather than sharing the ink one, because the two have
-       opposite lifetimes: ink is a one-shot that seeds itself and tears itself down in about
-       three seconds, and this accumulates for as long as the comic is open. *@
-    <canvas @ref="_reactionCanvas" class="fx-overlay fx-reaction-canvas" aria-hidden="true"></canvas>
 </div>
 
 @code {
@@ -85,28 +80,16 @@
     private ElementReference _canvas;
     private ElementReference _inkCanvas;
     private ElementReference _fieldCanvas;
-    private ElementReference _reactionCanvas;
     private int _fxHandle;
     private int _revealHandle;
     private int _inkHandle;
-    private int _pileHandle;
     private int _scrubHandle;
     private string? _attachedUrl;
 
-    /// <summary>
-    /// Opens the reaction pile once, on the first render.
-    /// <para>
-    /// Not tied to the image load the way the post-process is: the pile does not read the
-    /// artwork, it only needs a canvas with a size. Tying it to the load would mean a reaction
-    /// tapped before the image finished decoding had nowhere to land.
-    /// </para>
-    /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            _pileHandle = await Fx.StartReactionPileAsync(_reactionCanvas);
-
             if (!string.IsNullOrEmpty(PlaceId))
             {
                 _scrubHandle = await Fx.StartPanelScrubAsync(
@@ -114,19 +97,6 @@
             }
         }
     }
-
-    /// <summary>
-    /// Throws a reaction onto the comic. Launched from the bottom edge, arcing up into the panel
-    /// and falling back — a body that simply dropped in would read as something falling off the
-    /// page rather than as something the user threw onto it.
-    /// <para>
-    /// Called by the page rather than by the reaction bar directly: the bar is a sibling
-    /// component and has no reference to this canvas, and giving it one would couple the two for
-    /// the sake of one call.
-    /// </para>
-    /// </summary>
-    public Task ThrowReactionAsync(string glyph, double clientX) =>
-        Fx.ThrowReactionAsync(_pileHandle, glyph, 0.5, 0.92, clientX);
 
     /// <summary>
     /// Attaching is driven by the image's own load event rather than OnAfterRender: WebGL cannot
@@ -215,15 +185,6 @@
     public async ValueTask DisposeAsync()
     {
         await DetachAsync();
-
-        // The pile is deliberately outside DetachAsync. Detach also runs when the comic is
-        // REGENERATED — same component, new artwork — and the reactions on it belong to the
-        // place, not to that particular drawing of it.
-        if (_pileHandle != 0)
-        {
-            await Fx.StopInkAsync(_pileHandle);
-            _pileHandle = 0;
-        }
 
         // The scrub owns an IntersectionObserver AND the sentinel elements it appended to the
         // container. Both have to go: an observer on detached nodes is a leak, and the sentinels

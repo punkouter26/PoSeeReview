@@ -706,10 +706,12 @@
     }
 
     /* ── Chip toggle ─────────────────────────────────────────────────────────────────────────
-       A small on/off filter control. Shared rather than scoped because it is used by two pages
-       at once — the discovery sort chips and the Hall of Fame scope chips — and this file's own
+       A small on/off filter control. Shared rather than scoped because it had two callers at
+       once — the discovery sort chips and the Hall of Fame scope chips — and this file's own
        history says what happens otherwise: Diagnostics and the Hall of Fame each grew their own
-       `.btn-primary`, and they drifted. One definition, two callers, no fork.
+       `.btn-primary`, and they drifted. Discovery's sort chips are gone, so the Hall of Fame is
+       the only caller left; it stays put because what made it shared has not changed, only the
+       count.
 
        Not a `.btn` variant: a chip is a state toggle with `aria-pressed`, not an action, and it
        is deliberately smaller than the 44px action target. The hit area is restored with a

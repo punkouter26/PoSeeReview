@@ -22,4 +22,15 @@ public interface IChatCompletionService
     /// <returns>Score, panel count, narrative, and one caption per panel.</returns>
     /// <exception cref="ArgumentException">If reviews list is empty</exception>
     Task<StrangenessAnalysis> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Writes an invented short conversation between the people in the comic. Same chat
+    /// providers, same prompt contract — a second method rather than a parameter overload so the
+    /// contract can say "this is a skit" without overloading "this is a score".
+    /// </summary>
+    Task<PoSeeReview.Shared.Dtos.ComicAudioSkit> GenerateSkitAsync(
+        string restaurantName,
+        string narrative,
+        IReadOnlyList<string>? captions,
+        CancellationToken cancellationToken = default);
 }

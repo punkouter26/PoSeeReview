@@ -269,48 +269,25 @@
     font-weight: 600;
 }
 
-/* Search chip bar */
-.results-chip-bar {
+/* Results header — the count, and the way back to the prompt. */
+.results-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-    grid-column: 1 / -1;
+    gap: var(--space-sm);
     flex-wrap: wrap;
+    grid-column: 1 / -1;
 }
 
-.search-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.5rem 0.8rem;
-    background: var(--color-card);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-primary);
-    border-radius: 999px;
+/* Standalone replacement for the old search chip. The chip carried the search label as well as
+   the reset, so the label went and the reset stayed — named, because a bare × at the top of a
+   results grid reads as "dismiss these" and had only a title attribute to say otherwise. Sized
+   like the chip it replaced rather than like a full .btn: this sits in a results header, not a
+   call to action, though it keeps .btn's 44px tap target. */
+.new-search-btn {
+    padding-inline: var(--space-md);
     font-size: var(--text-sm);
-    font-weight: 600;
-    white-space: nowrap;
 }
-
-/* Sized by the shared .btn-icon primitive in app.css, which also supplies the 44px pseudo-element
-   hit area. 24px was the WCAG 2.5.8 floor and is half this app's --tap-target, on a control that
-   sits immediately beside the search chip's own text. */
-.chip-clear {
-    width: 1.5rem;
-    height: 1.5rem;
-    border: none;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--color-brand) 8%, transparent);
-    color: var(--color-brand);
-    cursor: pointer;
-    font-size: var(--text-md);
-    line-height: 1;
-    padding: 0;
-}
-
-.chip-clear:hover { opacity: 1; }
 
 .results-count {
     color: var(--color-text-muted);
@@ -397,79 +374,69 @@
         grid-template-columns: 1fr;
         gap: 0.9rem;
     }
-
-    .results-chip-bar {
-        align-items: stretch;
-    }
 }
 
 /* === end of styles === */
 
-/* ── Results controls ────────────────────────────────────────────────────────────────────────
-   Sort chips are the shared `.chip-toggle` primitive (app.css); only the row layout is here.
-   Sorting is client-side over results already fetched, so switching is instant and costs no
-   Maps quota. */
-.results-controls {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-md);
+/* ── Results layout ────────────────────────────────────────────────────────────────────────
+   Two panes on a wide screen, one on a phone. The map used to be a panel that a button opened
+   ABOVE the list, which meant the results started below a full-height map — or, with it closed,
+   below a row that existed only to hold that button, while the closed panel still ate the first
+   grid cell and pushed every card one place along. As a column beside the list it costs the
+   cards nothing and answers its question — which of these is already drawn, and which is near —
+   while the list is being read.
+   `align-items: start` is load-bearing: a stretched map column fills the row, and an element
+   with no room to move inside its own area cannot stick. */
+.results-layout {
+    margin-top: 1rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: clamp(1rem, 2vw, 1.5rem);
 }
 
-.sort-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3xs);
-}
-
-.surprise-btn {
-    padding-inline: var(--space-md);
-    font-size: var(--text-sm);
-}
-
-@media (max-width: 40rem) {
-    /* The chips keep their row; Surprise Me takes the next one in full so it stays an obvious,
-       thumb-sized target rather than a squeezed remnant. */
-    .surprise-btn {
-        flex: 1 1 100%;
-    }
+/* Its own margin would stack on top of the layout's gap and drop the cards out of line with the
+   map beside them. It stays on .restaurants-grid because the loading skeletons use that rule
+   without a layout around them. */
+.results-layout > .restaurants-grid {
+    margin-top: 0;
 }
 
 /* ── Discovery map ───────────────────────────────────────────────────────────────────────────
-   A panel above the results grid, never a replacement for it. Collapsed with max-height rather
-   than display:none so the container keeps a box MapLibre can measure, and so opening it is a
-   movement rather than a jump. */
-.results-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2xs);
-}
-
+   Always on, and a pane beside the results rather than a panel above them. It keeps a box
+   MapLibre can measure for the same reason it always did — a zero-height mount stays blank — but
+   nothing has to open it any more, so there is no collapsed state and no transition to get
+   wrong. */
 .map-panel {
     overflow: hidden;
-    max-height: 60dvh;
-    margin-bottom: var(--space-md);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
-    /* Duration tracks distance travelled: this is a full panel, so it gets a slow, and
-       --ease-out because it is arriving. */
-    transition: max-height var(--duration-slow) var(--ease-out);
-}
-
-.map-panel--closed {
-    max-height: 0;
-    margin-bottom: 0;
-    border-color: transparent;
 }
 
 .map-canvas {
     width: 100%;
-    /* Tall enough to be a map, short enough to leave the list visible on a phone — the panel is
-       an aid to the grid, not a takeover. */
-    height: min(60dvh, 22rem);
+    /* Tall enough to be a map, short enough to leave the list reachable on a phone — it is an
+       aid to the list, not a takeover. */
+    height: min(45dvh, 20rem);
     background: var(--color-surface-alt);
+}
+
+@media (min-width: 64rem) {
+    .results-layout {
+        grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
+    }
+
+    /* Sticky, because the question the map answers is asked while reading the list rather than
+       before it, and the pins have to keep meaning something wherever the reader has scrolled
+       to. The page is the scrollport, so nothing above may clip on the vertical axis. */
+    .map-panel {
+        position: sticky;
+        top: var(--space-md);
+    }
+
+    .map-canvas {
+        height: min(62dvh, 34rem);
+    }
 }
 
 .map-fallback {

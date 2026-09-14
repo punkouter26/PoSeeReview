@@ -20,42 +20,17 @@
            Width="PageShell.ShellWidth.Wide"
            Class="leaderboard-container">
 
-    <Header>
-        @* The API has supported ?region= and a US-WA-Seattle hierarchy from the start; the
-           client hardcoded "US", so every non-US visitor was shown a board with nothing to do
-           with them. These chips are the client half that was missing. *@
-        <div class="board-controls">
-            <div class="board-scope" role="group" aria-label="Leaderboard scope">
-                <button type="button" class="chip-toggle @(_scope == BoardScope.Live ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_scope == BoardScope.Live)"
-                        @onclick="() => SwitchScopeAsync(BoardScope.Live)">
-                    Right now
-                </button>
-                <button type="button" class="chip-toggle @(_scope == BoardScope.Weekly ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_scope == BoardScope.Weekly)"
-                        @onclick="() => SwitchScopeAsync(BoardScope.Weekly)">
-                    By week
-                </button>
-            </div>
-
-            <label class="region-picker">
-                <span class="visually-hidden">Region</span>
-                <select class="region-select" @onchange="OnRegionChangedAsync" aria-label="Region">
-                    @foreach (var region in Regions)
-                    {
-                        <option value="@region.Code" selected="@(region.Code == _region)">@region.Label</option>
-                    }
-                </select>
-            </label>
-        </div>
-    </Header>
+    @* No controls. The page used to ask which scope and which country — that belongs to a
+       regional product, and every non-US visitor was otherwise looking at the wrong board. The
+       PRD subtitle already promises "from around the world", so the top 10 across all
+       regions is the obvious default. A regional board is still available by URL
+       (?region=US). *@
 
     <ChildContent>
 
     <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
 
-    @if (isLoading && ((_scope == BoardScope.Live && (leaderboardEntries == null || leaderboardEntries.Count == 0))
-                       || (_scope == BoardScope.Weekly && _archive is null)))
+    @if (isLoading && (leaderboardEntries == null || leaderboardEntries.Count == 0))
     {
         @* One loading component for the whole app. It carries role="status" + aria-busy, which a
            bare Radzen spinner does not — those pages asked screen readers to sit through an
@@ -68,8 +43,9 @@
             @errorMessage
         </div>
     }
-    else if (_scope == BoardScope.Live && (leaderboardEntries == null || leaderboardEntries.Count == 0))
+    else if (leaderboardEntries == null || leaderboardEntries.Count == 0)
     {
+        @* The "no results" state. Region-agnostic — there is no region on the page. *@
         <div class="no-entries">
             <div class="empty-panels">
                 <div class="empty-panel">&#128269;</div>
@@ -81,70 +57,6 @@
             <p class="empty-body">No strange restaurant tales on the board yet.<br />Go discover one — the weirder the better!</p>
             <a href="/" class="empty-home-btn">&#127968; Find Restaurants Near Me</a>
         </div>
-    }
-    else if (_scope == BoardScope.Weekly)
-    {
-        <h2 class="visually-hidden">Weekly hall of fame</h2>
-
-        @if (_archive is null || _archive.Weeks.Count == 0)
-        {
-            <div class="state-card">
-                <div class="state-card-icon" aria-hidden="true">📚</div>
-                <h3 class="state-card-title">The archive is still filling up</h3>
-                <p class="state-card-body">
-                    Every comic that makes the board gets filed here by week, and stays after the
-                    comic itself expires. Nothing recorded for @_region yet.
-                </p>
-            </div>
-        }
-        else
-        {
-            <div class="archive">
-                @foreach (var week in _archive.Weeks)
-                {
-                    <section class="archive-week">
-                        <h3 class="archive-week-title">
-                            Week of @week.WeekStart.ToLocalTime().ToString("MMM d, yyyy")
-                        </h3>
-
-                        <ol class="archive-list">
-                            @foreach (var entry in week.Entries)
-                            {
-                                <li class="archive-entry glass">
-                                    <span class="archive-rank">@GetMedal(entry.Rank)</span>
-
-                                    <div class="archive-thumb">
-                                        @if (entry.ImageExpired)
-                                        {
-                                            @* The comic's blob is gone but the record is not, which
-                                               is the entire point of an archive. A score card beats
-                                               a broken image. *@
-                                            <div class="archive-thumb-gone">
-                                                <span class="archive-gone-score">@entry.StrangenessScore.ToString("F0")</span>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
-                                        }
-                                    </div>
-
-                                    <div class="archive-details">
-                                        <span class="archive-name">@entry.RestaurantName</span>
-                                        <span class="archive-score">@entry.StrangenessScore.ToString("F0") weird</span>
-                                    </div>
-
-                                    <a class="btn btn-secondary archive-open"
-                                       href="/comic/@entry.PlaceId?from=leaderboard">
-                                        @(entry.ImageExpired ? "Redraw" : "Open")
-                                    </a>
-                                </li>
-                            }
-                        </ol>
-                    </section>
-                }
-            </div>
-        }
     }
     else
     {
@@ -235,34 +147,6 @@
     private const string LeaderboardResultsId = "leaderboard-results";
     private const int TopTen = 10;
 
-    /// <summary>Which board is being shown — the churning live one, or the permanent archive.</summary>
-    private enum BoardScope { Live, Weekly }
-
-    /// <summary>
-    /// Regions offered in the picker.
-    /// <para>
-    /// A short, curated list rather than every ISO code: the board is only interesting where
-    /// comics actually exist, and a 200-entry select of mostly-empty countries is worse than no
-    /// picker at all. The API accepts the full hierarchy, so narrower codes still work by URL.
-    /// </para>
-    /// </summary>
-    private static readonly (string Code, string Label)[] Regions =
-    [
-        ("US", "🇺🇸 United States"),
-        ("GB", "🇬🇧 United Kingdom"),
-        ("CA", "🇨🇦 Canada"),
-        ("AU", "🇦🇺 Australia"),
-        ("IE", "🇮🇪 Ireland"),
-        ("NZ", "🇳🇿 New Zealand")
-    ];
-
-    /// <summary>Weeks of archive requested at once.</summary>
-    private const int ArchiveWeeks = 6;
-
-    private BoardScope _scope = BoardScope.Live;
-    private string _region = "US";
-    private HallOfFameResponse? _archive;
-
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private DateTimeOffset lastLoadedLocal = DateTimeOffset.Now;
     private string? errorMessage;
@@ -303,9 +187,7 @@
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Only the live board has a shelf. The archive is a scrolling list of weeks; a fixed
-        // scene behind it would sit behind whichever week happened to be in view.
-        if (_scope != BoardScope.Live || isLoading)
+        if (isLoading)
         {
             await StopShelfAsync();
             return;
@@ -345,65 +227,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadLeaderboardAsync();
-        
-    }
 
-    /// <summary>Switches between the live board and the archive, loading on first visit.</summary>
-    private async Task SwitchScopeAsync(BoardScope scope)
-    {
-        if (_scope == scope)
-        {
-            return;
-        }
-
-        _scope = scope;
-        await LoadCurrentScopeAsync();
-    }
-
-    private async Task OnRegionChangedAsync(ChangeEventArgs args)
-    {
-        var region = args.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(region) || region == _region)
-        {
-            return;
-        }
-
-        _region = region;
-
-        // Both views are region-scoped, so a change invalidates whichever is cached. Clearing
-        // the archive is what stops the previous country's weeks showing under the new flag.
-        _archive = null;
-        leaderboardEntries = null;
-
-        await LoadCurrentScopeAsync();
-    }
-
-    private Task LoadCurrentScopeAsync() =>
-        _scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync();
-
-    private async Task LoadArchiveAsync()
-    {
-        isLoading = true;
-        errorMessage = null;
-
-        try
-        {
-            _archive = await ApiClient.GetWeeklyHallOfFameAsync(_region, ArchiveWeeks, TopTen);
-
-            if (_archive is null)
-            {
-                errorMessage = "Unable to load the weekly archive. Please try again later.";
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Unexpected error loading the weekly archive for {Region}", _region);
-            errorMessage = "An unexpected error occurred.";
-        }
-        finally
-        {
-            isLoading = false;
-        }
     }
 
     private async Task LoadLeaderboardAsync()
@@ -413,9 +237,11 @@
 
         try
         {
-            Logger.LogInformation("Fetching Hall of Fame top {Limit} for {Region}", TopTen, _region);
+            // Empty region means worldwide — the "around the world" the subtitle promises.
+            // A scoped board is still available by URL (?region=US) for direct deep links.
+            Logger.LogInformation("Fetching Hall of Fame top {Limit} (worldwide)", TopTen);
 
-            var response = await ApiClient.GetLeaderboardAsync(_region, TopTen);
+            var response = await ApiClient.GetLeaderboardAsync(string.Empty, TopTen);
 
             if (response != null)
             {
@@ -433,7 +259,7 @@
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "Could not report board movement for {Region}", _region);
+                    Logger.LogWarning(ex, "Could not report board movement (worldwide)");
                 }
             }
             else
@@ -483,7 +309,7 @@
             return;
         }
 
-        var previous = await BoardMemory.GetAsync(_region);
+        var previous = await BoardMemory.GetAsync("GLOBAL");
 
         _deltas = [];
         if (previous.Count > 0)
@@ -500,7 +326,7 @@
             }
         }
 
-        await BoardMemory.SaveAsync(_region, entries.Select(e => (e.PlaceId, e.Rank)));
+        await BoardMemory.SaveAsync("GLOBAL", entries.Select(e => (e.PlaceId, e.Rank)));
 
         // The chord is the board heard at once — each voice one restaurant's own motif, seeded
         // from its place id. It plays only if audio is already unlocked, which on this route means

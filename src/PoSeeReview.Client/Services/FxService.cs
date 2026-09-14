@@ -363,6 +363,15 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task<bool> NarrateAsync(string text) => SafeAsync("poseeFx.narrate", false, text);
 
+    /// <summary>
+    /// Plays the comic's conversation. Takes the skit PRE-SERIALIZED by <c>AppJsonContext</c>:
+    /// a complex type as an interop argument would be serialized reflectively, which is the
+    /// exact thing the source-generated context exists to avoid on a trim-analyzed client.
+    /// Shares speechSynthesis with narration, so <see cref="StopNarrationAsync"/> stops it too —
+    /// one queue, one cancel.
+    /// </summary>
+    public Task<bool> PlaySkitJsonAsync(string skitJson) => SafeAsync("poseeFx.playSkit", false, skitJson);
+
     public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
 
     // ── Haptics ──────────────────────────────────────────────────────────────────────────

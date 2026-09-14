@@ -73,4 +73,31 @@ public sealed class HuggingFaceChatService : IChatCompletionService
 
         return result.Analysis;
     }
+
+    /// <inheritdoc />
+    public async Task<PoSeeReview.Shared.Dtos.ComicAudioSkit> GenerateSkitAsync(
+        string restaurantName,
+        string narrative,
+        IReadOnlyList<string>? captions,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(narrative))
+        {
+            throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
+        }
+
+        var result = await OpenAiWireChat.GenerateSkitAsync(
+            _chatClient,
+            restaurantName,
+            narrative,
+            captions,
+            temperature: 0.7f,
+            maxCompletionTokens: _options.AnalysisMaxTokens,
+            // Same as the analysis path: the HF router exposes an instruct model here.
+            isReasoningModel: false,
+            cancellationToken);
+
+        _costTracker.Track(ProviderLabel, _options.ChatModel, result.InputTokens, result.OutputTokens);
+        return result.Skit;
+    }
 }

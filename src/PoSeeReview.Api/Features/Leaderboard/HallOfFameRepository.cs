@@ -98,6 +98,39 @@ public sealed class HallOfFameRepository(
         return entries;
     }
 
+    /// <summary>Rows a global week read will scan before giving up on ordering the rest.</summary>
+    private const int MaxGlobalWeekScanRows = 500;
+
+    /// <summary>
+    /// Reads one week of archived entries across every region, highest score first. The week is
+    /// a stored column (it is also baked into the partition key, but a partition filter is what
+    /// makes the scoped read cheap and this one cannot have it), so this is a cross-partition
+    /// scan on the column with the same in-memory ordering the live global board uses.
+    /// </summary>
+    public async Task<List<HallOfFameEntity>> GetWeekGlobalAsync(
+        string weekKey,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        var filter = TableClient.CreateQueryFilter<HallOfFameEntity>(e => e.WeekKey == weekKey);
+
+        var entries = new List<HallOfFameEntity>();
+
+        await foreach (var entity in _table.QueryAsync<HallOfFameEntity>(filter, maxPerPage: 100, cancellationToken: cancellationToken))
+        {
+            entries.Add(entity);
+            if (entries.Count >= MaxGlobalWeekScanRows)
+            {
+                break;
+            }
+        }
+
+        return entries
+            .OrderByDescending(e => e.StrangenessScore)
+            .Take(limit)
+            .ToList();
+    }
+
     /// <summary>Deletes an archived entry across every week — used when a comic is taken down.</summary>
     public async Task DeleteAllForPlaceAsync(PlaceId placeId, CancellationToken cancellationToken = default)
     {

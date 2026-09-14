@@ -59,6 +59,14 @@ public class ComicEntity : ITableEntity
     public byte[] EmbeddingBytes { get; set; } = [];
 
     /// <summary>
+    /// Serialised <c>ComicAudioSkit</c>, generated lazily on demand by
+    /// <c>POST /api/comics/{placeId}/audio</c> and persisted on the comic row so the second
+    /// tap of the same comic never re-bills the chat model. Empty until generated; the endpoint
+    /// refuses to read it without first calling the chat service to fill it.
+    /// </summary>
+    public string AudioSkitJson { get; set; } = string.Empty;
+
+    /// <summary>
     /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
     public static ComicEntity FromDomain(Comic comic)
@@ -78,7 +86,8 @@ public class ComicEntity : ITableEntity
             RequestedByUserId = comic.RequestedByUserId.Value,
             PaletteHex = ComicPaletteExtractor.Join(comic.Palette),
             PromptVersion = comic.PromptVersion,
-            EmbeddingBytes = VectorMath.ToBytes(comic.Embedding)
+            EmbeddingBytes = VectorMath.ToBytes(comic.Embedding),
+            AudioSkitJson = comic.AudioSkitJson
         };
     }
 
@@ -101,6 +110,7 @@ public class ComicEntity : ITableEntity
             Palette = ComicPaletteExtractor.Split(PaletteHex),
             PromptVersion = PromptVersion,
             Embedding = VectorMath.FromBytes(EmbeddingBytes),
+            AudioSkitJson = AudioSkitJson,
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated
         };

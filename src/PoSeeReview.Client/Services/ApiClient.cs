@@ -243,6 +243,23 @@ public class ApiClient
     /// "net_http_message_not_success_statuscode_reason" text that this helper exists to replace.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Fetches the comic's invented conversation, generating it on the server the first time it
+    /// is asked for. The first tap costs a chat call and rides the comics-post rate limiter;
+    /// every later tap of the same comic is served from the comic row.
+    /// </summary>
+    public async Task<ComicAudioSkit?> GetComicSkitAsync(
+        string placeId,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/comics/{placeId}/audio");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+        await EnsureSuccessAsync(response, "Could not stage the comic's conversation", cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicAudioSkit, cancellationToken);
+    }
+
     private static async Task EnsureSuccessAsync(
         HttpResponseMessage response,
         string fallback,

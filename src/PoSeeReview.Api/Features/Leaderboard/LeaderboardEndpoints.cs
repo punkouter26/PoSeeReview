@@ -49,16 +49,14 @@ internal static partial class LeaderboardEndpoints
         ILogger<HallOfFameRepository> logger,
         TimeProvider timeProvider,
         HttpContext http,
-        string region = "US",
         int weeks = 4,
-        int limit = 10)
+        int limit = 10,
+        string? region = null)
     {
-        if (string.IsNullOrWhiteSpace(region))
-        {
-            region = "US";
-        }
+        // Same sentinel as the live board: absent means every region's archive, merged per week.
+        var isGlobal = string.IsNullOrWhiteSpace(region);
 
-        if (!RegionFormat.IsMatch(region))
+        if (!isGlobal && !RegionFormat.IsMatch(region!))
         {
             return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid region",
                 detail: $"Region '{region}' has invalid format. Must start with a 2-letter country code (e.g., US, GB, US-WA).");
@@ -76,16 +74,18 @@ internal static partial class LeaderboardEndpoints
                 title: "Invalid limit", detail: "Limit must be between 1 and 50");
         }
 
-        var regionCode = RegionCode.From(region);
+        var regionCode = isGlobal ? new RegionCode(string.Empty) : RegionCode.From(region);
         var now = timeProvider.GetUtcNow();
-        var response = new HallOfFameResponse { Region = region.ToUpperInvariant() };
+        var response = new HallOfFameResponse { Region = isGlobal ? "ALL" : region!.ToUpperInvariant() };
 
         for (var offset = 0; offset < weeks; offset++)
         {
             var instant = now.AddDays(-7 * offset);
             var weekKey = HallOfFameEntity.WeekKeyFor(instant);
 
-            var entities = await hallOfFame.GetWeekAsync(regionCode, weekKey, limit, http.RequestAborted);
+            var entities = isGlobal
+                ? await hallOfFame.GetWeekGlobalAsync(weekKey, limit, http.RequestAborted)
+                : await hallOfFame.GetWeekAsync(regionCode, weekKey, limit, http.RequestAborted);
             if (entities.Count == 0)
             {
                 // Empty weeks are skipped rather than rendered: a column of "nothing happened"
@@ -158,16 +158,15 @@ internal static partial class LeaderboardEndpoints
     private static async Task<IResult> GetLeaderboard(
         ILeaderboardService leaderboardService,
         ILogger<ILeaderboardService> logger,
-        string region = "US",
-        int limit = 10)
+        int limit = 10,
+        string? region = null)
     {
-        // An explicitly-empty region (?region=) falls back to the default rather than 400.
-        if (string.IsNullOrWhiteSpace(region))
-        {
-            region = "US";
-        }
+        // No region is now the worldwide board — the page has no picker to send one. A scoped
+        // board stays available by URL (?region=US). RegionCode.From maps empty to US, which is
+        // exactly the wrong default here, so the emptiness is resolved before it reaches the id.
+        var isGlobal = string.IsNullOrWhiteSpace(region);
 
-        if (!RegionFormat.IsMatch(region))
+        if (!isGlobal && !RegionFormat.IsMatch(region!))
         {
             logger.LogWarning("GetLeaderboard called with invalid region format: {Region}", region);
             return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid region",
@@ -183,13 +182,15 @@ internal static partial class LeaderboardEndpoints
 
         try
         {
-            logger.LogInformation("Fetching leaderboard for region {Region} with limit {Limit}", region, limit);
+            logger.LogInformation("Fetching leaderboard for {Scope} with limit {Limit}",
+                isGlobal ? "all regions" : $"region {region}", limit);
 
-            var entries = await leaderboardService.GetTopComicsAsync(RegionCode.From(region), limit);
+            var regionCode = isGlobal ? new RegionCode(string.Empty) : RegionCode.From(region);
+            var entries = await leaderboardService.GetTopComicsAsync(regionCode, limit);
 
             var response = new LeaderboardResponse
             {
-                Region = region.ToUpperInvariant(),
+                Region = isGlobal ? "ALL" : region!.ToUpperInvariant(),
                 Entries = entries.Select(e => new LeaderboardEntryDto
                 {
                     Rank = e.Rank,
