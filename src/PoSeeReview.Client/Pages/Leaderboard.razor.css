@@ -1,15 +1,9 @@
 /* Leaderboard Container */
-/* Width and inline padding now come from .page-shell / .page-shell--wide in the shared layer.
-   This rule only exists for page-specific overrides. */
-.leaderboard-container {
-    /* intentionally empty of layout — see PageShell */
-}
-
-.leaderboard-loading {
-    display: flex;
-    justify-content: center;
-    padding: 3rem 1rem;
-}
+/* Width and inline padding come from .page-shell / .page-shell--wide in the shared layer, so
+   there is no page-specific override to declare. An empty `.leaderboard-container` rule used
+   to sit here; it could not have matched anyway, because the class reaches the DOM through
+   <PageShell>'s `Class` parameter and Blazor does not stamp this component's scope attribute
+   onto a child component's root element. */
 
 /* Last Updated */
 .last-updated {

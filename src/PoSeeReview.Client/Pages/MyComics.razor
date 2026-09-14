@@ -29,7 +29,7 @@
             <div class="my-comics-grid cq-list">
                 @foreach (var comic in _kept)
                 {
-                    <article class="history-card glass">
+                    <article class="history-card glass scroll-enter" data-freshness="fresh">
                         <a class="history-thumb" href="@($"/comic/{comic.PlaceId}")" aria-label="@($"Open the comic for {comic.RestaurantName}")">
                             @if (comic.HasImage)
                             {
@@ -72,9 +72,7 @@
 
     @if (_entries is null)
     {
-        <div class="my-comics-loading">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
-        </div>
+        <LoadingIndicator Message="Loading your comics..." />
     }
     else if (_entries.Count == 0)
     {
@@ -125,7 +123,7 @@
         <div class="my-comics-grid cq-list">
             @foreach (var entry in _entries)
             {
-                <article class="history-card glass @(entry.IsExpired ? "history-card--expired" : "")">
+                <article class="history-card glass scroll-enter @(entry.IsExpired ? "history-card--expired" : "")" data-freshness="@entry.Freshness">
                     <a class="history-thumb" href="@LinkFor(entry)" aria-label="@($"Open the comic for {entry.RestaurantName}")">
                         @if (entry.IsExpired)
                         {
@@ -139,7 +137,7 @@
                         }
                         else
                         {
-                            <img src="@entry.BlobUrl" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
+                            <img src="@ComicImageUrl.For(entry.BlobUrl, entry.PlaceId)" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
                         }
                     </a>
 

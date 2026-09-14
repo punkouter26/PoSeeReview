@@ -1,12 +1,6 @@
 /* Insights. Scoped sheet — lands in @layer page, which sits BEFORE `shared`, so nothing here
    can fork a shared primitive (.btn, .alert, .state-card). Only page-specific classes below. */
 
-.insights-loading {
-    display: grid;
-    place-items: center;
-    min-height: 40dvh;
-}
-
 /* One column on a phone, two once the page has the room. A media query rather than a container
    query on purpose: this is the page's own layout, not a component asking how much room it has. */
 .insights-grid {
@@ -51,19 +45,8 @@
     color: var(--color-text-secondary);
 }
 
-/* A fixed height keeps the two columns aligned and stops the chart from collapsing to zero
-   before Radzen has measured itself. */
-.insights-chart {
-    width: 100%;
-    height: 18rem;
-    min-width: 0;
-}
-
-@media (min-width: 48rem) {
-    .insights-chart {
-        height: 22rem;
-    }
-}
+/* The chart's sizing lives in the ::deep block further down, next to the note explaining why
+   a scoped selector cannot reach a child component's root. */
 
 .insights-sample {
     margin: 0;
@@ -115,8 +98,59 @@
     color: var(--color-warning-text);
 }
 
-/* Radzen renders the chart's own markup, which a scoped sheet cannot reach without ::deep. */
-.insights-chart ::deep .rz-chart {
+/* Radzen renders the chart's own markup, and RadzenChart renders its own root element — so
+   reaching it needs ::deep twice over: once to escape this component's scope, and once to get
+   at Radzen's `.rz-chart` inside. The previous form chained both off `.insights-chart`, which is
+   itself a Radzen root carrying no scope attribute, so neither rule ever applied: the fixed
+   height that keeps the two columns aligned was never in effect, and the chart was sizing itself
+   from Radzen's own defaults instead. */
+.insights-panel ::deep .insights-chart {
+    width: 100%;
+    height: 18rem;
+    min-width: 0;
+}
+
+@media (min-width: 48rem) {
+    .insights-panel ::deep .insights-chart {
+        height: 22rem;
+    }
+}
+
+.insights-panel ::deep .rz-chart {
     width: 100%;
     height: 100%;
+}
+
+/* The listen control sits in the panel header, which is a column. Turning it into a grid rather
+   than switching to a row keeps the title and the question stacked as they are while pulling the
+   button out to the right of both — a row would put it beside the title and above the question,
+   where it reads as belonging to the heading rather than to the chart. */
+.insights-panel-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+        "title  listen"
+        "question listen";
+    align-items: start;
+}
+
+.insights-panel-title {
+    grid-area: title;
+}
+
+.insights-panel-question {
+    grid-area: question;
+}
+
+.insights-listen {
+    grid-area: listen;
+    align-self: center;
+    flex: 0 0 auto;
+    opacity: 0.7;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.insights-listen:hover,
+.insights-listen:focus-visible {
+    opacity: 1;
 }

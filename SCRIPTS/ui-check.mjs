@@ -48,7 +48,9 @@ const tokens = await page.evaluate(() => {
     };
 });
 record('new design tokens live',
-    tokens.accentInk === '#A56A07' && tokens.muted === '#6D797A' && tokens.spaceMd === '1rem',
+    // These two hex values were stale: the accent ink and the muted text were both retuned for
+    // WCAG contrast (and ColorContrastTests is what proves it), which left this check failing.
+    tokens.accentInk === '#9B6407' && tokens.muted === '#656F71' && tokens.spaceMd === '1rem',
     JSON.stringify(tokens));
 
 // 4. Bootstrap is gone
@@ -118,6 +120,50 @@ for (const width of [320, 390]) {
     }
 }
 
+// 7b. Scoped CSS must reach CHILD-COMPONENT roots.
+// This bug class is invisible in a stylesheet diff: a parent sheet writing `.prompt-card {
+// max-width: ... }` when that class is handed to <RadzenCard> compiles to `.prompt-card[b-*]`,
+// matches nothing, and silently does nothing at all. Six rules had shipped that way — including
+// the comic card's own max-width and the entire Insights chart height — plus the two header
+// NavLinks, which lost their 44px target and their `.active` state. Asserting a computed value
+// that ONLY the scoped rule can supply is the one way to see it from outside the browser.
+const scopedRoots = await page.evaluate(() => {
+    const read = (sel, prop) => {
+        const el = document.querySelector(sel);
+        return el ? getComputedStyle(el)[prop] : null;
+    };
+    return {
+        promptMax: read('.prompt-card', 'maxWidth'),        // RadzenCard root, via ::deep
+        promptWidth: read('.prompt-card', 'width'),         // RadzenCard root, via ::deep
+        myComicsMin: read('.nav-mycomics', 'minHeight'),    // NavLink root, via ::deep
+        myComicsDisplay: read('.nav-mycomics', 'display'),  // NavLink root, via ::deep
+    };
+});
+record('scoped CSS reaches child-component roots',
+    scopedRoots.promptMax === '520px' && parseFloat(scopedRoots.myComicsMin) >= 44,
+    JSON.stringify(scopedRoots));
+
+// 7c. Tap targets. 24px is the WCAG 2.5.8 floor; below it a control is a mis-tap on a phone.
+// It is not asserted at 44px because a link sitting inline in a sentence is explicitly exempt
+// and there are legitimate ones (the disclosure's "report a problem").
+const smallTargets = await page.evaluate(() => {
+    const bad = [];
+    for (const el of document.querySelectorAll('a[href], button, [role="button"], input, select')) {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        // An expanded ::after hit box does not change getBoundingClientRect, and the design
+        // system uses that trick deliberately — so only flag a control that is also not covered
+        // by one of the shared primitives that supplies the bigger target.
+        const hasHitBox = getComputedStyle(el, '::after').position === 'absolute';
+        if (Math.min(r.width, r.height) < 24 && !hasHitBox) {
+            bad.push(`${(el.getAttribute('aria-label') || el.textContent || el.tagName).trim().slice(0, 24)} ${Math.round(r.width)}x${Math.round(r.height)}`);
+        }
+    }
+    return bad;
+});
+record('no sub-24px tap targets on the landing page', smallTargets.length === 0,
+    smallTargets.slice(0, 5).join(' | ') || 'none');
+
 await page.setViewportSize({ width: 1366, height: 768 });
 await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
 await page.locator('.index-container').waitFor({ timeout: 30000 });
@@ -155,6 +201,7 @@ const gen = await page.evaluate(async () => {
     }
     return {
         stage: 'done', name: first.name, rating: first.averageRating,
+        placeId: first.placeId,
         phases, error,
         comic: done ? { score: done.strangenessScore, url: !!done.blobUrl } : null
     };
@@ -163,6 +210,32 @@ console.log('    generation:', JSON.stringify(gen));
 record('comic generation succeeds end-to-end', gen.stage === 'done' && !!gen.comic && !gen.error,
     gen.comic ? `"${gen.name}" score ${gen.comic.score}, image ${gen.comic.url}, phases [${gen.phases}]`
               : `stage=${gen.stage} ${JSON.stringify(gen.error ?? gen.status)}`);
+
+// 8b. The comic page fits ONE desktop screen.
+// It measured 1854px tall inside a 946px viewport while the card used only 64% of the width —
+// scrolling vertically and wasting horizontal room at the same time. It is a two-column layout
+// past 64rem now, with the strip capped to the space left below the shell header.
+if (gen.placeId) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE}/comic/${gen.placeId}`, { waitUntil: 'domcontentloaded' });
+    await page.locator('.comic-strip-image').waitFor({ timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+    const comicFit = await page.evaluate(() => {
+        const de = document.documentElement;
+        const img = document.querySelector('.comic-strip-image');
+        const card = document.querySelector('.comic-container');
+        return {
+            screens: +(de.scrollHeight / window.innerHeight).toFixed(2),
+            imgBottom: img ? Math.round(img.getBoundingClientRect().bottom) : null,
+            vh: window.innerHeight,
+            cardWidth: card ? Math.round(card.getBoundingClientRect().width) : null,
+        };
+    });
+    record('comic page fits one desktop screen',
+        comicFit.screens <= 1.15 && comicFit.imgBottom !== null && comicFit.imgBottom <= comicFit.vh,
+        JSON.stringify(comicFit));
+    await page.setViewportSize({ width: 1366, height: 768 });
+}
 
 // 9. Nearby search now ranks by distance, not popularity.
 const ranking = await page.evaluate(async () => {

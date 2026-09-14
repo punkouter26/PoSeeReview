@@ -79,3 +79,26 @@
         display: none;
     }
 }
+
+/* Where the burst ink lands. A second canvas rather than reusing .fx-comic-canvas because that
+   one is a WebGL surface owned by the pooled atlas and is cleared and redrawn every frame by the
+   post-process; this is a plain 2D context driven by the Verlet solver, and the two have nothing
+   to share but their position.
+
+   Above the post-process canvas: the ink falls in FRONT of the printed page, which is the whole
+   claim the effect is making. */
+.fx-ink-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fx-ink-canvas {
+        display: none;
+    }
+}

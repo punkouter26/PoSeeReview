@@ -1,7 +1,11 @@
 @using PoSeeReview.Shared.Dtos
 @inject FxService Fx
 
-<RadzenCard class="@($"restaurant-card {GetCardClass()}")" 
+@* scroll-enter is a compositor-side, scroll-driven entrance — see app.css. It costs nothing in
+   the shared frame budget, which matters here more than anywhere else in the app: this component
+   is repeated across a whole results grid, and an IntersectionObserver-and-class-toggle would
+   pay an observer, a callback and a style recalculation per card to produce the same fade. *@
+<RadzenCard class="@($"restaurant-card scroll-enter {GetCardClass()}")" 
             title="@GetTooltipText()"
             data-testid="restaurant-card"
             data-physics-card

@@ -1,9 +1,9 @@
 /* Inherits --font-body like every other page. This used to pin its own system font stack,
    which made Diagnostics the one page not rendering in the app's typeface. */
-/* Width and padding come from .page-shell--wide in the shared layer now. */
-.diagnostics-container {
-    /* intentionally empty of layout — see PageShell */
-}
+/* Width and padding come from .page-shell--wide in the shared layer now, so there is nothing
+   to declare here. The `.diagnostics-container` rule that used to sit in this spot was dead
+   code twice over: empty, and unable to match, because the class is passed to <PageShell> and
+   the div carrying it is emitted by PageShell rather than by this component. */
 
 /* Loading State */
 .loading {

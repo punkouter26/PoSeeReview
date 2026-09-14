@@ -9,10 +9,16 @@
     display: grid;
     grid-template-rows: auto 1fr auto auto;
     gap: 0.75rem;
-    border: 1px solid var(--brand-a12) !important;
-    border-left: 3px solid var(--card-accent, color-mix(in srgb, var(--color-brand) 15%, transparent)) !important;
-    border-radius: 14px !important;
-    background: var(--color-card) !important;
+
+    /* No `!important` here, and none is needed. `::deep .restaurant-card` compiles to
+       `[b-*] .restaurant-card` and this sheet lands in `page`, which is declared after `vendor`
+       — layer order beats specificity, so these already outrank Radzen's `.rz-card` defaults.
+       The four `!important`s were fighting an order that was already on our side, and they
+       would have silently defeated any later page-level override of the same properties. */
+    border: 1px solid var(--brand-a12);
+    border-left: 3px solid var(--card-accent, color-mix(in srgb, var(--color-brand) 15%, transparent));
+    border-radius: var(--radius-card);
+    background: var(--color-card);
     animation: cardSlideIn 0.3s ease-out both;
     box-shadow: var(--shadow-sm);
 }
@@ -32,10 +38,13 @@
     background: var(--color-surface-alt);
 }
 
-/* Rating tier accent colors via CSS custom property */
-::deep .restaurant-card.tier-high   { --card-accent: #10b981; }
-::deep .restaurant-card.tier-mid    { --card-accent: #F59E0B; }
-::deep .restaurant-card.tier-low    { --card-accent: #ef4444; }
+/* Rating tier accents, as custom properties so the three places that consume them stay
+   theme-aware. These are the design tokens, not lookalikes: the low tier used to hardcode
+   #ef4444, which is a *different red* from --color-danger (#D72536) and therefore the only
+   red in the app that did not move when the danger token was retuned for contrast. */
+::deep .restaurant-card.tier-high   { --card-accent: var(--color-success); }
+::deep .restaurant-card.tier-mid    { --card-accent: var(--color-accent); }
+::deep .restaurant-card.tier-low    { --card-accent: var(--color-danger); }
 ::deep .restaurant-card.disabled    { --card-accent: var(--color-border); }
 
 @keyframes cardSlideIn {
@@ -76,7 +85,7 @@
 .card-meta {
     margin: 0.35rem 0 0;
     color: var(--color-text-muted);
-    font-size: 0.88rem;
+    font-size: var(--text-sm);
     font-weight: 600;
 }
 
@@ -94,18 +103,18 @@
 }
 
 .rating-chip-label {
-    font-size: 0.7rem;
+    font-size: var(--text-2xs);
     letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
 .rating-chip-value {
-    font-size: 1rem;
+    font-size: var(--text-md);
 }
 
 .address {
     color: var(--color-text-secondary);
-    font-size: clamp(0.8125rem, 1.5vw, 0.875rem);
+    font-size: var(--text-sm);
     margin: 0;
     line-height: 1.5;
     overflow: hidden;
@@ -120,7 +129,7 @@
     display: block;
     padding-top: 0.75rem;
     border-top: 1px solid var(--color-border);
-    font-size: clamp(0.8125rem, 1.5vw, 0.875rem);
+    font-size: var(--text-sm);
 }
 
 .review-summary {
@@ -139,7 +148,9 @@
     display: block;
 }
 
-.cta-btn {
+/* ::deep: the class is passed to <RadzenButton>, so the <button> is Radzen's element and not
+   this component's — a bare `.cta-btn` matched nothing. */
+::deep .cta-btn {
     width: 100%;
 }
 
@@ -152,7 +163,7 @@
 }
 
 .not-enough-hint {
-    font-size: 0.73rem;
+    font-size: var(--text-2xs);
     color: var(--color-text-muted);
     margin: 0.4rem 0 0 0;
     text-align: center;

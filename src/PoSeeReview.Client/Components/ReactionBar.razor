@@ -8,8 +8,12 @@
 @using PoSeeReview.Shared.Dtos
 @using PoSeeReview.Shared.Enums
 @inject ApiClient ApiClient
+@inject FxService Fx
 
-<div class="reaction-bar" role="group" aria-label="React to this comic">
+@* One delegating handler for the whole group, the same way the comic action bar does it:
+   clicks bubble, MouseEventArgs already carries ClientX, and a reaction that clicks from the
+   side of the screen it was tapped on is the cheapest spatial cue available. *@
+<div class="reaction-bar" role="group" aria-label="React to this comic" @onclick="OnBarClickAsync">
     @foreach (var (kind, glyph, label) in Reactions)
     {
         var isMine = _counts?.MyReaction == kind;
@@ -34,6 +38,17 @@
 @code {
     [Parameter, EditorRequired]
     public string PlaceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Panned click for any reaction. Also an unlock point: an AudioContext only leaves
+    /// 'suspended' from a trusted event, and on a comic opened from a shared link this bar is
+    /// often the first thing the visitor touches.
+    /// </summary>
+    private async Task OnBarClickAsync(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAtAsync(e.ClientX);
+    }
 
     /// <summary>
     /// Presentation for each reaction, kept in one array so a glyph and its label cannot drift

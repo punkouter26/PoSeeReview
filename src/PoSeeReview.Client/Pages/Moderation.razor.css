@@ -1,10 +1,5 @@
 /* Moderation. Scoped sheet — @layer page, before `shared`, so nothing here forks .btn/.alert. */
 
-.moderation-loading {
-    display: grid;
-    place-items: center;
-    min-height: 40dvh;
-}
 
 .moderation-summary {
     margin: 0 0 var(--space-md);

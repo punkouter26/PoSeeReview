@@ -1,11 +1,5 @@
 /* Scoped to MyComics. `.state-card`, `.btn*` and `.glass` come from app.css. */
 
-.my-comics-loading {
-    display: grid;
-    place-items: center;
-    padding: var(--space-2xl);
-}
-
 .my-comics-toolbar {
     display: flex;
     flex-wrap: wrap;

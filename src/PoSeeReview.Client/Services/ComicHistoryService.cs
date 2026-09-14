@@ -28,6 +28,36 @@ public sealed class ComicHistoryEntry
     /// <summary>True once the comic's cache window has passed and a fresh one must be drawn.</summary>
     [JsonIgnore]
     public bool IsExpired => ExpiresAt <= DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// How close this entry is to being a dead link, as a value the stylesheet can key on.
+    /// <para>
+    /// Binary expired/not-expired tells the user nothing until the link is already broken, which
+    /// on a 24-hour window is most of what this list is about to become. Grading it means the
+    /// list itself communicates the deadline: a card that has visibly started to fade is a
+    /// prompt to keep or reopen it, which is the return visit the history exists to earn.
+    /// </para>
+    /// <para>
+    /// A string rather than an enum because it is written straight into a data attribute and
+    /// read by an attribute selector; an enum would only be converted back to this at the edge.
+    /// </para>
+    /// </summary>
+    [JsonIgnore]
+    public string Freshness
+    {
+        get
+        {
+            if (IsExpired)
+            {
+                return "expired";
+            }
+
+            // Half the 24-hour cache window. Earlier than that and almost every card in a normal
+            // session would render faded, which would make the state mean nothing.
+            var remaining = ExpiresAt - DateTimeOffset.UtcNow;
+            return remaining < TimeSpan.FromHours(12) ? "fading" : "fresh";
+        }
+    }
 }
 
 /// <summary>

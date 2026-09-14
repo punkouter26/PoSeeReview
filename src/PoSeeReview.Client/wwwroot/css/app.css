@@ -1284,3 +1284,258 @@
         }
     }
 }
+
+/* ============================================================================================
+   REGISTERED CUSTOM PROPERTIES
+
+   @property is not decoration here. An unregistered custom property is an untyped token: the
+   browser cannot interpolate it, so `transition: --x` does nothing and an @keyframes that moves
+   it snaps between whole values. Registering the syntax makes them animatable, and gives each a
+   defined initial value so a rule that reads one before JS has written it renders correctly
+   rather than invalidly.
+
+   These sit at the top level. @property registrations are global and are not affected by layer
+   order, so nesting them inside @layer would only make them harder to find.
+   ============================================================================================ */
+
+@property --comic-reveal {
+    syntax: "<number>";
+    inherits: true;
+    /* 1 = fully developed. The mask below is written so that the resting value shows the whole
+       comic — if js/comic-reveal.js never runs, or fails partway, the strip is simply visible. */
+    initial-value: 1;
+}
+
+@property --sweep-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+/* ============================================================================================
+   INK DEVELOPMENT (the comic reveal)
+
+   Lives in `shared` because it is a component behaviour, and because `page` sits below `shared`
+   — a scoped sheet cannot silently fork it, which is exactly the rule the layer order exists to
+   enforce.
+
+   The mask is applied to the CONTAINER, so it covers the <img> and the post-process canvas
+   together. Masking only one of them would develop the shader layer over an already-visible
+   copy of the finished comic.
+
+   Only while `data-comic-reveal` is present. js/comic-reveal.js removes the attribute before it
+   clears the property, so there is never a frame where a masked element has no reveal value.
+   ============================================================================================ */
+
+@layer shared {
+    @supports ((mask-image: linear-gradient(#000, #000)) or (-webkit-mask-image: linear-gradient(#000, #000))) {
+        .comic-strip-container[data-comic-reveal] {
+            /* The gradient stops slide upward as --comic-reveal rises, so the soft boundary
+               travels the full height and then keeps going — at 1 the opaque region has passed
+               the bottom edge and nothing is masked. Stops that only reached 100% would leave
+               the last sliver permanently under the soft edge. */
+            --_reveal-shift: calc((1 - var(--comic-reveal)) * 130%);
+
+            -webkit-mask-image: linear-gradient(
+                to bottom,
+                #000 0%,
+                #000 calc(60% - var(--_reveal-shift)),
+                rgb(0 0 0 / 0.55) calc(68% - var(--_reveal-shift)),
+                transparent calc(78% - var(--_reveal-shift)),
+                transparent 100%);
+            mask-image: linear-gradient(
+                to bottom,
+                #000 0%,
+                #000 calc(60% - var(--_reveal-shift)),
+                rgb(0 0 0 / 0.55) calc(68% - var(--_reveal-shift)),
+                transparent calc(78% - var(--_reveal-shift)),
+                transparent 100%);
+            -webkit-mask-size: 100% 100%;
+            mask-size: 100% 100%;
+        }
+    }
+
+    /* Reduced motion never gets here — comic-reveal.js refuses to start below the `lite` tier,
+       which reduced motion forces to `off`. This makes the CSS half independently true, so a
+       future caller cannot reintroduce the effect by writing the attribute directly. */
+    @media (prefers-reduced-motion: reduce) {
+        .comic-strip-container[data-comic-reveal] {
+            -webkit-mask-image: none;
+            mask-image: none;
+        }
+    }
+}
+
+/* ============================================================================================
+   SCROLL-DRIVEN ENTRANCES
+
+   Every other motion in this app costs frame budget: it runs in the shared rAF loop, it is
+   measured, and it can trip the auto-downgrade. These cost NONE of it. A scroll-driven animation
+   is evaluated by the compositor off the main thread, so a hundred cards entering is free in the
+   only place this app measures.
+
+   Which is the whole reason to prefer it over an IntersectionObserver plus a class toggle — that
+   costs an observer, a callback, a style recalculation and a DOM write per card, to produce the
+   same fade.
+
+   Progressive by construction: without @supports the cards are simply already visible. There is
+   no polyfill and none is wanted.
+   ============================================================================================ */
+
+@keyframes posee-enter {
+    from {
+        opacity: 0;
+        transform: translateY(1rem) scale(0.985);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes posee-sweep {
+    to {
+        --sweep-angle: 360deg;
+    }
+}
+
+@layer utilities {
+    @supports (animation-timeline: view()) {
+        @media (prefers-reduced-motion: no-preference) {
+            /* `both` matters: without it the card sits at its authored (visible) state before
+               the range begins, and the entrance never plays for anything below the fold. */
+            .scroll-enter {
+                animation: posee-enter linear both;
+                animation-timeline: view();
+                /* Finished well before the card reaches the middle of the screen. An animation
+                   still running once the reader has arrived at the content is a distraction
+                   rather than an entrance. */
+                animation-range: entry 2% cover 20%;
+            }
+
+            /* Staggering with nth-child would need a rule per position and breaks the moment the
+               list is filtered or sorted. Ranges do it for free: each card animates against its
+               OWN position in the scrollport, so the stagger falls out of the layout. */
+            .scroll-enter-late {
+                animation: posee-enter linear both;
+                animation-timeline: view();
+                animation-range: entry 8% cover 30%;
+            }
+        }
+    }
+
+    /* An animated conic sweep, used behind the score ring while the count-up runs. This is what
+       registering the property buys: --sweep-angle is a real <angle>, so it interpolates, and
+       the rotation is one compositor-side animation instead of a per-frame JS write to a
+       background-image string. */
+    @supports (background: conic-gradient(from 0deg, red, blue)) {
+        @media (prefers-reduced-motion: no-preference) {
+            .sweep-halo {
+                background: conic-gradient(from var(--sweep-angle),
+                    transparent 0deg,
+                    color-mix(in srgb, var(--color-brand) 55%, transparent) 40deg,
+                    transparent 120deg,
+                    transparent 360deg);
+                animation: posee-sweep 6s linear infinite;
+            }
+        }
+    }
+}
+
+/* ============================================================================================
+   DISCRETE-PROPERTY TRANSITIONS
+
+   `@starting-style` plus `transition-behavior: allow-discrete` is the first way to animate an
+   element that is being ADDED to the DOM without a JS mount hook — which matters here because
+   Blazor adds and removes the toast, the report dialog and the install nudge by re-rendering,
+   and there is no lifecycle point in between to hang a class on.
+
+   Both halves are needed. `@starting-style` supplies the "before" frame; allow-discrete lets
+   `display` participate, so the exit is not cut off the moment display flips.
+   ============================================================================================ */
+
+@layer shared {
+    @supports (transition-behavior: allow-discrete) {
+        @media (prefers-reduced-motion: no-preference) {
+            .toast {
+                transition:
+                    opacity var(--duration-base) var(--ease-out),
+                    transform var(--duration-base) var(--ease-out),
+                    display var(--duration-base) allow-discrete;
+            }
+
+            @starting-style {
+                .toast {
+                    opacity: 0;
+                    /* Rises into place. The toast is anchored to the bottom, and something
+                       arriving from below reads as coming from the control that produced it. */
+                    transform: translateY(0.75rem);
+                }
+            }
+
+            /* The dialog settles DOWN into place rather than up: it is modal, so it should read
+               as something placed in front of the page rather than emitted by it. */
+            .report-dialog-panel,
+            .install-prompt {
+                transition:
+                    opacity var(--duration-base) var(--ease-out),
+                    transform var(--duration-base) var(--ease-out),
+                    display var(--duration-base) allow-discrete;
+            }
+
+            @starting-style {
+                .report-dialog-panel {
+                    opacity: 0;
+                    transform: translateY(-0.5rem) scale(0.98);
+                }
+
+                .install-prompt {
+                    opacity: 0;
+                    transform: translateY(0.75rem);
+                }
+            }
+        }
+    }
+}
+
+/* ============================================================================================
+   FRESHNESS
+
+   Comics expire in 24 hours, and /my-comics is mostly a list of things that are about to. A
+   binary expired/not-expired styling tells the user nothing until the link is already dead;
+   grading it means the list itself communicates the deadline.
+
+   Three states, written as a data attribute from C# rather than as an inline style — this repo
+   bans inline styles, and a computed enum on the element is the honest way to express "which of
+   three states is this in".
+   ============================================================================================ */
+
+@layer utilities {
+    /* Fading: past the halfway mark of its 24 hours. Desaturated and a little transparent —
+       legible, obviously still usable, visibly on its way out. */
+    [data-freshness="fading"] .history-thumb img {
+        filter: saturate(0.55) contrast(0.94);
+        opacity: 0.82;
+        transition: filter var(--duration-slow) var(--ease-out),
+                    opacity var(--duration-slow) var(--ease-out);
+    }
+
+    @media (hover: hover) {
+        /* Hovering restores it. The decay is a status indicator, not a punishment, and not being
+           able to see the thing you are deciding about would be the wrong trade. */
+        [data-freshness="fading"]:hover .history-thumb img {
+            filter: none;
+            opacity: 1;
+        }
+    }
+
+    /* Expired: the blob is gone, so there is no image — this is the placeholder tile. Muted to
+       the point of reading as inert, because the only useful action left on it is Redraw. */
+    [data-freshness="expired"] .history-thumb-expired {
+        opacity: 0.7;
+    }
+
+    [data-freshness="expired"] .history-name {
+        color: var(--color-text-muted);
+    }
+}

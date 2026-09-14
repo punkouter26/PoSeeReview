@@ -21,7 +21,9 @@
     /* Measured 28px tall against the app's 44px --tap-target. It is the "go home" affordance on
        every page, so it is one of the most-tapped things in the app. */
     min-height: var(--tap-target);
-    text-decoration: none !important;
+    /* Not `!important`: the bare `a` default lives in the `reset` layer and this is in `page`,
+       which is declared after it. Nothing needs overriding. */
+    text-decoration: none;
 }
 
 .brand-icon {
@@ -45,7 +47,7 @@
 .brand-tagline {
     display: block;
     font-family: var(--font-body, 'DM Sans', sans-serif);
-    font-size: 0.72rem;
+    font-size: var(--text-2xs);
     color: var(--color-on-dark-muted);
     letter-spacing: 0.04em;
 }
@@ -100,7 +102,7 @@
 }
 
 .nav-item {
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
 }
 
 .nav-item ::deep a {
@@ -141,7 +143,7 @@
     padding: 0.3rem 0.7rem;
     border-radius: 999px;
     border: 1px solid var(--border-on-dark);
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-on-dark-muted);
     max-width: 180px;
@@ -181,7 +183,7 @@
     border: 1px solid var(--status-on-dark-danger);
     background: var(--status-on-dark-danger-surface);
     color: var(--color-on-dark);
-    font-size: 0.78rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
@@ -202,6 +204,9 @@
         padding: 0 0.75rem;
         height: 3.25rem;
         min-width: 0;
+        /* Tighter than the 0.5rem used above, for the same reason the corners are being cut
+           everywhere else in this block: 320px does not have 8px to spend three times over. */
+        gap: 0.25rem;
     }
 
     .navbar-brand {
@@ -213,8 +218,21 @@
         display: none;
     }
 
+    /* The wordmark collapses to the mark. This block has to fit a brand, two primary nav items,
+       two session links, the sound switch, the identity badge and a sign-out button into 320px,
+       and once the two session links began rendering at their real size — they had been unstyled
+       22px anchors, because their rules never matched their <NavLink> roots — the primary nav
+       measured ZERO width. Of everything here the name is the least lossy thing to drop: the mark
+       and the page heading still say where you are.
+       Visually hidden rather than `display: none`, the same technique `.nav-label` already uses,
+       so the text stays in the accessibility tree and in the DOM. */
     .brand-name {
-        font-size: 1.2rem;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
     }
 
     .nav-label {
@@ -275,8 +293,15 @@
    Lives in the right-hand session zone, not in nav.nav-links: it is per-user state, and the
    primary nav is contractually two items (HeaderContractUiTests asserts exactly that).
    Colour comes from the on-dark tokens because this bar is dark in BOTH themes. */
-.nav-mycomics,
-.nav-insights {
+/* These two are <NavLink>, not plain anchors, and that is why every selector below is prefixed
+   with `.nav-user-zone ::deep`. Blazor's CSS isolation stamps the scope attribute onto elements
+   in THIS component's markup, but NavLink renders its own <a> — so the anchor came out with no
+   `b-*` attribute, none of these rules matched, and the link was a bare 22x25 emoji: below the
+   44px --tap-target, with no pill, no hover and — worst of the three — no `.active` state, so the
+   header gave no indication of the current route. `::deep` emits `.nav-user-zone[b-*] .nav-mycomics`
+   instead, which matches the child component's root. The nav items above already did this. */
+.nav-user-zone ::deep .nav-mycomics,
+.nav-user-zone ::deep .nav-insights {
     display: inline-flex;
     align-items: center;
     gap: var(--space-3xs);
@@ -290,11 +315,11 @@
     white-space: nowrap;
 }
 
-.nav-mycomics:hover,
-.nav-mycomics.active,
-.nav-insights:hover,
-.nav-insights.active {
-    background: rgba(255, 255, 255, 0.12);
+.nav-user-zone ::deep .nav-mycomics:hover,
+.nav-user-zone ::deep .nav-mycomics.active,
+.nav-user-zone ::deep .nav-insights:hover,
+.nav-user-zone ::deep .nav-insights.active {
+    background: var(--overlay-on-dark);
     color: var(--color-on-dark);
     text-decoration: none;
 }
@@ -305,5 +330,94 @@
     .nav-mycomics-label,
     .nav-insights-label {
         display: none;
+    }
+}
+
+/* Both links collapse to the same 30px circle the sound switch already uses, and for the same
+   measured reason: `.nav-links` is `flex: 1; min-width: 0` against a session zone that cannot
+   shrink, so a full-size pill on the right is taken straight out of the primary nav. 30px visual
+   with an inset -7px hit box keeps the real target at 44px. Shrinking the visual and shrinking
+   the target are different things.
+
+   The bug above hid this problem rather than solving it: an unstyled 22px anchor happened to fit,
+   so the squeeze only appears once these rules start applying. */
+@media (max-width: 640px) {
+    .nav-user-zone ::deep .nav-mycomics,
+    .nav-user-zone ::deep .nav-insights {
+        position: relative;
+        justify-content: center;
+        width: 30px;
+        min-width: 30px;
+        height: 30px;
+        min-height: 30px;
+        padding: 0;
+    }
+
+    .nav-user-zone ::deep .nav-mycomics::after,
+    .nav-user-zone ::deep .nav-insights::after {
+        content: "";
+        position: absolute;
+        inset: -7px;
+    }
+}
+
+/* The sound switch. Sized and coloured to match the two session-zone links beside it rather than
+   the sign-out button: it is a state toggle, not a destructive action, and it should read as
+   part of the same group. */
+.nav-sound-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--tap-target);
+    min-height: var(--tap-target);
+    padding: var(--space-2xs);
+    border: none;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--color-on-dark-secondary);
+    font-size: var(--text-base);
+    line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-out),
+                color var(--duration-fast) var(--ease-out);
+}
+
+.nav-sound-btn:hover,
+.nav-sound-btn:focus-visible {
+    background: var(--overlay-on-dark);
+    color: var(--color-on-dark);
+}
+
+/* On is a real state change, not a hover, so it gets a persistent tint. Without it the only
+   difference between on and off is a glyph swap, which at this size is easy to misread. */
+.nav-sound-btn--on {
+    background: var(--overlay-on-dark-strong);
+    color: var(--color-on-dark);
+}
+
+/* On a phone the session zone cannot grow, and `.nav-links` is `flex: 1; min-width: 0` — so
+   anything added on the right is taken straight out of the primary nav, and a 44px button was
+   enough to squeeze it to zero width. HeaderContractUiTests caught exactly that: nav.nav-links
+   resolved but reported "hidden".
+
+   So the switch collapses to a 30px circle here, the same move the user badge already makes, and
+   the 44px touch area is restored with an invisible expanded hit box. Shrinking the visual and
+   shrinking the target are different things, and only the first one is acceptable. */
+@media (max-width: 640px) {
+    .nav-sound-btn {
+        position: relative;
+        min-width: 30px;
+        min-height: 30px;
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        font-size: var(--text-sm);
+    }
+
+    .nav-sound-btn::after {
+        content: "";
+        position: absolute;
+        /* (44 - 30) / 2 = 7px of invisible margin on every side. */
+        inset: -7px;
     }
 }

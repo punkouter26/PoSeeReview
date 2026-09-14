@@ -16,10 +16,12 @@
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
 <div class="index-container">
+    @* The h1 stays — it is the page's heading, not decoration. What went is the kicker that
+       restated the header's own tagline, which cost ~110px of hero above the fold on every
+       visit to buy a sentence the user had already read. *@
     <header class="app-header">
         <h1>PoSeeReview</h1>
         <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
-        <p class="hero-kicker">Built for quick mobile discovery and instant sharing.</p>
     </header>
 
     @* The error banner renders ABOVE the prompt card, and the prompt card stays mounted in
@@ -35,7 +37,12 @@
         </div>
     }
 
-    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied or LocationFlowState.Error)
+    @* Rendered while the location request is in flight as well as before it. Previously the
+       Loading state replaced this card with skeletons — so the one control a user needs when the
+       browser permission prompt is sitting unanswered, "or type a city", vanished at exactly the
+       moment it mattered. The list is still loading underneath; the escape hatch stays put. *@
+    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied
+                         or LocationFlowState.Error or LocationFlowState.Loading)
     {
         <div class="location-prompt">
             <RadzenCard class="prompt-card glass">
@@ -44,8 +51,10 @@
                 <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
                 @if (_flowState != LocationFlowState.Denied)
                 {
-                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary location-btn" Click="@(_ => RequestLocationAsync())">
-                        Use My Location
+                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary location-btn"
+                                  Disabled="@(_flowState == LocationFlowState.Loading)"
+                                  Click="@(_ => RequestLocationAsync())">
+                        @(_flowState == LocationFlowState.Loading ? "Finding you..." : "Use My Location")
                     </RadzenButton>
                     <div class="divider-or"><span>or</span></div>
                 }
@@ -75,7 +84,9 @@
     {
         <div class="restaurants-grid">
             <p class="results-info">@_loadingMessage</p>
-            @for (var i = 0; i < 3; i++)
+            @* Six, not three. The grid is three columns on a desktop, so three placeholders drew
+               a 2 + 1 row that read as a broken layout before any content had arrived. *@
+            @for (var i = 0; i < 6; i++)
             {
                 <div class="skeleton-card">
                     <div class="sk-row">
@@ -100,7 +111,7 @@
             <div class="results-chip-bar">
                 <span class="search-chip">
                     &#128205; @_lastSearch
-                    <button class="chip-clear" @onclick="ClearSearch" title="New search">&#215;</button>
+                    <button class="chip-clear btn-icon" @onclick="ClearSearch" title="New search">&#215;</button>
                 </span>
                 @* Not "comic-ready" any more: the client no longer pre-filters by review
                    count, so this is simply what the search returned. *@

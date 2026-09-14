@@ -1,12 +1,19 @@
 .comic-view {
-    min-height: 100vh;
+    /* dvh, not vh: the mobile URL bar makes 100vh taller than the visible viewport, which is a
+       scrollbar of dead space at the bottom of every page. The rest of the app already uses dvh. */
+    min-height: 100dvh;
     padding: clamp(0.75rem, 3vw, 1.25rem);
     background:
         radial-gradient(circle at top, color-mix(in srgb, var(--color-brand) 8%, transparent), transparent 40%),
         var(--color-surface);
 }
 
-.error-container {
+/* ::deep, and it is load-bearing. `.comic-container` and `.error-container` are passed to
+   <RadzenCard> via its `class` parameter, so the div carrying them is rendered by RadzenCard —
+   and Blazor only stamps the CSS-isolation attribute onto elements in THIS component's markup.
+   A bare `.comic-container` compiled to `.comic-container[b-*]` and matched nothing, which is
+   why the card ignored its own max-width and rendered 1128px wide inside a 980px rule. */
+::deep .error-container {
     max-width: 600px;
     margin: 4rem auto;
     background: var(--color-card);
@@ -17,14 +24,14 @@
 }
 
 .error-icon {
-    font-size: 4rem;
+    font-size: var(--text-3xl);
     margin-bottom: 1rem;
 }
 
 .error-container h2 {
     color: var(--color-text-primary);
     margin-bottom: 1rem;
-    font-size: 1.75rem;
+    font-size: var(--text-xl);
     font-family: var(--font-display, 'Bangers', cursive);
     letter-spacing: 0.04em;
 }
@@ -44,15 +51,71 @@
     margin: 0 auto;
 }
 
-.comic-container {
+::deep .comic-container {
     max-width: 980px;
     margin: 0 auto;
     background: var(--color-card);
-    border-radius: 20px;
+    border-radius: var(--radius-lg);
     padding: clamp(1rem, 3vw, 2rem);
     box-shadow: 0 4px 32px var(--brand-a12), var(--shadow-xs);
     border: 1px solid var(--brand-a08);
     animation: fadeSlideUp 0.4s ease-out both;
+}
+
+/* ── Desktop: one screen, two columns ─────────────────────────────────────────────────────────
+   At 1780x946 the single column measured 1128px wide inside a 1765px main (36% of the width
+   unused) AND 1854px tall — wasting horizontal room while forcing a vertical scroll, on the
+   page whose whole payoff is one image. Past 64rem the story and the strip sit side by side and
+   the strip is capped to what is left of the viewport, so the comic and its context, actions
+   and score all land without scrolling.
+
+   Every child below is either a child COMPONENT's root (hence ::deep) or an element of this
+   component; there is no third case, and `:nth-child` is not usable here for exactly that
+   reason — the child roots carry their own components' scope attributes, not this one's. */
+@media (min-width: 64rem) {
+    ::deep .comic-container {
+        max-width: 1180px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 1fr);
+        align-items: start;
+        column-gap: clamp(1rem, 2.5vw, 2rem);
+        row-gap: var(--space-md);
+    }
+
+    /* The name and the score ring are the page's title block, so they span the full width. */
+    .comic-header {
+        grid-column: 1 / -1;
+        margin-bottom: 0;
+    }
+
+    /* The strip owns the left column for the whole height of the row that follows it. */
+    .comic-container ::deep .comic-strip-container {
+        grid-column: 1;
+        grid-row: 2 / span 5;
+        margin: 0;
+    }
+
+    .comic-container ::deep .comic-actions,
+    .comic-container ::deep .reaction-bar,
+    .comic-narrative-block,
+    .comic-container ::deep .score-context,
+    .comic-disclosure {
+        grid-column: 2;
+    }
+
+    .comic-narrative-block {
+        margin-top: 0;
+    }
+
+    /* Fit the strip to the space left after the shell header and the card's own padding instead
+       of letting a near-square image set the document height. width:auto + max-height is what
+       keeps the aspect ratio; width:100% with a max-height would letterbox inside the box. */
+    .comic-container ::deep .comic-strip-image {
+        width: auto;
+        max-width: 100%;
+        max-height: calc(100dvh - 15rem);
+        margin-inline: auto;
+    }
 }
 
 @keyframes fadeSlideUp {
@@ -74,7 +137,10 @@
 
 .comic-header h1 {
     font-family: var(--font-display, 'Bangers', cursive);
-    font-size: clamp(2rem, 5vw, 3rem);
+    /* --text-2xl rather than a bespoke clamp: the old one topped out at 3rem, which on a desktop
+       spent a fifth of the viewport on the restaurant name alone. This is the same ramp the other
+       page headings use. */
+    font-size: var(--text-2xl);
     letter-spacing: 0.04em;
     color: var(--color-text-primary);
     margin: 0;
@@ -126,7 +192,7 @@
 
 .ring-score {
     font-family: var(--font-display, 'Bangers', cursive);
-    font-size: clamp(1.5rem, 3.5vw, 2rem);
+    font-size: var(--text-xl);
     color: var(--color-on-dark);
     line-height: 1;
     letter-spacing: 0.04em;
@@ -153,7 +219,7 @@
 
 
 @media (prefers-reduced-motion: reduce) {
-    .comic-container,
+    ::deep .comic-container,
     .ring-fill {
         animation: none;
     }
@@ -205,9 +271,17 @@
 }
 
 /* A button that reads as a link. Real <button> for semantics — this triggers a dialog, it does
-   not navigate, and an <a href="#"> here would be a lie to a screen reader. */
+   not navigate, and an <a href="#"> here would be a lie to a screen reader.
+
+   Measured 95x19 before this. WCAG 2.5.8 exempts a link sitting inline in a sentence from the
+   44px rule, but 19px was under its 24px floor as well, and the negative inline margin keeps the
+   larger target from reflowing the sentence it lives in. */
 .link-button {
-    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.5rem;
+    padding: 0 var(--space-3xs);
+    margin: 0 calc(var(--space-3xs) * -1);
     border: none;
     background: none;
     color: var(--color-brand-ink);
@@ -226,4 +300,61 @@
     font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-warning-text);
+}
+
+/* The conic sweep behind the score ring, live only while the count-up runs. `.sweep-halo` in
+   app.css owns the gradient and the animation; this only positions it. Behind the SVG in the
+   stacking order and masked to a ring, so it reads as light coming off the arc rather than as a
+   second, competing dial. */
+.ring-halo {
+    position: absolute;
+    inset: -14%;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.55;
+    -webkit-mask-image: radial-gradient(closest-side, transparent 62%, #000 72%, #000 92%, transparent 100%);
+    mask-image: radial-gradient(closest-side, transparent 62%, #000 72%, #000 92%, transparent 100%);
+}
+
+/* Keeps the SVG and the score label above the halo. Without this the halo paints over the
+   number, which is the one thing on the page the user is waiting for. */
+.strangeness-ring,
+.ring-label {
+    position: relative;
+    z-index: 1;
+}
+
+/* The narrative and its read-aloud control. Baseline-aligned rather than centred: the button is
+   an affordance attached to a paragraph, and centring it against a multi-line block puts it
+   somewhere the eye has already left. */
+.comic-narrative-block {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    margin-top: var(--space-lg);
+}
+
+.comic-narrative-block .comic-narrative {
+    margin-top: 0;
+    flex: 1 1 auto;
+}
+
+.narrate-btn {
+    flex: 0 0 auto;
+    margin-top: var(--space-3xs);
+}
+
+/* The shatter canvas deliberately extends well past the ring. `.fx-overlay` pins an overlay to
+   its parent's box, which for the ring wrap is about 110px — pieces would hit the floor before
+   they had visibly left the ring, and a shatter that lands immediately reads as a glitch. Giving
+   it room below is what lets the pieces fall.
+
+   Wider than tall on purpose: horizontal spread is what makes it read as breaking rather than
+   as dripping. */
+.fx-shatter-canvas {
+    inset: -40% -60% -240% -60%;
+    width: auto;
+    height: auto;
+    z-index: 2;
 }

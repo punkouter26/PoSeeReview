@@ -10,6 +10,7 @@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web
 @implements IDisposable
 @inject ShareService ShareService
 @inject ApiClient ApiClient
@@ -17,8 +18,13 @@
 @inject AnalyticsService Analytics
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject FxService Fx
 
-<div class="comic-actions" role="group" aria-label="Comic actions">
+@* One delegating handler rather than a tap call wired into each of the six buttons. Clicks
+   bubble, MouseEventArgs already carries ClientX, and the panned click is the cheapest spatial
+   cue in the app — a bar-wide handler gives every control in it one without six edits and
+   without a per-button ElementReference. *@
+<div class="comic-actions" role="group" aria-label="Comic actions" @onclick="OnBarClickAsync">
     <button type="button" class="btn btn-primary action-share" @onclick="ShareAsync" disabled="@_isBusy">
         <span aria-hidden="true">📤</span> Share
     </button>
@@ -110,6 +116,17 @@
         _ => "Draw a new comic"
     };
 
+    /// <summary>
+    /// Panned click for anything in the action bar. Also the unlock point: an AudioContext only
+    /// leaves 'suspended' from a trusted event, and for a user arriving on a shared comic link
+    /// this bar is often the first real gesture on the page.
+    /// </summary>
+    private async Task OnBarClickAsync(MouseEventArgs e)
+    {
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAtAsync(e.ClientX);
+    }
+
     private async Task ShareAsync()
     {
         _isBusy = true;
@@ -133,6 +150,7 @@
             {
                 case ShareOutcome.Shared:
                     Analytics.Track(FunnelSteps.ComicShared);
+                    await Fx.PlayShareStingerAsync();
                     ShowToast("Shared!");
                     break;
 
@@ -144,6 +162,7 @@
                 case ShareOutcome.Unsupported:
                     await ShareService.CopyToClipboardAsync(url);
                     Analytics.Track(FunnelSteps.ComicShared);
+                    await Fx.PlayShareStingerAsync();
                     ShowToast("Link copied to clipboard");
                     break;
             }
@@ -164,10 +183,14 @@
             {
                 case KeepOutcome.Kept:
                     _isKept = true;
+                    // The one action that opts a blob out of the 24-hour cleanup, so it gets its
+                    // own cue rather than the generic tap: something was moved somewhere durable.
+                    await Fx.PlayConfirmAsync();
                     ShowToast("Kept — this one will still be here after it expires.");
                     break;
 
                 case KeepOutcome.CollectionFull:
+                    await Fx.PlayErrorAsync();
                     // The only failure the user can act on, so it is the only one that names a
                     // next step.
                     ShowToast("Your collection is full. Forget one in My Comics to make room.");
@@ -197,6 +220,7 @@
             if (saved)
             {
                 Analytics.Track(FunnelSteps.ComicSaved);
+                await Fx.PlayConfirmAsync();
                 ShowToast("Saved to your device");
             }
             else

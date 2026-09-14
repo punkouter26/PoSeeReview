@@ -1,14 +1,21 @@
 /* Scoped to ReportDialog. */
 
-.report-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: grid;
-    place-items: center;
+/* A modal <dialog> is centred by the UA, which also gives it a border, padding and a fixed
+   max-width that clips on a phone. All of that is overridden here; the panel below owns the
+   visible surface, and this element is only the positioning box. */
+.report-dialog {
     padding: var(--space-md);
-    /* The inverse veil token, not a hardcoded rgba: the scrim has to read as a scrim in both
-       themes, and a literal black would swallow the dark-mode panel edge. */
+    border: none;
+    background: transparent;
+    max-width: 100vw;
+    max-height: 100dvh;
+}
+
+/* The scrim. ::backdrop is not an element in the DOM and cannot be reached by a class selector,
+   so it has to be styled through the pseudo-element — which is also why the old `.report-backdrop`
+   div became this. The inverse veil token, not a hardcoded rgba: the scrim has to read as a
+   scrim in both themes, and a literal black would swallow the dark-mode panel edge. */
+.report-dialog::backdrop {
     background: var(--surface-inverse-veil);
 }
 

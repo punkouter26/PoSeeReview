@@ -206,6 +206,10 @@ function voice({ type = 'sine', freq, startFreq, endFreq, attack = 0.005, decay 
     osc.connect(gain);
     gain.connect(output.node);
 
+    // Tells the ambient bed to get out of the way. Fired on schedule rather than on start, so a
+    // delayed voice in a chord ducks when it sounds rather than when it was queued.
+    notifyVoice(peak);
+
     osc.start(t0);
     osc.stop(t0 + attack + decay + 0.02);
     osc.onended = () => {
@@ -246,6 +250,8 @@ function noise({ duration = 0.12, peak = 0.5, filterHz = 1800, filterType = 'low
     filter.connect(gain);
     gain.connect(output.node);
 
+    notifyVoice(peak);
+
     source.start(t0);
     source.onended = () => {
         source.disconnect();
@@ -280,6 +286,64 @@ function panForElement(element) {
 // A pentatonic set, so any combination of these is consonant. The score count-up plays notes in
 // effectively random order; on a diatonic scale that produces semitone clashes.
 const PENTATONIC = [523.25, 587.33, 698.46, 783.99, 932.33]; // C5 D5 F5 G5 A#5
+
+// ── Seeded generation, for the per-comic signature ───────────────────────────────────────
+
+/**
+ * FNV-1a over a string. Any stable hash would do; this one is four lines and has no collisions
+ * that matter at the scale of "one motif per restaurant".
+ */
+function hashString(text) {
+    let hash = 0x811c9dc5;
+    const value = String(text ?? '');
+    for (let i = 0; i < value.length; i++) {
+        hash ^= value.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+}
+
+/** mulberry32 — a small, fast, well-distributed PRNG. Deterministic from its seed, which is the point. */
+function seededRandom(seed) {
+    let a = seed >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/**
+ * Scale degrees in semitones, indexed by how strange the comic is. A place scoring 20 gets a
+ * major pentatonic; one scoring 95 gets an octatonic set full of tritones. The scale is the
+ * single biggest carrier of "how weird is this" — bigger than tempo, bigger than timbre — which
+ * is why it is chosen by score rather than by the seed.
+ */
+const SCALES = [
+    [0, 2, 4, 7, 9],           // major pentatonic — mundane
+    [0, 2, 3, 7, 9],           // minor pentatonic — a bit off
+    [0, 2, 3, 5, 7, 8, 10],    // natural minor — unsettled
+    [0, 1, 3, 4, 6, 7, 9, 10], // octatonic — genuinely strange
+    [0, 1, 4, 6, 7, 10]        // no name worth having — reserved for the top band
+];
+
+const SEMITONE = Math.pow(2, 1 / 12);
+
+/** Listeners fired whenever a voice starts, so the ambient bed can duck under it. */
+const voiceListeners = new Set();
+
+function notifyVoice(peak) {
+    if (voiceListeners.size === 0) return;
+    for (const listener of voiceListeners) {
+        try {
+            listener(peak);
+        } catch {
+            // A misbehaving listener must not stop a sound from playing.
+        }
+    }
+}
 
 export const audio = {
     /** Reads the stored preference. Does NOT create a context — that needs a user gesture. */
@@ -327,13 +391,19 @@ export const audio = {
 
         if (state.enabled) {
             await this.unlock();
-        } else if (state.ctx && state.ctx.state === 'running') {
-            try {
-                await state.ctx.suspend();
-            } catch {
-                // Suspension is best-effort; nothing further will be scheduled anyway.
+        } else {
+            // Narration is a separate output that does not pass through the context, so
+            // suspending the graph would leave a voice mid-sentence talking over a muted app.
+            this.stopNarration();
+
+            if (state.ctx && state.ctx.state === 'running') {
+                try {
+                    await state.ctx.suspend();
+                } catch {
+                    // Suspension is best-effort; nothing further will be scheduled anyway.
+                }
+                state.unlocked = false;
             }
-            state.unlocked = false;
         }
 
         return state.enabled;
@@ -489,6 +559,249 @@ export const audio = {
             type: 'triangle', freq: 660, attack: 0.002, decay: 0.05, peak: 0.35,
             pan: panForClientX(clientX), send: 0.14
         });
+    },
+
+    /** Confirmation for something added to a collection. Two rising ticks, deliberately small. */
+    confirm() {
+        if (!canPlay() || throttled('confirm', 300)) return;
+        voice({ type: 'sine', freq: 783.99, attack: 0.003, decay: 0.09, peak: 0.26, pan: -0.2, send: 0.2 });
+        voice({ type: 'sine', freq: 1046.5, attack: 0.003, decay: 0.16, peak: 0.22, delay: 0.07, pan: 0.2, send: 0.26 });
+    },
+
+    /**
+     * One comic panel finishing its reveal. Distinct from `phase`, which narrates the pipeline:
+     * this is the sound of a panel appearing, so it is short, dry and panned to where the panel
+     * actually is in the strip.
+     */
+    panelReveal(index, total) {
+        if (!canPlay() || throttled(`panel${index}`, 90)) return;
+
+        const span = Math.max(1, total - 1);
+        const pan = total > 1 ? ((index / span) * 2 - 1) * 0.7 : 0;
+
+        // A quick swept blip, like ink hitting paper and stopping. The sweep is downward so four
+        // of them in sequence do not read as an ascending scale — the panels are siblings, not
+        // steps, and an ascending figure would imply the last one matters most.
+        voice({
+            type: 'triangle', startFreq: 880 + index * 40, endFreq: 420,
+            attack: 0.002, decay: 0.13, peak: 0.20, pan, send: 0.16
+        });
+        noise({ duration: 0.09, peak: 0.10, filterHz: 2400, delay: 0.005, pan, send: 0.18 });
+    },
+
+    /**
+     * Moderation outcome, graded by severity. Hide is reversible and sounds like it; suppress is
+     * a door closing; remove is the only cue in the app that ends below where it started and
+     * does not resolve. A moderator running a queue hears which action they took without
+     * reading the confirmation, which is the point — the three are one mis-tap apart.
+     */
+    severity(level) {
+        if (!canPlay() || throttled('severity', 250)) return;
+
+        switch (level) {
+            case 'remove':
+                voice({ type: 'sawtooth', freq: 174.61, attack: 0.008, decay: 0.5, peak: 0.26, pan: 0, send: 0.08 });
+                voice({ type: 'sine', startFreq: 130, endFreq: 46, attack: 0.006, decay: 0.7, peak: 0.30, delay: 0.06, pan: 0, send: 0.1 });
+                noise({ duration: 0.4, peak: 0.10, filterHz: 380, delay: 0.02, send: 0.12 });
+                break;
+
+            case 'suppress':
+                voice({ type: 'square', freq: 261.63, attack: 0.005, decay: 0.22, peak: 0.20, pan: -0.25, send: 0.12 });
+                voice({ type: 'square', freq: 196.00, attack: 0.005, decay: 0.34, peak: 0.22, delay: 0.09, pan: 0.25, send: 0.12 });
+                break;
+
+            default: // hide — reversible, so it stays light and does not descend.
+                voice({ type: 'triangle', freq: 440, attack: 0.004, decay: 0.14, peak: 0.20, pan: 0, send: 0.18 });
+                break;
+        }
+    },
+
+    /**
+     * A comic's own motif, derived from its place id and its score.
+     *
+     * WHY THIS IS NOT DECORATION. Every restaurant now sounds like itself, deterministically and
+     * forever: the same place always plays the same figure, so the Hall of Fame becomes something
+     * you can recognise by ear. Nothing else in the app gives a place an identity that is not its
+     * name.
+     *
+     * The seed picks the notes and the contour; the SCORE picks the scale, the tempo and the
+     * timbre — so two restaurants sound different from each other, and a strange one sounds
+     * strange rather than merely different. Zero assets: it is the same `voice()` primitive
+     * everything else uses, driven by a seeded PRNG.
+     */
+    signature(seed, score = 50) {
+        if (!canPlay() || throttled('signature', 600)) return;
+
+        const strange = Math.min(1, Math.max(0, score / 100));
+        const random = seededRandom(hashString(seed));
+
+        const scale = SCALES[Math.min(SCALES.length - 1, Math.floor(strange * SCALES.length))];
+
+        // Root within a fifth of A3, chosen by the seed. Keeping every motif in one octave means
+        // two places played back to back are comparable rather than merely different in register.
+        const rootSemitone = Math.floor(random() * 8) - 3;
+        const root = 220 * Math.pow(SEMITONE, rootSemitone);
+
+        // Faster as it gets stranger. 96bpm at zero, ~184 at 100.
+        const beat = 60 / (96 + strange * 88) / 2;
+
+        // Timbre tracks strangeness too: a sine is inoffensive, a sawtooth is not.
+        const type = strange < 0.33 ? 'sine' : strange < 0.66 ? 'triangle' : 'sawtooth';
+
+        const noteCount = 4;
+        for (let i = 0; i < noteCount; i++) {
+            const degree = Math.floor(random() * scale.length);
+            // The last note jumps an octave a third of the time — a motif that ends where it sat
+            // is a scale fragment, not a phrase.
+            const octave = (i === noteCount - 1 && random() < 0.34) ? 12 : 0;
+            const freq = root * Math.pow(SEMITONE, scale[degree] + octave);
+
+            voice({
+                type,
+                freq,
+                attack: 0.006,
+                decay: beat * (i === noteCount - 1 ? 3.2 : 1.5),
+                peak: 0.20 - i * 0.015,
+                delay: i * beat,
+                // Slight detune that grows with strangeness: at the top of the range the motif is
+                // audibly out of tune with itself.
+                detune: (random() - 0.5) * strange * 34,
+                pan: (random() - 0.5) * 1.2,
+                send: 0.2 + strange * 0.4
+            });
+        }
+    },
+
+    /**
+     * Plays a numeric series as pitch — the shape of a chart, heard.
+     *
+     * The Insights page draws four charts over every score the app has recorded and spends
+     * nothing to do it. This spends nothing either, and it answers a question a static chart
+     * cannot: whether a distribution is flat, humped or bimodal is instantly obvious as a
+     * contour, including to someone who cannot see the SVG at all.
+     *
+     * Long series are DECIMATED, not truncated. Firing an oscillator per row of a 500-point
+     * series would be 500 nodes and several seconds of noise; picking evenly across the whole
+     * range preserves the shape, which is the only thing being communicated.
+     */
+    sonify(values, options = {}) {
+        if (!canPlay() || !Array.isArray(values) || values.length === 0) return;
+        if (throttled('sonify', 400)) return;
+
+        const maxNotes = Math.min(options.maxNotes ?? 32, 48);
+        const stride = Math.max(1, Math.ceil(values.length / maxNotes));
+
+        const picked = [];
+        for (let i = 0; i < values.length; i += stride) {
+            const value = Number(values[i]);
+            if (Number.isFinite(value)) picked.push(value);
+        }
+        if (picked.length === 0) return;
+
+        const min = options.min ?? Math.min(...picked);
+        const max = options.max ?? Math.max(...picked);
+        const span = max - min;
+
+        const totalMs = Math.min(options.durationMs ?? 1800, 4000);
+        const step = (totalMs / 1000) / picked.length;
+
+        picked.forEach((value, i) => {
+            // A flat series maps everything to the middle of the range rather than dividing by
+            // zero — and a flat line SHOULD sound flat.
+            const normalised = span > 0 ? (value - min) / span : 0.5;
+
+            // Two octaves of pentatonic, so an arbitrary series is always consonant with itself.
+            const index = Math.min(PENTATONIC.length * 2 - 1,
+                Math.floor(normalised * PENTATONIC.length * 2));
+            const freq = PENTATONIC[index % PENTATONIC.length]
+                * (index >= PENTATONIC.length ? 2 : 1)
+                * 0.5;
+
+            voice({
+                type: 'sine',
+                freq,
+                attack: 0.004,
+                decay: Math.max(0.08, step * 1.6),
+                peak: 0.13,
+                delay: i * step,
+                // Sweeps left to right across the series, so position in the sequence is audible
+                // as well as position in the pitch range. Without it a hump and a dip are the
+                // same set of notes in a different order, which the ear does not reliably parse.
+                pan: ((i / Math.max(1, picked.length - 1)) * 2 - 1) * 0.75,
+                send: 0.22
+            });
+        });
+    },
+
+    // ── Narration ────────────────────────────────────────────────────────────────────────
+    //
+    // speechSynthesis is a separate output from the AudioContext — it does not pass through the
+    // graph, the analyser or the master trim, and it works even before unlock. So it is gated on
+    // the enabled preference alone, and it is cancelled rather than mixed: two voices reading
+    // over each other is worse than either.
+
+    canNarrate() {
+        try {
+            return typeof window.speechSynthesis !== 'undefined'
+                && typeof window.SpeechSynthesisUtterance === 'function';
+        } catch {
+            return false;
+        }
+    },
+
+    /**
+     * Reads the comic's narrative aloud. An accessibility win before it is a flourish: the
+     * narrative is the joke, and it currently exists only as text under an image that a screen
+     * reader describes as a comic strip.
+     */
+    narrate(text, options = {}) {
+        if (!state.enabled || !this.canNarrate()) return false;
+
+        const value = String(text ?? '').trim();
+        if (!value) return false;
+
+        try {
+            // Always cancel first. Chrome queues utterances indefinitely, so a user tapping
+            // narrate twice would otherwise hear the whole thing twice, back to back.
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(value.slice(0, 800));
+            utterance.rate = options.rate ?? 1.02;
+            utterance.pitch = options.pitch ?? 1.0;
+            utterance.volume = options.volume ?? 0.9;
+            window.speechSynthesis.speak(utterance);
+            return true;
+        } catch {
+            return false;
+        }
+    },
+
+    stopNarration() {
+        try { window.speechSynthesis?.cancel(); } catch { /* nothing speaking */ }
+    },
+
+    // ── Hooks for composed modules ───────────────────────────────────────────────────────
+
+    /** The live AudioContext, or null before unlock. Used by ambient.js to host its worklet. */
+    context: () => state.ctx,
+
+    /**
+     * A panned, reverb-sent output stage, for a module that generates its own signal. This is the
+     * same stage every built-in voice uses, exposed so the ambient bed sits in the same room as
+     * everything else rather than beside it.
+     */
+    createBus(options = {}) {
+        if (!state.ctx) return null;
+        return makeOutput(options.pan ?? 0, options.send ?? 0.25);
+    },
+
+    /**
+     * Fires whenever a voice is scheduled, with its peak gain. The ambient bed subscribes so it
+     * can duck; the coupling points one way, exactly as audio-reactive.js does for the gradient.
+     */
+    onVoice(listener) {
+        voiceListeners.add(listener);
+        return () => voiceListeners.delete(listener);
     },
 
     /**

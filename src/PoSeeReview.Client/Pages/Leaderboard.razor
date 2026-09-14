@@ -56,9 +56,10 @@
     @if (isLoading && ((_scope == BoardScope.Live && (leaderboardEntries == null || leaderboardEntries.Count == 0))
                        || (_scope == BoardScope.Weekly && _archive is null)))
     {
-        <div class="leaderboard-loading">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
-        </div>
+        @* One loading component for the whole app. It carries role="status" + aria-busy, which a
+           bare Radzen spinner does not — those pages asked screen readers to sit through an
+           unannounced indefinite wait. *@
+        <LoadingIndicator Message="Tallying the strangest reviews..." />
     }
     else if (errorMessage != null)
     {
@@ -123,7 +124,7 @@
                                         }
                                         else
                                         {
-                                            <img src="@entry.ComicBlobUrl" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
+                                            <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="@($"Comic for {entry.RestaurantName}")" loading="lazy" />
                                         }
                                     </div>
 
@@ -167,13 +168,13 @@
         <div class="leaderboard-list cq-list">
             @foreach (var entry in leaderboardEntries ?? [])
             {
-                <div class="leaderboard-card glass @GetRankClass(entry.Rank)">
+                <div class="leaderboard-card glass scroll-enter @GetRankClass(entry.Rank)">
                     <div class="rank-badge">
                         <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
                     </div>
 
                     <div class="comic-thumbnail">
-                        <img src="@entry.ComicBlobUrl" alt="Comic for @entry.RestaurantName" loading="lazy" />
+                        <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="Comic for @entry.RestaurantName" loading="lazy" />
                     </div>
 
                     <div class="entry-details">

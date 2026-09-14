@@ -6,6 +6,7 @@
 @implements IDisposable
 @inject InsightsClient InsightsApi
 @inject IJSRuntime JS
+@inject FxService Fx
 
 <PageTitle>Insights - PoSeeReview</PageTitle>
 
@@ -16,9 +17,7 @@
 
     @if (_state == LoadState.Loading)
     {
-        <div class="insights-loading">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
-        </div>
+        <LoadingIndicator Message="Adding up every comic drawn so far..." />
     }
     else if (_state == LoadState.Failed)
     {
@@ -53,10 +52,15 @@
         }
 
         <div class="insights-grid">
-            <section class="insights-panel cq-card elevation-1">
+            <section class="insights-panel cq-card elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Strangeness vs star rating</h2>
                     <p class="insights-panel-question">Are strange restaurants also badly rated?</p>
+                    <button type="button" class="btn btn-icon insights-listen"
+                            @onclick="() => PlayChartAsync(ScatterSeries)"
+                            title="Hear this chart" aria-label="Hear the strangeness against star rating">
+                        <span aria-hidden="true">🎧</span>
+                    </button>
                 </header>
 
                 @if (_scatter.Count == 0)
@@ -85,10 +89,15 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1">
+            <section class="insights-panel cq-card elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Score distribution</h2>
                     <p class="insights-panel-question">Does the scorer discriminate, or cluster everything mid-range?</p>
+                    <button type="button" class="btn btn-icon insights-listen"
+                            @onclick="() => PlayChartAsync(BucketSeries)"
+                            title="Hear this chart" aria-label="Hear the score distribution">
+                        <span aria-hidden="true">🎧</span>
+                    </button>
                 </header>
 
                 @if (_buckets.Count == 0)
@@ -116,10 +125,15 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1">
+            <section class="insights-panel cq-card elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Region comparison</h2>
                     <p class="insights-panel-question">Which region produces the weirdest reviews?</p>
+                    <button type="button" class="btn btn-icon insights-listen"
+                            @onclick="() => PlayChartAsync(RegionSeries)"
+                            title="Hear this chart" aria-label="Hear the region comparison">
+                        <span aria-hidden="true">🎧</span>
+                    </button>
                 </header>
 
                 @if (_data.Regions.Count == 0)
@@ -144,10 +158,15 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1">
+            <section class="insights-panel cq-card elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Weekly trend</h2>
                     <p class="insights-panel-question">Is peak strangeness rising or falling?</p>
+                    <button type="button" class="btn btn-icon insights-listen"
+                            @onclick="() => PlayChartAsync(WeeklySeries)"
+                            title="Hear this chart" aria-label="Hear the weekly trend">
+                        <span aria-hidden="true">🎧</span>
+                    </button>
                 </header>
 
                 @if (_data.WeeklyTrend.Count == 0)
@@ -229,6 +248,50 @@
 
     private DotNetObjectReference<Insights>? _selfRef;
     private bool _watchingScheme;
+
+    // ── Sonification ─────────────────────────────────────────────────────────────────────
+    //
+    // Every one of these charts is already free: the numbers come from rows the app has written,
+    // there is no Maps call and no AI call. Playing one costs nothing either, and it answers a
+    // question the SVG cannot — whether a distribution is flat, humped or bimodal is instantly
+    // obvious as a contour, including to someone who cannot see the chart at all.
+    //
+    // Each series is ordered the way the chart reads, because the sweep pans left to right and a
+    // sonification whose order disagrees with the picture describes a different chart.
+
+    /// <summary>Scatter, ordered by rating — so the ear traverses the x axis, as the eye does.</summary>
+    private IReadOnlyList<double> ScatterSeries =>
+        _scatter.OrderBy(p => p.StarRating).Select(p => p.StrangenessScore).ToList();
+
+    /// <summary>Distribution. The bucket COUNT is the height, so that is what becomes pitch.</summary>
+    private IReadOnlyList<double> BucketSeries =>
+        _buckets.Select(b => (double)b.Count).ToList();
+
+    private IReadOnlyList<double> RegionSeries =>
+        _data?.Regions.Select(r => r.AverageScore).ToList() ?? [];
+
+    private IReadOnlyList<double> WeeklySeries =>
+        _data?.WeeklyTrend.Select(w => w.AverageScore).ToList() ?? [];
+
+    /// <summary>
+    /// Plays a series as pitch. Enabling sound here is deliberate: the user tapped a control
+    /// labelled "hear this chart", which is about as unambiguous as intent gets, and it is a
+    /// real gesture — the only kind that can take an AudioContext out of 'suspended'.
+    /// </summary>
+    private async Task PlayChartAsync(IReadOnlyList<double> values)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        if (!await Fx.IsAudioEnabledAsync())
+        {
+            await Fx.SetAudioEnabledAsync(true);
+        }
+        await Fx.UnlockAudioAsync();
+        await Fx.PlaySeriesAsync(values);
+    }
 
     protected override async Task OnInitializedAsync()
     {

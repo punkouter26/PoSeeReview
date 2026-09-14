@@ -1,5 +1,7 @@
 .not-found-container {
-    min-height: 100vh;
+    /* dvh, not vh — the mobile URL bar makes 100vh taller than the viewport that is actually
+       on screen, which shows up as a strip of dead space below the content. */
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
     background: var(--color-surface);
@@ -13,7 +15,7 @@
 
 .brand-title {
     font-family: var(--font-display, 'Bangers', cursive);
-    font-size: 2rem;
+    font-size: var(--text-2xl);
     letter-spacing: 0.06em;
     color: var(--color-on-dark);
     margin: 0;

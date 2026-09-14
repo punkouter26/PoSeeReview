@@ -319,7 +319,168 @@ Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/
   Save-Data, low `deviceMemory`, or few cores default to `lite`.
 
 Effect modules: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`, `comic-fx.js`,
-`particles.js`, `loading-ring.js`, `scroll-guard.js`, `shelf.js`.
+`particles.js`, `loading-ring.js`, `scroll-guard.js`, `shelf.js`, `physics.js`, `comic-reveal.js`,
+`haptics.js`, `ambient.js` (+ `posee-synth-processor.js`), `webgpu-pool.js`, `particles-gpu.js`.
+
+**`fx.js` is the composition root, and that is load-bearing.** `audio.js` does not know haptics
+exist; `haptics.js` does not know about the bed; `gradient.js` does not know about the analyser.
+Deciding that a tap should also buzz, or that enabling sound should also start a drone, is a
+product decision and it is made in exactly one file — the same reason `audio-reactive.js` is a
+separate module rather than a branch inside `audio.js`. `propagateAudioState()` is the single
+place that fans a sound-preference change out to the visual driver, haptics and the bed; missing
+any one of the three produces a muted app that still pulses, buzzes, or drones.
+
+**The sound switch lives in the header's right-hand session zone.** Audio defaults to off and can
+only be unlocked from a trusted event, so until it was put there the *only* control was on
+`/diagnostics` — a page with no nav entry, reached by typing a URL. The entire audio layer was in
+practice unreachable. It is a `<button>`, not a `NavLink`, and it is in the session zone, so
+`HeaderContractUiTests` still sees exactly two primary nav items. On a phone it collapses to a
+30px circle with a `::after` hit box restoring the 44px target: `.nav-links` is `flex: 1;
+min-width: 0` against a session zone that cannot shrink, so anything added on the right comes
+straight out of the primary nav — a full-size button squeezed it to zero width and the header
+contract test caught it as "hidden".
+
+### WebGPU, and why it is narrow
+
+`webgpu-pool.js` owns one shared `GPUDevice` on the same terms `gl-pool.js` owns one WebGL2
+context. It is deliberately used by **one** effect. WebGPU is not a faster WebGL; what it has that
+WebGL2 does not is **compute**, and compute is what the ink burst wants. `particles.js` simulates
+every particle in the vertex shader from immutable seeds — which is why 1500 cost the same as 20,
+and also why no particle can know about the floor or about any other particle. `particles-gpu.js`
+writes state back to a storage buffer, so the drops decelerate, hit the bottom of the panel and
+**settle**. The visible difference is the ending: the WebGL2 burst fades out mid-air because a
+stateless sim has no other option.
+
+Everything else in the app is a fullscreen fragment pass where WebGL2 is entirely adequate and
+already pooled; porting those would mean maintaining WGSL and GLSL for identical output. The
+device is probed before the module is imported, so a device without WebGPU never fetches a byte
+of it, and a null device means the WebGL2 path runs. Never read the fallback as degraded — it is
+the effect that has always shipped.
+
+> The particle state machine lives in the shader, not in JS, on purpose. Reading the storage
+> buffer back to find out which drops have settled would stall on a `mapAsync` every frame — a
+> round trip costing more than the whole simulation. The CPU never reads any of it; it only knows
+> how long the burst has been running.
+
+### Physics is back, on the shelf.js terms
+
+Rapier was deleted because ~2.4 MB of WASM solver was jiggling a card grid that already worked.
+That verdict was about the trade, not about physics. `physics.js` is a hand-rolled Verlet solver —
+**no library**, **lazy** (dynamic `import()`, one route, on one event), **`full` tier only**, and
+the real element stays underneath. It earns its place by doing the thing the shader sim cannot:
+ink that *lands*, piles unevenly, and where it piles depends on where the last drop went.
+
+- Verlet, not Euler: position and previous position **are** the velocity, so a collision is
+  resolved by moving a body. Stacking is stable at three substeps, which is the entire behaviour
+  these effects are built on.
+- A uniform spatial hash rebuilt per substep, and bodies that **fall asleep** after a few quiet
+  frames. Pooled ink is the steady state of both presets, so within about a second most of the
+  work stops happening at all. Contact wakes a sleeping body — without that, a new drop falls
+  straight through a settled pile, because the pile is skipped by integration *and* collision.
+- 2D canvas, never `gl-pool`: it asks for no WebGL context, so it does not spend a slot in a pool
+  capped at eight to save nothing. It still registers with the shared rAF loop, so its cost lands
+  in the budget that can downgrade it.
+- Two presets. `ink` follows the burst; `shatter` breaks the score ring apart and is gated at
+  **90**, because a ring that shatters on every comic stops meaning anything.
+
+### Ink development: the comic arrives instead of appearing
+
+A generation is ten seconds of stepper and then the finished strip pops into the layout in one
+frame — the single frame carrying the payoff of the whole wait, spent on a layout change.
+`comic-reveal.js` develops it top-down over ~1.4s instead.
+
+It could not be driven by the SSE phases, and that is worth knowing before someone tries: **the
+artwork does not exist until `Publishing`.** Every earlier phase is text and metadata, so there is
+nothing to reveal while they run. The reveal fires on ARRIVAL; the stepper still narrates the wait.
+
+Two layers, and the CSS one is the important one:
+
+1. A `mask-image` on `.comic-strip-container`, driven by the registered `--comic-reveal` property
+   this module writes each frame. Always runs above the `off` tier, needs no WebGL, and is
+   therefore what nearly everyone sees — `comic-fx` only attaches when the blob happens to be
+   CORS-readable, which in this deployment it usually is not.
+2. The shader's own noise-threshold mask when `comic-fx` did attach, forwarded through
+   `setReveal`. That adds the ragged wet-ink boundary a linear gradient cannot express.
+
+The mask is on the **container** so it covers the `<img>` and the post-process canvas together;
+masking one would develop the shader layer over an already-visible copy of the finished comic.
+The composite pass is opaque during a reveal for the same reason. **Every exit path must clear
+`data-comic-reveal`** — the mask only applies while the attribute is present, so abandoning a
+running reveal leaves part of the comic permanently hidden. That is the one failure here a user
+would actually notice, and it is why `ComicStrip.DetachAsync` finishes the reveal first and
+unconditionally.
+
+The **score shockwave** lives in the same composite pass: an expanding annulus that displaces the
+lookup outward and splits the channels across the wavefront, fired from the top edge where the
+score ring sits. A separate pass would refetch the scene buffer for something live for one second.
+A negative age is the inactive sentinel, so the branch is cold the rest of the time.
+
+### Sound beyond the cues
+
+- **`haptics.js`** derives its patterns from the same attack/decay/peak envelopes `voice()` takes,
+  so a cue is described once and both played and felt. `navigator.vibrate` has no amplitude — only
+  duration and rhythm — so `fromEnvelope` maps a note's energy to a run length and its `delay` to
+  a gap. Haptics **follow the sound preference and can be switched off on their own, never on on
+  their own**: someone who muted the app did not ask to be buzzed instead. No-ops on iOS, which
+  exposes no Vibration API at all.
+- **The ambient bed is the one sound that needs an AudioWorklet.** Every other cue is a transient
+  scheduled against `ctx.currentTime`, which is already sample-accurate. A *sustained* tone whose
+  parameters are written from the main thread clicks whenever that thread is busy — and here it is
+  running Blazor renders and the shared rAF loop. `posee-synth-processor.js` generates the whole
+  bed per sample on the audio thread; the main thread only posts targets, which it smooths toward.
+  It **ducks** under every foreground voice via `audio.onVoice`, fades over seconds, and has its
+  own opt-out on top of the sound preference. The processor is loaded with
+  `new URL('./posee-synth-processor.js', import.meta.url)` — a bare relative string resolves
+  against the *route*, and on `/comic/{placeId}` the SPA fallback would answer with `index.html`
+  at a 200, surfacing as a syntax error inside a worklet rather than a missing file.
+- **Per-comic signature.** `audio.signature(placeId, score)` seeds a mulberry32 PRNG from an FNV-1a
+  hash of the place id: the same restaurant always plays the same four-note figure. The *seed*
+  picks the notes and contour; the *score* picks the scale, tempo and timbre, so two places sound
+  different from each other and a strange one sounds strange rather than merely different. Seed
+  with the place id, never the name — names collide across chains.
+- **Sonification** (`audio.sonify`) plays a numeric series as pitch, sweeping left to right, and
+  drives the 🎧 control on each `/insights` chart. Long series are **decimated, not truncated**:
+  the contour is the only thing being communicated. Whether a distribution is flat, humped or
+  bimodal is instantly obvious as a shape, including to someone who cannot see the SVG.
+- **Narration** (`speechSynthesis`) reads the narrative aloud. It is a separate output that never
+  enters the AudioContext, so it works before unlock and is gated on the preference alone — and it
+  must be cancelled explicitly on teardown, because the queue is browser-global and would follow
+  the user to the next route. `cancel()` before every `speak()`: Chrome queues indefinitely.
+- **Graded moderation cues.** Hide / suppress / remove sound different because they are one mis-tap
+  apart and a moderator working a queue should hear which one landed. Restore gets the plain
+  confirmation cue — it is the only action there that puts something back.
+
+> **Login cannot have audio, and this is not an oversight.** Both login paths navigate with
+> `forceLoad: true`, so the AudioContext dies with the page. Unlock happens on the first real
+> gesture *after* load — the discovery flow, the comic action bar, the reaction bar, the header
+> switch.
+
+### Modern CSS that costs no frame budget
+
+Everything above spends GPU inside a 20ms budget. These do not, because the compositor evaluates
+them off the main thread — which is the whole reason to prefer them over an IntersectionObserver
+and a class toggle, that being an observer, a callback, a style recalculation and a DOM write per
+card to produce the same fade.
+
+- `@property` registrations sit at the **top level**, not in a layer: they are global, unaffected
+  by layer order, and an *unregistered* custom property is untyped, so `transition: --x` does
+  nothing and keyframes over it snap. Each declares an `initial-value` that renders correctly
+  before JS writes anything — `--comic-reveal` initialises to `1`, meaning "fully developed", so a
+  reveal that never runs shows the whole comic.
+- `.scroll-enter` / `.scroll-enter-late` use `animation-timeline: view()`. `both` is required or
+  cards below the fold sit at their authored visible state and never animate. The stagger comes
+  from each card's own position in the scrollport, so it survives filtering and sorting — an
+  `nth-child` stagger does not.
+- `@starting-style` + `transition-behavior: allow-discrete` give the toast, the report dialog and
+  the install nudge real entrances. This is the first way to animate an element being *added* to
+  the DOM without a JS mount hook, which matters because Blazor adds and removes all three by
+  re-rendering with no lifecycle point in between.
+- **Freshness** on `/my-comics` is a `data-freshness` attribute computed in C#
+  (`ComicHistoryEntry.Freshness`), not an inline style. Binary expired/not-expired says nothing
+  until the link is already dead; `fresh` / `fading` (past half of the 24-hour window) / `expired`
+  makes the list itself communicate the deadline. Hover restores a faded thumbnail — the decay is
+  a status indicator, not a punishment.
+
 
 **`gl-pool.js` owns every WebGL2 context.** Effects no longer call `canvas.getContext('webgl2')`;
 they call `createSurface()` and get a *surface* — a band of one shared offscreen atlas plus its

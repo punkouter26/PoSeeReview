@@ -121,6 +121,33 @@ else
                 </button>
             </div>
 
+            @* Haptics and the ambient bed both INHERIT the sound preference and can be switched
+               off on their own — never on on their own. Someone who muted the app did not
+               thereby ask to be buzzed, or to be given a drone instead. Each control is hidden
+               where the underlying capability does not exist, because a toggle that cannot do
+               anything is worse than no toggle. *@
+            @if (_caps.Haptics)
+            {
+                <div class="fx-control-row">
+                    <span class="fx-control-label">Haptics</span>
+                    <button type="button" class="btn @(_haptics.Enabled ? "btn-primary" : "btn-secondary")"
+                            @onclick="ToggleHapticsAsync">
+                        @(_haptics.Enabled ? "On" : "Off")@(_haptics.Explicit ? "" : " (follows sound)")
+                    </button>
+                </div>
+            }
+
+            @if (_ambient.Supported)
+            {
+                <div class="fx-control-row">
+                    <span class="fx-control-label">Ambient bed</span>
+                    <button type="button" class="btn @(_ambient.Enabled ? "btn-primary" : "btn-secondary")"
+                            @onclick="ToggleAmbientAsync">
+                        @(_ambient.Enabled ? "On" : "Off")@(_ambient.Explicit ? "" : " (follows sound)")
+                    </button>
+                </div>
+            }
+
             <div class="fx-control-row">
                 <span class="fx-control-label">Live overlay</span>
                 <button type="button" class="btn @(_perfHudVisible ? "btn-primary" : "btn-secondary")"
@@ -136,6 +163,19 @@ else
 
         <ul class="fx-notes">
             <li>WebGL2: <strong>@(_caps.WebGl2 ? "available" : "unavailable")</strong></li>
+            @* Not a tier. The WebGL2 particle burst is a complete effect, not a degraded one —
+               it simulates in the vertex shader from immutable seeds, so it is stateless and
+               fades out mid-air. The compute version writes state back, so the ink lands. *@
+            <li>
+                WebGPU: <strong>@(_caps.WebGpu ? "available" : "unavailable")</strong> —
+                @(_caps.WebGpu
+                    ? "the ink burst runs as a compute shader and the drops settle."
+                    : "the ink burst falls back to the stateless WebGL2 sim.")
+            </li>
+            <li>
+                Vibration API: <strong>@(_caps.Haptics ? "available" : "unavailable")</strong> ·
+                speechSynthesis: <strong>@(_caps.Narration ? "available" : "unavailable")</strong>
+            </li>
             @* The overlay is the instrument that matters, because this page is not the page that
                is slow. It draws from inside the same rAF loop the effects run on, so it measures
                the frames it is part of rather than polling across interop like this grid does. *@
@@ -370,6 +410,8 @@ else
     private FxFrameStats _stats;
     private FxCapabilities _caps;
     private bool _audioEnabled;
+    private FxToggleState _haptics;
+    private FxToggleState _ambient;
     private bool _perfHudVisible;
     private FxAudioLatency? _audioLatency;
     private System.Threading.Timer? _statsTimer;
@@ -384,6 +426,8 @@ else
         _caps = await Fx.GetCapabilitiesAsync();
         _audioEnabled = await Fx.IsAudioEnabledAsync();
         _perfHudVisible = await Fx.IsPerfHudVisibleAsync();
+        _haptics = await Fx.GetHapticsAsync();
+        _ambient = await Fx.GetAmbientAsync();
 
         _statsTimer = new System.Threading.Timer(_ =>
         {
@@ -425,6 +469,28 @@ else
     }
 
     private Task ResetStatsAsync() => Fx.ResetFrameStatsAsync();
+
+    private async Task ToggleHapticsAsync()
+    {
+        await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
+        _haptics = await Fx.GetHapticsAsync();
+    }
+
+    private async Task ToggleAmbientAsync()
+    {
+        await Fx.SetAmbientEnabledAsync(!_ambient.Enabled);
+
+        // Starting it here is the point of the control: this is a real gesture, and without one
+        // the AudioContext never leaves 'suspended', so the switch would report On and produce
+        // nothing. The score is arbitrary on a page with no comic — it only tunes the drone.
+        if (_ambient.Enabled || await Fx.IsAudioEnabledAsync())
+        {
+            await Fx.UnlockAudioAsync();
+            await Fx.StartAmbientAsync(50);
+        }
+
+        _ambient = await Fx.GetAmbientAsync();
+    }
 
     public ValueTask DisposeAsync()
     {

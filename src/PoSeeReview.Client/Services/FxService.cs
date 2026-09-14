@@ -21,7 +21,47 @@ public enum FxTier
 /// <param name="ReducedMotion">The OS asked for reduced motion; the tier is pinned to Off.</param>
 /// <param name="WebGl2">Whether a WebGL2 context could be created at all.</param>
 /// <param name="AutoDowngraded">The tier was lowered by the frame-budget watchdog, not by the user.</param>
-public readonly record struct FxCapabilities(FxTier Tier, bool ReducedMotion, bool WebGl2, bool AutoDowngraded);
+/// <param name="WebGpu">
+/// WebGPU is available, so the compute-simulated particle burst can run instead of the
+/// stateless WebGL2 one. Not a tier: the fallback is a complete effect, not a degraded one.
+/// </param>
+/// <param name="Haptics">The Vibration API exists. Absent on every iOS browser.</param>
+/// <param name="Narration">speechSynthesis exists, so the narrative can be read aloud.</param>
+public readonly record struct FxCapabilities(
+    FxTier Tier, bool ReducedMotion, bool WebGl2, bool AutoDowngraded,
+    bool WebGpu, bool Haptics, bool Narration);
+
+/// <summary>
+/// How hard a moderation action is to undo. The three sound different on purpose: a moderator
+/// working a queue hears which one they took without reading the confirmation, and they are one
+/// mis-tap apart from each other.
+/// </summary>
+public enum FxSeverity
+{
+    /// <summary>Reversible, and what unreviewed reports get.</summary>
+    Hide = 0,
+
+    /// <summary>Blocks regeneration. What makes a removal stick.</summary>
+    Suppress = 1,
+
+    /// <summary>Erases the comic, blob, board row, archive entry and every kept copy.</summary>
+    Remove = 2
+}
+
+/// <summary>Which seeding the Verlet solver uses. See <c>js/physics.js</c>.</summary>
+public enum FxInkMode
+{
+    /// <summary>Drops fall in from above and pool at the bottom. Follows the burst.</summary>
+    Ink = 0,
+
+    /// <summary>Pieces fly out from an origin and fall. Reserved for a high score.</summary>
+    Shatter = 1
+}
+
+/// <param name="Supported">Whether the underlying API exists on this device at all.</param>
+/// <param name="Enabled">Whether it is actually active right now.</param>
+/// <param name="Explicit">The user pinned it, rather than inheriting the audio preference.</param>
+public readonly record struct FxToggleState(bool Supported, bool Enabled, bool Explicit);
 
 /// <param name="Fps">Rolling frames per second across the shared scheduler.</param>
 /// <param name="FrameMs">Rolling mean frame time.</param>
@@ -155,8 +195,9 @@ public sealed class FxService(IJSRuntime js)
 
         var raw = await SafeAsync<CapabilitiesPayload?>("poseeFx.describe", null);
         var result = raw is null
-            ? new FxCapabilities(FxTier.Off, true, false, false)
-            : new FxCapabilities(ParseTier(raw.Tier), raw.ReducedMotion, raw.Webgl2, raw.AutoDowngraded);
+            ? new FxCapabilities(FxTier.Off, true, false, false, false, false, false)
+            : new FxCapabilities(ParseTier(raw.Tier), raw.ReducedMotion, raw.Webgl2, raw.AutoDowngraded,
+                raw.Webgpu, raw.Haptics, raw.Narration);
 
         _capabilities = result;
         return result;
@@ -222,6 +263,81 @@ public sealed class FxService(IJSRuntime js)
     public Task PlayShareStingerAsync() => SafeVoidAsync("poseeFx.playShareStinger");
     public Task PlayErrorAsync() => SafeVoidAsync("poseeFx.playError");
 
+    /// <summary>Two rising ticks. For something added to a collection, not for a whole flow completing.</summary>
+    public Task PlayConfirmAsync() => SafeVoidAsync("poseeFx.playConfirm");
+
+    /// <summary>Moderation outcome, graded. See <see cref="FxSeverity"/> for why the three differ.</summary>
+    public Task PlaySeverityAsync(FxSeverity severity) => SafeVoidAsync("poseeFx.playSeverity", severity switch
+    {
+        FxSeverity.Remove => "remove",
+        FxSeverity.Suppress => "suppress",
+        _ => "hide"
+    });
+
+    /// <summary>
+    /// The comic's own four-note motif, seeded from its place id and voiced by its score.
+    /// <para>
+    /// Deterministic: the same restaurant always plays the same figure, which is what makes this
+    /// an identity rather than a flourish — the Hall of Fame becomes something you can recognise
+    /// by ear. The seed should be the place id, never the restaurant name: names collide across
+    /// chains, and two branches of the same chain are not the same comic.
+    /// </para>
+    /// </summary>
+    public Task PlaySignatureAsync(string seed, int score) =>
+        SafeVoidAsync("poseeFx.playSignature", seed, score);
+
+    /// <summary>
+    /// Plays a numeric series as pitch, sweeping left to right. Long series are decimated on the
+    /// JS side rather than truncated, so the contour survives — which is the only thing being
+    /// communicated.
+    /// </summary>
+    public Task PlaySeriesAsync(IReadOnlyList<double> values) =>
+        SafeVoidAsync("poseeFx.playSeries", values);
+
+    // ── Narration ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Whether speechSynthesis exists. Independent of whether audio has been unlocked.</summary>
+    public Task<bool> CanNarrateAsync() => SafeAsync("poseeFx.canNarrate", false);
+
+    /// <summary>
+    /// Reads text aloud. Gated on the audio preference but NOT on the AudioContext — speech is a
+    /// separate output that never enters the graph, so it works before the first gesture.
+    /// </summary>
+    public Task<bool> NarrateAsync(string text) => SafeAsync("poseeFx.narrate", false, text);
+
+    public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
+
+    // ── Haptics ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Haptics follow the audio preference and can be switched off on their own, never on on
+    /// their own — someone who muted the app did not ask to be buzzed instead.
+    /// </summary>
+    public Task<FxToggleState> GetHapticsAsync() =>
+        SafeAsync("poseeFx.hapticsDescribe", default(FxToggleState));
+
+    public Task<bool> SetHapticsEnabledAsync(bool enabled) =>
+        SafeAsync("poseeFx.setHapticsEnabled", false, enabled);
+
+    // ── Ambient bed ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Starts the generative bed, if audio is on and unlocked and the user has not opted out.
+    /// Safe to call repeatedly — a second call retunes the running node rather than stacking a
+    /// second one, which is what a route re-entry or a regenerate should do.
+    /// </summary>
+    public Task<bool> StartAmbientAsync(int score) => SafeAsync("poseeFx.startAmbient", false, score);
+
+    public Task SetAmbientScoreAsync(int score) => SafeVoidAsync("poseeFx.setAmbientScore", score);
+
+    public Task StopAmbientAsync() => SafeVoidAsync("poseeFx.stopAmbient");
+
+    public Task<FxToggleState> GetAmbientAsync() =>
+        SafeAsync("poseeFx.ambientDescribe", default(FxToggleState));
+
+    public Task<bool> SetAmbientEnabledAsync(bool enabled) =>
+        SafeAsync("poseeFx.setAmbientEnabled", false, enabled);
+
     // ── Effects. Handles are opaque; 0 means "not running". ──────────────────────────────
 
     public Task<int> StartGradientAsync(ElementReference canvas, int score) =>
@@ -239,8 +355,71 @@ public sealed class FxService(IJSRuntime js)
     public Task DetachComicFxAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.detachComicFx", handle);
 
+    /// <summary>
+    /// An expanding ring of displacement and chromatic split through the panel, fired when the
+    /// score lands. Origin is 0..1 across and down the panel; the score ring sits above the
+    /// strip, so callers pass the top edge rather than the centre.
+    /// <para>
+    /// Requires the post-process to have attached, which it only does at the Full tier and only
+    /// when the blob is CORS-readable — so a zero handle is the ordinary case, not a failure.
+    /// </para>
+    /// </summary>
+    public Task ComicShockwaveAsync(int handle, int score, double originX, double originY) =>
+        handle == 0 ? Task.CompletedTask
+                    : SafeVoidAsync("poseeFx.comicShockwave", handle, score, originX, originY);
+
+    // ── Ink development ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Develops the comic onto the page over about 1.4 seconds instead of popping it into the
+    /// layout in one frame — the single frame that was carrying the payoff of a ten-second wait.
+    /// <para>
+    /// Two layers. A CSS mask on the container, which always runs above the Off tier and is what
+    /// nearly everyone sees; and the shader's ink-threshold boundary on top of it when
+    /// <paramref name="comicFxHandle"/> is non-zero. Pass 0 and the CSS mask runs alone.
+    /// </para>
+    /// </summary>
+    /// <param name="container">The .comic-strip-container: it carries the mask over image and canvas together.</param>
+    /// <param name="bands">Panels to develop in sequence. Two matches the server's cap.</param>
+    public Task<int> StartComicRevealAsync(ElementReference container, int bands, int comicFxHandle) =>
+        SafeAsync("poseeFx.startComicReveal", 0, container, bands, comicFxHandle);
+
+    /// <summary>
+    /// Ends a reveal with the comic fully visible. MUST be called on teardown: the mask only
+    /// applies while the element carries <c>data-comic-reveal</c>, so abandoning a running reveal
+    /// would leave part of the comic permanently hidden.
+    /// </summary>
+    public Task FinishComicRevealAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.finishComicReveal", handle);
+
+    /// <summary>
+    /// Fires the ink burst. Prefers the WebGPU compute backend, where the drops decelerate, hit
+    /// the bottom of the panel and settle; falls back to the stateless WebGL2 sim, which fades
+    /// out mid-air because a vertex-shader simulation cannot know the floor exists.
+    /// </summary>
     public Task<int> BurstParticlesAsync(ElementReference canvas, int score) =>
         SafeAsync("poseeFx.burstParticles", 0, canvas, score);
+
+    public Task StopParticlesAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopParticles", handle);
+
+    // ── Physics ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Where the ink ends up: a Verlet pile that collides with itself and the bottom of the
+    /// frame. Lazy-loaded on first use and Full tier only, on the same terms the 3D shelf is —
+    /// no library, one route, and the real element stays underneath.
+    /// </summary>
+    /// <param name="score">Scales the drop count and how hard they are thrown.</param>
+    /// <param name="originX">0..1 across the canvas. Only used by <see cref="FxInkMode.Shatter"/>.</param>
+    /// <param name="originY">0..1 down the canvas. Only used by <see cref="FxInkMode.Shatter"/>.</param>
+    public Task<int> SettleInkAsync(ElementReference canvas, int score, FxInkMode mode,
+        double originX = 0.5, double originY = 0.5) =>
+        SafeAsync("poseeFx.settleInk", 0, canvas, score,
+            mode == FxInkMode.Shatter ? "shatter" : "ink", originX, originY);
+
+    public Task StopInkAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopInk", handle);
 
     public Task<int> StartLoadingRingAsync(ElementReference canvas, double progress) =>
         SafeAsync("poseeFx.startLoadingRing", 0, canvas, progress);
@@ -284,5 +463,8 @@ public sealed class FxService(IJSRuntime js)
         public bool ReducedMotion { get; set; }
         public bool Webgl2 { get; set; }
         public bool AutoDowngraded { get; set; }
+        public bool Webgpu { get; set; }
+        public bool Haptics { get; set; }
+        public bool Narration { get; set; }
     }
 }

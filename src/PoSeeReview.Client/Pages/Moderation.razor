@@ -3,6 +3,7 @@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @inject ModerationClient ModerationApi
+@inject FxService Fx
 
 <PageTitle>Moderation - PoSeeReview</PageTitle>
 
@@ -39,9 +40,7 @@
 
             @if (_queue is null)
             {
-                <div class="moderation-loading">
-                    <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Large" />
-                </div>
+                <LoadingIndicator Message="Loading the moderation queue..." />
             }
             else if (_queue.Items.Count == 0)
             {
@@ -198,6 +197,25 @@
             };
 
             await task;
+
+            // Graded confirmation, played only once the call has actually landed. A moderator
+            // working a queue hears which of three one-tap-apart actions they took without
+            // re-reading the row. Restore is the odd one out and gets the plain confirmation
+            // cue: it is the only action here that puts something back.
+            if (action == ModerationAction.Restore)
+            {
+                await Fx.PlayConfirmAsync();
+            }
+            else
+            {
+                await Fx.PlaySeverityAsync(action switch
+                {
+                    ModerationAction.Remove => FxSeverity.Remove,
+                    ModerationAction.Suppress => FxSeverity.Suppress,
+                    _ => FxSeverity.Hide
+                });
+            }
+
             await LoadAsync();
         }
         catch (HttpRequestException)
@@ -205,6 +223,7 @@
             // Said plainly. A moderator who believes an action landed when it did not will move
             // on and leave content up.
             _error = "That action did not go through. Nothing was changed — please try again.";
+            await Fx.PlayErrorAsync();
         }
         finally
         {

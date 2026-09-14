@@ -11,8 +11,12 @@
     save-image on desktop both keep working on the app's single most shareable artifact. If the
     shader never attaches (no WebGL2, reduced motion, a downgraded tier, or a blob URL served
     without CORS) the canvas simply stays transparent and the untouched image is what shows.
+
+    The ink-development reveal is applied to the CONTAINER, not to either child, so the mask
+    covers the image and the canvas together. Masking one of them would develop the shader layer
+    over an already-visible copy of the finished comic.
 *@
-<div class="comic-strip-container">
+<div @ref="_container" class="comic-strip-container">
     @*
         No crossorigin attribute. Setting crossorigin="anonymous" turns this into a CORS request,
         and Azure Blob Storage does not send Access-Control-Allow-Origin unless the account has a
@@ -31,6 +35,11 @@
          @onload="OnImageLoadedAsync" />
 
     <canvas @ref="_canvas" class="fx-overlay fx-comic-canvas" aria-hidden="true"></canvas>
+
+    @* Where the ink from the burst lands and pools. Separate from the burst canvas in the score
+       ring above: that one is sized to the ring, and ink has to fall the height of the strip to
+       read as falling at all. *@
+    <canvas @ref="_inkCanvas" class="fx-overlay fx-ink-canvas" aria-hidden="true"></canvas>
 </div>
 
 @code {
@@ -40,15 +49,32 @@
     [Parameter]
     public string RestaurantName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// How many stacked panels to develop in sequence. Two is the server's cap
+    /// (<c>ComicTextOverlayService.GetPanelBounds</c> stacks two panels vertically); it is a
+    /// parameter so that if PanelCount ever reaches ComicDto the caller can pass the real number.
+    /// </summary>
+    [Parameter]
+    public int PanelCount { get; set; } = 2;
+
+    private ElementReference _container;
     private ElementReference _image;
     private ElementReference _canvas;
+    private ElementReference _inkCanvas;
     private int _fxHandle;
+    private int _revealHandle;
+    private int _inkHandle;
     private string? _attachedUrl;
 
     /// <summary>
     /// Attaching is driven by the image's own load event rather than OnAfterRender: WebGL cannot
     /// upload a texture from an <c>&lt;img&gt;</c> whose decode has not finished, and doing it
     /// early produces a black panel instead of a comic.
+    /// <para>
+    /// The reveal starts here for the same reason. This is the exact moment the artwork becomes
+    /// visible, and developing it from here is what turns the arrival into the payoff of the
+    /// wait rather than a layout change.
+    /// </para>
     /// </summary>
     private async Task OnImageLoadedAsync()
     {
@@ -59,7 +85,28 @@
 
         await DetachAsync();
         _fxHandle = await Fx.AttachComicFxAsync(_canvas, _image);
+
+        // Passed the post-process handle so the shader can add its ragged wet-ink boundary on
+        // top of the CSS mask. Zero is the ordinary case and the CSS mask runs alone.
+        _revealHandle = await Fx.StartComicRevealAsync(_container, PanelCount, _fxHandle);
+
         _attachedUrl = ImageUrl;
+    }
+
+    /// <summary>
+    /// The score landing, felt through the artwork: a ring of displacement expanding from the
+    /// score ring above the strip, and the ink from the burst falling into the panel and pooling.
+    /// Called by the page rather than fired here, because only the page knows when the count-up
+    /// has finished.
+    /// </summary>
+    public async Task PlayScoreImpactAsync(int score)
+    {
+        // Origin at the top centre: the ring the wave appears to come from sits directly above
+        // the strip, so a wave starting from the middle of the panel would come from nowhere.
+        await Fx.ComicShockwaveAsync(_fxHandle, score, 0.5, 0.0);
+
+        await Fx.StopInkAsync(_inkHandle);
+        _inkHandle = await Fx.SettleInkAsync(_inkCanvas, score, FxInkMode.Ink);
     }
 
     /// <summary>
@@ -76,11 +123,27 @@
 
     private async Task DetachAsync()
     {
+        // The reveal goes first and unconditionally. Its mask only applies while the container
+        // carries data-comic-reveal, so abandoning a running reveal would leave the bottom of
+        // the comic permanently hidden — the one failure here a user would actually notice.
+        if (_revealHandle != 0)
+        {
+            await Fx.FinishComicRevealAsync(_revealHandle);
+            _revealHandle = 0;
+        }
+
+        if (_inkHandle != 0)
+        {
+            await Fx.StopInkAsync(_inkHandle);
+            _inkHandle = 0;
+        }
+
         if (_fxHandle != 0)
         {
             await Fx.DetachComicFxAsync(_fxHandle);
             _fxHandle = 0;
         }
+
         _attachedUrl = null;
     }
 

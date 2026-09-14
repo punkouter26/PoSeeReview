@@ -31,6 +31,17 @@ import {
     gfx, createSurface, compileProgram, FULLSCREEN_VERTEX_SHADER
 } from './gfx-core.js';
 
+// How fast the ink development chases the target the stream last reported, as an exponential
+// rate per second. Roughly a third of a second to close most of a gap: fast enough that the last
+// phase does not leave the strip visibly half-drawn, slow enough that a burst of buffered phase
+// events reads as developing rather than as a jump cut.
+const REVEAL_GLIDE_RATE = 3.4;
+
+// After this the shockwave's envelope is below a thousandth and the uniform goes back to its
+// inactive sentinel. Kept as a constant because it has to agree with the exp() decay in the
+// shader — shortening one without the other either clips the wave or leaves a dead branch hot.
+const RIPPLE_LIFETIME_SECONDS = 2.2;
+
 // Shared preamble. Duplicated helper functions across five shaders is how they drift apart.
 const COMMON = `
 float hash(vec2 p) {
@@ -202,8 +213,14 @@ void main() {
     fragColor = vec4(result, 1.0);
 }`;
 
+// Composite, and the two moments layered into it.
+//
+// A separate pass for either of these would mean another full-resolution fetch of the scene
+// buffer for effects that are only live for about a second each. Both need the scene texture and
+// both write the final pixel, so both belong here — the ripple as a displaced lookup, the reveal
+// as a mask over the result.
 const COMPOSITE_SHADER = `#version 300 es
-precision mediump float;
+precision highp float;
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -211,25 +228,132 @@ out vec4 fragColor;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
 uniform float uBloomStrength;
+uniform float uAspect;
+
+// Score shockwave: xy = origin in UV, z = age in seconds. z < 0 means inactive, which is the
+// resting state — this uniform is set once at the reveal and otherwise costs one branch.
+uniform vec3  uRipple;
+uniform float uRippleStrength;
+
+// Ink development. uReveal runs 0..1 across the whole strip; uRevealBands is how many stacked
+// panels to develop in sequence. uReveal >= 1.0 switches the whole thing off.
+uniform float uReveal;
+uniform float uRevealBands;
+uniform vec3  uPaper;
+${COMMON}
 
 void main() {
-    vec3 scene = texture(uScene, vUv).rgb;
-    vec3 bloom = texture(uBloom, vUv).rgb;
+    vec2 uv = vUv;
+
+    // ── Shockwave ───────────────────────────────────────────────────────────────────────
+    //
+    // An expanding annulus that displaces the lookup outward along its own radius and splits the
+    // channels across the wavefront. Aspect-corrected, or the ring is an ellipse on a wide panel
+    // and reads as a scanline artefact rather than as a wave.
+    float ripple = 0.0;
+    vec2 rippleDir = vec2(0.0);
+
+    if (uRipple.z >= 0.0) {
+        vec2 delta = (uv - uRipple.xy) * vec2(uAspect, 1.0);
+        float dist = length(delta);
+        rippleDir = dist > 0.0001 ? delta / dist : vec2(0.0);
+
+        // Expands fast and decays faster. A slow ring reads as a ripple in water; the score
+        // landing is an impact, and an impact is over before you can follow it.
+        float radius = uRipple.z * 1.45;
+        float width = 0.10 + uRipple.z * 0.05;
+        float band = smoothstep(radius - width, radius, dist)
+                   * (1.0 - smoothstep(radius, radius + width, dist));
+
+        ripple = band * exp(-uRipple.z * 2.9) * uRippleStrength;
+        uv += rippleDir * ripple * 0.045 / vec2(uAspect, 1.0);
+    }
+
+    vec3 scene = texture(uScene, uv).rgb;
+
+    // Chromatic split only at the wavefront, and only while there is one. Applying it everywhere
+    // would double the aberration the base pass already applies across the whole frame.
+    if (ripple > 0.002) {
+        vec2 offset = rippleDir * ripple * 0.03 / vec2(uAspect, 1.0);
+        scene.r = texture(uScene, uv + offset).r;
+        scene.b = texture(uScene, uv - offset).b;
+    }
+
+    vec3 bloom = texture(uBloom, uv).rgb;
 
     // Screen blend, not additive. Additive bloom drives already-bright ink past 1.0 and clips it
     // to flat white, destroying the linework the bloom was meant to flatter.
     vec3 color = 1.0 - (1.0 - scene) * (1.0 - bloom * uBloomStrength);
 
+    // The wavefront itself carries a little light, so the ring is visible on dark ink as well as
+    // on paper. Without it the shockwave disappears wherever the comic happens to be black.
+    color += ripple * 0.30;
+
     vec2 centered = vUv - 0.5;
-    float edge = dot(centered, centered);
-    float vignette = smoothstep(0.95, 0.15, edge * 1.6);
+    float edgeSq = dot(centered, centered);
+    float vignette = smoothstep(0.95, 0.15, edgeSq * 1.6);
     color *= 0.90 + vignette * 0.10;
 
+    // ── Ink development ─────────────────────────────────────────────────────────────────
+    //
+    // The strip is masked back to bare paper and developed into view band by band, top down, in
+    // step with the pipeline phases the server is streaming. The mask is a noise threshold rather
+    // than a hard wipe: ink spreading into paper starts from many points at once and joins up,
+    // and a straight edge travelling down the page reads as a progress bar.
+    //
+    // The image's top is at vUv.y = 1 here — the base pass flipped V when it sampled the source,
+    // so the scene texture is stored inverted relative to the image.
+    if (uReveal < 1.0) {
+        float fromTop = 1.0 - vUv.y;
+        float bands = max(1.0, uRevealBands);
+        float band = floor(min(fromTop * bands, bands - 1.0));
+
+        // The overlap term is why a two-panel strip develops continuously instead of finishing
+        // one panel, pausing, and starting the next.
+        float local = clamp(uReveal * (bands + 0.4) - band, 0.0, 1.0);
+
+        // Two octaves: the coarse one makes ink arrive in blotches, the fine one gives the
+        // boundary a ragged fibre edge instead of a clean contour.
+        float seeds = valueNoise(vec2(vUv.x * uAspect, vUv.y) * 11.0) * 0.68
+                    + valueNoise(vUv * 47.0) * 0.32;
+
+        float developed = smoothstep(seeds - 0.20, seeds + 0.20, local * 1.4 - 0.2);
+
+        // Wet frontier: ink is darkest where it has just arrived and is still spreading.
+        float wet = 1.0 - abs(developed - 0.5) * 2.0;
+
+        color = mix(uPaper, color, developed);
+        color *= 1.0 - wet * 0.26 * step(0.02, developed);
+    }
+
+    // Opaque on purpose. During the reveal this canvas is what hides the finished <img> beneath
+    // it, and a transparent unrevealed area would show the whole comic through the mask.
     fragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }`;
 
 const instances = new Map();
 let nextId = 1;
+
+/**
+ * The paper the strip develops onto, read from the design tokens for the reason the Insights
+ * charts and the map pins already read theirs: a literal hex freezes one theme into a page that
+ * renders both. Falls back to a warm off-white rather than pure white — #FFF reads as screen,
+ * and the base pass already warms its own whites for the same reason.
+ */
+function readPaperColor() {
+    const fallback = [0.976, 0.969, 0.949];
+    try {
+        const value = getComputedStyle(document.documentElement)
+            .getPropertyValue('--color-surface-alt').trim()
+            || getComputedStyle(document.documentElement).getPropertyValue('--color-card').trim();
+        const match = /^#?([0-9a-f]{6})$/i.exec(value);
+        if (!match) return fallback;
+        const int = parseInt(match[1], 16);
+        return [((int >> 16) & 255) / 255, ((int >> 8) & 255) / 255, (int & 255) / 255];
+    } catch {
+        return fallback;
+    }
+}
 
 /** A colour-only render target. Linear filtering: the blur and the upsample both depend on it. */
 function makeTarget(gl, width, height) {
@@ -369,6 +493,27 @@ export function attach(canvas, image, options = {}) {
         bloom: options.bloom ?? 0.55,
         threshold: options.threshold ?? 0.62,
         stop: null,
+
+        // ── Ink development ─────────────────────────────────────────────────────────────
+        // `reveal` is what the shader sees; `revealTarget` is where the stream says it should
+        // be. The gap between them is eased per frame, so a phase event that lands late (or a
+        // whole run of them arriving at once because App Service buffered the stream) glides
+        // instead of snapping. 1 means "no reveal", which is the resting state.
+        reveal: options.reveal ?? 1,
+        revealTarget: options.reveal ?? 1,
+        // Two, because the server caps the pipeline at two panels and stacks them vertically
+        // (ComicTextOverlayService.GetPanelBounds). It is a parameter rather than a constant so
+        // that if PanelCount ever reaches ComicDto, the caller can pass the real number without
+        // this file changing.
+        revealBands: options.revealBands ?? 2,
+        paper: readPaperColor(),
+
+        // ── Shockwave ───────────────────────────────────────────────────────────────────
+        // A negative age is the inactive sentinel; the shader branches on it.
+        rippleStartedAt: -1,
+        rippleOrigin: [0.5, 0.5],
+        rippleStrength: 0,
+
         uniforms: {
             base: uniformsOf(gl, programs.base, [
                 'uImage', 'uResolution', 'uTime', 'uHalftone', 'uGrain',
@@ -376,11 +521,14 @@ export function attach(canvas, image, options = {}) {
             ]),
             bright: uniformsOf(gl, programs.bright, ['uScene', 'uThreshold']),
             blur: uniformsOf(gl, programs.blur, ['uSource', 'uDirection']),
-            composite: uniformsOf(gl, programs.composite, ['uScene', 'uBloom', 'uBloomStrength'])
+            composite: uniformsOf(gl, programs.composite, [
+                'uScene', 'uBloom', 'uBloomStrength', 'uAspect',
+                'uRipple', 'uRippleStrength', 'uReveal', 'uRevealBands', 'uPaper'
+            ])
         }
     };
 
-    instance.stop = gfx.addTask(`comic-fx#${id}`, (now) => {
+    instance.stop = gfx.addTask(`comic-fx#${id}`, (now, elapsed) => {
         if (!surface.beginFrame()) {
             detach(id);
             return;
@@ -447,6 +595,39 @@ export function attach(canvas, image, options = {}) {
         gl.bindTexture(gl.TEXTURE_2D, instance.bloomA.texture);
         gl.uniform1i(u.composite.uBloom, 1);
         gl.uniform1f(u.composite.uBloomStrength, instance.bloom);
+        gl.uniform1f(u.composite.uAspect, width / Math.max(1, height));
+
+        // Ease the reveal toward whatever the stream last reported. Frame-rate independent, so a
+        // 30fps phone develops the strip at the same speed as a 120Hz tablet — a per-frame lerp
+        // would make the reveal four times slower on the device least able to hide it.
+        if (instance.reveal < 1 || instance.revealTarget < 1) {
+            const dt = Math.min(0.1, Math.max(0.001, (elapsed || 16.7) / 1000));
+            const k = 1 - Math.exp(-REVEAL_GLIDE_RATE * dt);
+            instance.reveal += (instance.revealTarget - instance.reveal) * k;
+            // Snap the last sliver. An exponential glide never arrives, and a reveal stuck at
+            // 0.998 leaves a permanent haze of undeveloped paper over the finished comic.
+            if (instance.revealTarget >= 1 && instance.reveal > 0.995) {
+                instance.reveal = 1;
+            }
+        }
+        gl.uniform1f(u.composite.uReveal, instance.reveal);
+        gl.uniform1f(u.composite.uRevealBands, instance.revealBands);
+        gl.uniform3fv(u.composite.uPaper, instance.paper);
+
+        const rippleAge = instance.rippleStartedAt >= 0
+            ? (now - instance.rippleStartedAt) / 1000
+            : -1;
+        // Retire the wave once its envelope has decayed past visibility, so the branch in the
+        // shader goes cold again rather than evaluating an annulus off the edge of the frame
+        // forever.
+        if (rippleAge > RIPPLE_LIFETIME_SECONDS) {
+            instance.rippleStartedAt = -1;
+        }
+        gl.uniform3f(u.composite.uRipple,
+            instance.rippleOrigin[0], instance.rippleOrigin[1],
+            instance.rippleStartedAt >= 0 ? rippleAge : -1);
+        gl.uniform1f(u.composite.uRippleStrength, instance.rippleStrength);
+
         pass(instance, programs.composite, null);
 
         // Leave unit 0 active: every other effect assumes it, and a stale TEXTURE1 binding on a
@@ -484,6 +665,55 @@ export function detach(id) {
     instances.delete(id);
 }
 
+/**
+ * Sets how far the strip has developed, 0 (bare paper) to 1 (finished, effect off).
+ *
+ * The caller drives this from the pipeline phases the server streams, so the wait is spent
+ * watching the comic actually appear rather than watching a stepper describe it. The value is a
+ * TARGET — the render loop eases toward it — which matters because the SSE stream can be buffered
+ * by App Service and deliver several phases in one burst.
+ *
+ * Returns false when there is no instance, which is the common case: comic-fx only attaches at
+ * the `full` tier and only when the blob is CORS-readable. The caller must not depend on this
+ * having happened, and the CSS reveal in comic-reveal.js is what covers everyone else.
+ */
+export function setReveal(id, progress) {
+    const instance = instances.get(id);
+    if (!instance) return false;
+    instance.revealTarget = Math.min(1, Math.max(0, progress));
+    return true;
+}
+
+/**
+ * Fires the score shockwave from a point on the panel, given in 0..1 UV.
+ *
+ * The reveal is the payoff of a ten-second wait, and until now the comic itself did not react to
+ * its own score at all — the ring counted, a chord played, ink sprayed over the top, and the
+ * artwork sat there. One expanding ring of displacement ties the three together.
+ *
+ * @param {number} id      handle from attach()
+ * @param {number} score   0-100; scales how hard the wave hits
+ * @param {number} originX 0..1 across the panel
+ * @param {number} originY 0..1 down the panel
+ */
+export function shockwave(id, score = 50, originX = 0.5, originY = 0.5) {
+    const instance = instances.get(id);
+    if (!instance) return false;
+
+    const strange = Math.min(1, Math.max(0, score / 100));
+    instance.rippleStartedAt = performance.now();
+    instance.rippleOrigin = [
+        Math.min(1, Math.max(0, originX)),
+        // The origin arrives in image coordinates (0 at the top) and the scene texture is stored
+        // flipped, the same conversion the reveal mask makes.
+        1 - Math.min(1, Math.max(0, originY))
+    ];
+    // Never zero even at score 0: a comic that scored nothing still landed, and a silent ring is
+    // indistinguishable from the effect being broken.
+    instance.rippleStrength = 0.35 + strange * 0.85;
+    return true;
+}
+
 gfx.onTierChanged((tier) => {
     if (tier !== 'full') {
         for (const id of [...instances.keys()]) {
@@ -492,4 +722,4 @@ gfx.onTierChanged((tier) => {
     }
 });
 
-window.poseeComicFx = { attach, detach };
+window.poseeComicFx = { attach, detach, setReveal, shockwave };

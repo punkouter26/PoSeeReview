@@ -61,7 +61,7 @@
 
 .login-brand-name {
     font-family: var(--font-display, 'Bangers', cursive);
-    font-size: 1.8rem;
+    font-size: var(--text-xl);
     letter-spacing: 0.06em;
     color: var(--color-on-dark);
     line-height: 1;
@@ -70,7 +70,7 @@
 
 .login-container h1 {
     font-family: var(--font-display, 'Bangers', cursive);
-    font-size: 1.75rem;
+    font-size: var(--text-xl);
     letter-spacing: 0.04em;
     color: var(--color-text-primary);
     margin: 0 0 0.5rem 0;
@@ -78,7 +78,7 @@
 
 .login-container p {
     color: var(--color-text-secondary);
-    font-size: 0.95rem;
+    font-size: var(--text-sm);
     line-height: 1.5;
     margin: 0 0 1.5rem 0;
 }
@@ -99,7 +99,7 @@
     font-weight: 600;
     border-radius: 999px;
     padding: 0.7rem 1.25rem;
-    font-size: 0.95rem;
+    font-size: var(--text-md);
     cursor: pointer;
     transition: transform 0.15s, box-shadow 0.15s;
 }

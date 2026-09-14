@@ -84,12 +84,29 @@
                         <span class="ring-score" aria-label="@($"Strangeness {_comic.StrangenessScore} out of 100")">@_revealedScore</span>
                         <span class="ring-text">Weird</span>
                     </div>
+                    @* A conic sweep behind the ring while the count-up runs, and only then. It
+                       is a registered custom property animated by the compositor, so it costs
+                       nothing in the shared frame budget the rest of the reveal is spending. *@
+                    @if (!_burstFired)
+                    {
+                        <div class="sweep-halo ring-halo" aria-hidden="true"></div>
+                    }
+
                     @* Ink-splatter burst (FX #4), fired when the count lands. Sized to the score. *@
                     <canvas @ref="_burstCanvas" class="fx-overlay fx-burst-canvas" aria-hidden="true"></canvas>
+
+                    @* And, only for a genuinely bizarre score, the ring breaking apart. A
+                       separate 2D canvas because the solver is a CPU Verlet pile and the burst
+                       above is a GPU surface owned by the pooled atlas — the two share a
+                       position and nothing else. *@
+                    <canvas @ref="_shatterCanvas" class="fx-overlay fx-shatter-canvas" aria-hidden="true"></canvas>
                 </div>
             </div>
 
-            <ComicStrip ImageUrl="@_comic.BlobUrl"
+            @* ComicImageUrl: an Azurite SAS URL is http, and the browser blocks it as mixed
+               content on an https page, so the strip would not render at all locally. *@
+            <ComicStrip @ref="_strip"
+                        ImageUrl="@ComicImageUrl.For(_comic.BlobUrl, _comic.PlaceId)"
                         RestaurantName="@_comic.RestaurantName" />
 
             <ComicActions Comic="_comic"
@@ -99,7 +116,24 @@
 
             <ReactionBar PlaceId="@_comic.PlaceId" />
 
-            <p class="comic-narrative">@_comic.Narrative</p>
+            <div class="comic-narrative-block">
+                <p class="comic-narrative">@_comic.Narrative</p>
+
+                @* Reading the joke aloud is an accessibility win before it is a flourish: the
+                   narrative is the punchline, and it currently sits as plain text under an image
+                   a screen reader can only describe as "comic strip". Rendered only where
+                   speechSynthesis actually exists — a button that does nothing is worse than no
+                   button. *@
+                @if (_canNarrate)
+                {
+                    <button type="button" class="btn btn-icon narrate-btn"
+                            @onclick="ToggleNarrationAsync"
+                            title="@(_isNarrating ? "Stop reading" : "Read this aloud")"
+                            aria-label="@(_isNarrating ? "Stop reading the narrative aloud" : "Read the narrative aloud")">
+                        <span aria-hidden="true">@(_isNarrating ? "■" : "🔊")</span>
+                    </button>
+                }
+            </div>
 
             <ScoreContext Stats="_stats" />
 
@@ -151,7 +185,22 @@
     private int _activeStepIndex;
 
     private ElementReference _burstCanvas;
+    private ElementReference _shatterCanvas;
     private bool _burstFired;
+    private int _burstHandle;
+    private int _shatterHandle;
+
+    /// <summary>
+    /// Score at which the ring breaks apart rather than merely bursting. High on purpose: a ring
+    /// that shatters on every comic stops meaning anything, and the point of the threshold is
+    /// that a user who has seen a dozen comics knows immediately that this one is different.
+    /// </summary>
+    private const int ShatterThreshold = 90;
+
+    private ComicStrip? _strip;
+    private bool _canNarrate;
+    private bool _isNarrating;
+    private bool _ambientStarted;
 
     // Aligned one-to-one with the phases the API streams. The order here IS the progress order,
     // so a new pipeline phase must be added here too or the stepper misreports. Phase and copy
@@ -253,6 +302,13 @@
 
         await History.RecordAsync(_comic);
         _stats = await ApiClient.GetComicStatsAsync(_comic.PlaceId);
+
+        _canNarrate = await Fx.CanNarrateAsync();
+
+        // The bed only actually starts if audio is enabled AND already unlocked by a gesture, so
+        // on a first visit this is a no-op and the reveal's own cues unlock the context. That is
+        // the correct order: a drone is not what should greet someone who has not tapped yet.
+        _ambientStarted = await Fx.StartAmbientAsync(_comic.StrangenessScore);
     }
 
     /// <summary>
@@ -330,10 +386,61 @@
 
         await Fx.PlayScoreLandAsync(score);
         await Fx.PlaySplatAsync(score / 100.0);
-        await Fx.BurstParticlesAsync(_burstCanvas, score);
+        _burstHandle = await Fx.BurstParticlesAsync(_burstCanvas, score);
+
+        // The comic reacting to its own score. Until now the ring counted, a chord played and
+        // ink sprayed over the top while the artwork sat there — the one thing on screen the
+        // user is actually looking at was the only thing that did not acknowledge the number.
+        if (_strip is not null)
+        {
+            await _strip.PlayScoreImpactAsync(score);
+        }
+
+        if (score >= ShatterThreshold)
+        {
+            await Fx.StopInkAsync(_shatterHandle);
+            _shatterHandle = await Fx.SettleInkAsync(_shatterCanvas, score, FxInkMode.Shatter);
+        }
+
+        // The restaurant's own motif, seeded from its place id. Deliberately after the chord:
+        // the chord is the score landing, the signature is what this particular place sounds
+        // like, and playing them together makes one muddle instead of two statements.
+        await Fx.PlaySignatureAsync(_comic?.PlaceId ?? PlaceId, score);
+
+        // Retunes the bed if it is running, and starts it if the reveal's own cues were what
+        // unlocked the AudioContext — which on a first visit they are.
+        if (_ambientStarted)
+        {
+            await Fx.SetAmbientScoreAsync(score);
+        }
+        else
+        {
+            _ambientStarted = await Fx.StartAmbientAsync(score);
+        }
 
         // Tint the app-wide backdrop to this comic (FX #2).
         Layout.MainLayout.RaiseScoreChanged(score);
+
+        // Drops the conic sweep behind the ring, which is only meaningful while counting.
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Reads the narrative aloud, or stops. Speech does not pass through the AudioContext, so it
+    /// needs no unlock — but it does follow the audio preference, which is why a muted app
+    /// silently declines here rather than talking.
+    /// </summary>
+    private async Task ToggleNarrationAsync()
+    {
+        if (_isNarrating)
+        {
+            await Fx.StopNarrationAsync();
+            _isNarrating = false;
+            return;
+        }
+
+        await Fx.UnlockAudioAsync();
+        _isNarrating = await Fx.NarrateAsync(_comic?.Narrative ?? string.Empty);
     }
 
     private async Task GenerateFromPromptAsync()
@@ -342,7 +449,7 @@
         await LoadComic(forceRegenerate: false);
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         // Leaving mid-generation is the clearest signal that the wait is too long, and it is
         // invisible to the server — the pipeline runs to completion regardless.
@@ -352,7 +459,14 @@
         }
 
         _scoreRevealTimer?.Dispose();
-        return ValueTask.CompletedTask;
+
+        // The bed and the narration both outlive this component unless they are stopped: the
+        // worklet node is attached to the app-wide AudioContext, and speechSynthesis is a
+        // browser-global queue. Either one would follow the user to the next route.
+        await Fx.StopNarrationAsync();
+        await Fx.StopAmbientAsync();
+        await Fx.StopParticlesAsync(_burstHandle);
+        await Fx.StopInkAsync(_shatterHandle);
     }
 
     private async Task LoadComic(bool forceRegenerate)
