@@ -174,6 +174,38 @@ public class BlobStorageTests : IClassFixture<AzuriteFixture>, IDisposable
         }
     }
 
+    /// <summary>
+    /// The service, not the SDK, against a real Azurite URL. Azurite paths carry the account as
+    /// their first segment (<c>/devstoreaccount1/comics/{blob}</c>); the resolver used to skip
+    /// exactly one segment and look up <c>comics/{blob}</c> inside the comics container, so every
+    /// local download, existence check and delete 404'd while the JSON said the comic was there.
+    /// </summary>
+    [Fact]
+    public async Task BlobStorageService_ResolvesAzuriteSasUrl_ForReadExistsAndDelete()
+    {
+        _fixture.EnsureAzuriteAvailable();
+        await _containerClient.CreateIfNotExistsAsync();
+        var service = new PoSeeReview.Api.Storage.BlobStorageService(
+            _blobServiceClient,
+            Microsoft.Extensions.Options.Options.Create(new PoSeeReview.Api.Storage.AzureStorageOptions()),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PoSeeReview.Api.Storage.BlobStorageService>.Instance);
+        var imageBytes = GenerateTestImageBytes();
+
+        var url = await service.UploadComicImageAsync(_testComicId, imageBytes);
+
+        Assert.StartsWith("http", url);
+        Assert.True(await service.BlobExistsAsync(url));
+
+        await using var stream = await service.OpenComicImageStreamAsync(url);
+        Assert.NotNull(stream);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        Assert.Equal(imageBytes, buffer.ToArray());
+
+        await service.DeleteBlobAsync(url);
+        Assert.False(await service.BlobExistsAsync(url));
+    }
+
     public void Dispose()
     {
         // Cleanup test blobs

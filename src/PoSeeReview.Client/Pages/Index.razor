@@ -45,7 +45,18 @@
                          or LocationFlowState.Error or LocationFlowState.Loading)
     {
         <div class="location-prompt">
-            <RadzenCard class="prompt-card glass">
+            @* The searching state is a class on the card rather than a spinner beside the button.
+               A request whose answer is a browser permission dialog can sit unanswered for as
+               long as the user likes, and a spinner spinning next to a disabled button reads as
+               the app being stuck. A sonar ring leaving the card reads as a request in flight,
+               which is what is actually true. *@
+            <RadzenCard class="@($"prompt-card glass {(_flowState == LocationFlowState.Loading ? "prompt-card--searching" : "")}")">
+                @* The landing card is the app's first impression and the one surface guaranteed
+                   to have the full backdrop behind it, so it is where real glass earns the most.
+                   Slightly thinner than the comic card: this one is smaller, and the same bend
+                   across fewer pixels reads as a smear rather than a curve. *@
+                <GlassPane Thickness="0.42" />
+
                 <div class="prompt-eyebrow">Start here</div>
                 <h2>Find Nearby Restaurants</h2>
                 <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
@@ -174,6 +185,7 @@
                 <div class="cq-card">
                     <RestaurantCard
                         Restaurant="restaurant"
+                        IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
                         IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                         OnRestaurantClick="HandleRestaurantClick" />
                 </div>
@@ -468,7 +480,10 @@
         // First trusted gesture on the landing page: the only moment a browser will let the
         // AudioContext start.
         await Fx.UnlockAudioAsync();
-        await Fx.PlayTapAsync();
+        // A ping with a delayed echo rather than a click. The gap is the whole message — a
+        // request has gone out and has not come back — and a plain tap said nothing the button's
+        // own press state did not already say.
+        await Fx.PlayLocatingAsync();
 
         _lastAttempt = DiscoveryAttempt.Location;
         _flowState = LocationFlowState.Loading;
@@ -526,7 +541,7 @@
 
             if (response == null)
             {
-                Fail("No restaurants found nearby. Try a different location.");
+                await FailEmptyAsync("No restaurants found nearby. Try a different location.");
                 return;
             }
 
@@ -541,7 +556,7 @@
 
             if (response.Restaurants.Count == 0)
             {
-                Fail("No restaurants found nearby. Try a different location.");
+                await FailEmptyAsync("No restaurants found nearby. Try a different location.");
                 return;
             }
 
@@ -563,7 +578,7 @@
         var searchTerm = _searchQuery.Trim();
 
         await Fx.UnlockAudioAsync();
-        await Fx.PlayTapAsync();
+        await Fx.PlayLocatingAsync();
 
         Analytics.Track(FunnelSteps.SearchPerformed);
         _lastAttempt = DiscoveryAttempt.Search;
@@ -578,7 +593,7 @@
 
             if (response == null)
             {
-                Fail("No restaurants found for that location. Try a different city or ZIP code.");
+                await FailEmptyAsync("No restaurants found for that location. Try a different city or ZIP code.");
                 return;
             }
 
@@ -594,7 +609,7 @@
 
             if (response.Restaurants.Count == 0)
             {
-                Fail("No restaurants found for that location. Try a different city or ZIP code.");
+                await FailEmptyAsync("No restaurants found for that location. Try a different city or ZIP code.");
                 return;
             }
 
@@ -629,10 +644,26 @@
     {
         await RefreshCachedPlacesAsync();
 
+        // Deliberately after the cache lookup, not before: the grid is about to render with the
+        // cards' cached/uncached material on them, and the arrival figure is the sound of that
+        // whole state landing rather than of the HTTP response returning.
+        await Fx.PlayArrivalAsync(_restaurants.Count);
+
         if (_showMap)
         {
             await RenderMapAsync();
         }
+    }
+
+    /// <summary>
+    /// A search that found nothing. Distinct from <see cref="Fail"/>'s other callers because it
+    /// gets the flat two-note cue rather than the error cue — a zero-result search is an answer,
+    /// not a malfunction, and sounding like a malfunction sends the user looking for a fault.
+    /// </summary>
+    private async Task FailEmptyAsync(string message)
+    {
+        Fail(message);
+        await Fx.PlayEmptyAsync();
     }
 
     /// <summary>

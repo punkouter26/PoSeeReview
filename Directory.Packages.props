@@ -25,7 +25,6 @@
          carries a high-severity advisory (GHSA-v5pm-xwqc-g5wc). CentralPackageTransitivePinning
          lifts the transitive reference to this fixed version. -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.11.0" />
-    <!-- Microsoft Extensions -->
     <!-- Resilience -->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.5.0" />
     <!-- Logging -->

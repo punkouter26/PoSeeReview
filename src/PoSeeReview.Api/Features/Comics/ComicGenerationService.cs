@@ -30,6 +30,8 @@ public partial class ComicGenerationService : IComicGenerationService
     private readonly ILogger<ComicGenerationService> _logger;
     private readonly TelemetryClient _telemetryClient;
     private readonly TimeProvider _timeProvider;
+    private readonly ComicGenerationLock _generationLock;
+    private readonly IEmbeddingService _embeddingService;
 
     private readonly ComicOptions _options;
 
@@ -45,6 +47,8 @@ public partial class ComicGenerationService : IComicGenerationService
         IContentModerationGate moderationGate,
         ILogger<ComicGenerationService> logger,
         TelemetryClient telemetryClient,
+        ComicGenerationLock generationLock,
+        IEmbeddingService embeddingService,
         IOptions<ComicOptions> options,
         TimeProvider? timeProvider = null)
     {
@@ -59,9 +63,28 @@ public partial class ComicGenerationService : IComicGenerationService
         _moderationGate = moderationGate ?? throw new ArgumentNullException(nameof(moderationGate));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+        _generationLock = generationLock ?? throw new ArgumentNullException(nameof(generationLock));
+        _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
+
+    /// <summary>
+    /// A cached comic is usable when it has not expired <em>and</em> was drawn under the prompt
+    /// version currently in force.
+    /// <para>
+    /// The second half is what makes changing a prompt cheap to evaluate. Without it a tune kept
+    /// serving the previous prompt's output until somebody paid for a forced regeneration, so the
+    /// only way to see the new behaviour was to spend on every restaurant being compared — and
+    /// the easy mistake was to compare new output against an old comic and blame the prompt.
+    /// A version mismatch falls through to generation on demand, which needs no migration and no
+    /// bulk job, and a row written before versioning existed reads back as 0 and so misses once.
+    /// </para>
+    /// </summary>
+    private bool IsCacheUsable(Comic? comic) =>
+        comic is not null
+        && comic.ExpiresAt > _timeProvider.GetUtcNow()
+        && comic.PromptVersion == _options.PromptVersion;
 
     /// <summary>
     /// Generates or retrieves cached comic for a restaurant.
@@ -90,7 +113,7 @@ public partial class ComicGenerationService : IComicGenerationService
         if (!forceRegenerate)
         {
             var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
-            if (cachedComic != null && cachedComic.ExpiresAt > _timeProvider.GetUtcNow())
+            if (cachedComic is not null && IsCacheUsable(cachedComic))
             {
                 _logger.ReturningCachedComic(placeId.Value);
 
@@ -112,6 +135,32 @@ public partial class ComicGenerationService : IComicGenerationService
         }
 
         _telemetryClient.GetMetric("Comics.CacheMiss").TrackValue(1);
+
+        // Single flight. The cache was read and missed a moment ago, and everything below spends
+        // money. Two requests for one restaurant arriving inside that window — a double-tap on a
+        // phone, two tabs — would both miss and both pay for the same comic, with the loser's
+        // output discarded by the upsert. A per-place gate makes the second caller wait, re-read,
+        // and find the first one's comic instead of commissioning its own.
+        await using var generationGate = await _generationLock.AcquireAsync(placeId, cancellationToken);
+
+        // Re-read under the gate: the wait may have been exactly as long as the other request's
+        // generation, which is now in the cache.
+        if (!forceRegenerate)
+        {
+            var raced = await _comicRepository.GetByPlaceIdAsync(placeId);
+            if (raced is not null && IsCacheUsable(raced))
+            {
+                _logger.LogInformation(
+                    "Comic for placeId {PlaceId} was generated while this request waited — serving it",
+                    placeId.Value);
+                _telemetryClient.GetMetric("Comics.Generation.Deduplicated").TrackValue(1);
+                raced.CacheState = ComicCacheState.Cached;
+                progress?.Report(ComicGenerationPhase.CacheHit);
+                overallStopwatch.Stop();
+                _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(overallStopwatch.Elapsed.TotalMilliseconds);
+                return raced;
+            }
+        }
 
         // Fetch restaurant details with reviews
         progress?.Report(ComicGenerationPhase.FetchingReviews);
@@ -222,20 +271,50 @@ public partial class ComicGenerationService : IComicGenerationService
         // Generate comic image (panel count capped at 2)
         progress?.Report(ComicGenerationPhase.GeneratingArtwork);
         var imageStopwatch = Stopwatch.StartNew();
-        var imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount, cancellationToken);
+        byte[] imageBytes;
+        try
+        {
+            imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount, cancellationToken);
+        }
+        catch (ImageDeclinedException ex)
+        {
+            // The image model refused to depict what the reviews describe. Nothing is published,
+            // and the refusal lands in the moderation queue — which is the point: it is a signal
+            // about the source material that nobody would otherwise ever see. This replaces a
+            // fallback that answered a refusal by paying for a second image of an unrelated
+            // cheerful restaurant and publishing it under these reviews' score.
+            _telemetryClient.GetMetric("Comics.ImageDeclined").TrackValue(1);
+            await _moderationGate.FlagForReviewAsync(placeId, "image_declined", cancellationToken);
+            _logger.LogWarning("Image model declined to draw placeId {PlaceId}: {Reason}", placeId.Value, ex.Reason);
+            throw;
+        }
         imageStopwatch.Stop();
 
         _logger.LogInformation("Generated {PanelCount}-panel comic image: {Size} bytes", panelCount, imageBytes.Length);
         _telemetryClient.GetMetric("Comics.Generation.ImageDurationMs").TrackValue(imageStopwatch.Elapsed.TotalMilliseconds);
 
-        // Add readable text caption overlays to each panel (replaces garbled AI-rendered text)
+        // Add readable text caption overlays to each panel (replaces garbled AI-rendered text).
+        // The captions arrive with the analysis: one completion produces the score, the narrative
+        // and the panel text together, so this step no longer waits on a model of its own. It was
+        // the second paid round trip in a pipeline that only ever needed one.
         progress?.Report(ComicGenerationPhase.ComposingStrip);
         var overlayStopwatch = Stopwatch.StartNew();
-        imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, narrative, panelCount, cancellationToken);
+        var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
+        imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, captions, panelCount, cancellationToken);
         overlayStopwatch.Stop();
 
         _logger.LogInformation("Added text overlay to comic: {Size} bytes", imageBytes.Length);
         _telemetryClient.GetMetric("Comics.Generation.TextOverlayDurationMs").TrackValue(overlayStopwatch.Elapsed.TotalMilliseconds);
+
+        // The comic's own colours, read off the finished bytes while they are still in memory.
+        // Has to happen here rather than on the client: the blob is served without CORS headers,
+        // so a browser canvas that has drawn it cannot be read back.
+        var palette = ComicPaletteExtractor.Extract(imageBytes);
+
+        // The vector that will let another comic find this one. Best-effort by contract: an empty
+        // array means "not a similarity candidate", which costs a related link and never a comic,
+        // and it is what a switched-off or unreachable embedding backend returns.
+        var embedding = await _embeddingService.EmbedAsync(narrative, cancellationToken);
 
         // Upload to blob storage
         progress?.Report(ComicGenerationPhase.Publishing);
@@ -255,7 +334,10 @@ public partial class ComicGenerationService : IComicGenerationService
             StrangenessScore = strangenessScore,
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
-            CacheState = ComicCacheState.Generated
+            CacheState = ComicCacheState.Generated,
+            Palette = palette,
+            PromptVersion = _options.PromptVersion,
+            Embedding = embedding
         };
 
         // Save to cache
@@ -415,7 +497,7 @@ public partial class ComicGenerationService : IComicGenerationService
 
         var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
 
-        if (cachedComic != null && cachedComic.ExpiresAt > _timeProvider.GetUtcNow())
+        if (cachedComic is not null && IsCacheUsable(cachedComic))
         {
             _logger.LogInformation("Found valid cached comic for placeId: {PlaceId}", placeId);
 

@@ -30,19 +30,6 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Leaderboard_RendersHeading(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/leaderboard");
-
-        // The page renders its heading through PageShell, which emits .page-hero-title /
-        // .page-shell-title — there has been no .leaderboard-header wrapper since that refactor,
-        // so the old selector matched nothing and this assertion could never pass.
-        await Assertions.Expect(page.Locator("h1.page-hero-title, h1.page-shell-title"))
-            .ToHaveTextAsync("Hall of Fame");
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
     public async Task Leaderboard_HasNoRegionOrLimitControls(string viewport)
     {
         var page = await SignedInAsync(viewport, "/leaderboard");
@@ -73,12 +60,20 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
         await Assertions.Expect(page.Locator(".leaderboard-card .comic-thumbnail img")).ToHaveCountAsync(count);
     }
 
+    /// <summary>
+    /// The heading and the never-an-error-banner rule on one page load. The heading renders
+    /// through PageShell (.page-hero-title / .page-shell-title) — there has been no
+    /// .leaderboard-header wrapper since that refactor, so an older selector matched nothing.
+    /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Leaderboard_EmptyOrPopulated_NeverShowsErrorBanner(string viewport)
+    public async Task Leaderboard_RendersItsHeadingAndNeverAnErrorBanner(string viewport)
     {
         var page = await SignedInAsync(viewport, "/leaderboard");
         await page.Locator(".leaderboard-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
+
+        await Assertions.Expect(page.Locator("h1.page-hero-title, h1.page-shell-title"))
+            .ToHaveTextAsync("Hall of Fame");
 
         await Assertions.Expect(page.Locator(".alert-danger")).ToHaveCountAsync(0);
         await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync(new() { Timeout = RenderTimeout });
@@ -91,6 +86,11 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
         var page = await SignedInAsync(viewport, "/diagnostics");
         await page.Locator(".diagnostics-container").First
             .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
+
+        // Dependency health, folded in from the former Diagnostics_ShowsDependencyHealth:
+        // same route, same render, one page load instead of two.
+        await Assertions.Expect(page.Locator(".health-summary, .diagnostics-section").First)
+            .ToBeVisibleAsync(new() { Timeout = RenderTimeout });
 
         var rows = page.Locator(".config-row");
         var count = await rows.CountAsync();
@@ -110,15 +110,5 @@ public sealed class LeaderboardAndDiagnosticsUiTests(PlaywrightFixture fixture)
 
             Assert.Contains("***", value, StringComparison.Ordinal);
         }
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Diagnostics_ShowsDependencyHealth(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/diagnostics");
-
-        var summary = page.Locator(".health-summary, .diagnostics-section").First;
-        await Assertions.Expect(summary).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
     }
 }

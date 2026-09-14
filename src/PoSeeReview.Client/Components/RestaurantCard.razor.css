@@ -125,8 +125,15 @@
     -webkit-box-orient: vertical;
 }
 
+/* Flex row, and wrapping, because the cache pill sits opposite the review count. At the narrow
+   end of the container query the two do not fit on one line, and letting them wrap beats
+   truncating either — the review count is the sort key for "best odds" and the pill is the
+   cost of the tap. */
 .card-footer {
-    display: block;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
     padding-top: 0.75rem;
     border-top: 1px solid var(--color-border);
     font-size: var(--text-sm);
@@ -170,7 +177,7 @@
     line-height: 1.4;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40rem) {
     .card-header {
         grid-template-columns: 1fr;
     }

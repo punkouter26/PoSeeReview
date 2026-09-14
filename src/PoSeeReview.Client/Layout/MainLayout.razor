@@ -55,6 +55,20 @@
     /// </summary>
     public static void RaiseScoreChanged(int score) => ScoreChanged?.Invoke(score);
 
+    /// <summary>
+    /// Cascaded alongside <see cref="ScoreChanged"/> for the same reason: the backdrop canvas is
+    /// owned by the layout, and the comic's colours have to reach it from a page that has no
+    /// reference to it.
+    /// </summary>
+    public static event Action<IReadOnlyList<string>>? PaletteChanged;
+
+    /// <summary>
+    /// Dresses the app in a comic's own colours, or restores the brand gradient when passed an
+    /// empty list. A comic route must raise the empty form on teardown — the tint is written to
+    /// the document element and would otherwise follow the user to the next page.
+    /// </summary>
+    public static void RaisePaletteChanged(IReadOnlyList<string> palette) => PaletteChanged?.Invoke(palette);
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Every render of the layout body means the destination route has painted, so this is
@@ -68,6 +82,7 @@
 
         _gradientHandle = await Fx.StartGradientAsync(_backdrop, 40);
         ScoreChanged += OnScoreChanged;
+        PaletteChanged += OnPaletteChanged;
 
         // Drops backdrop-filter while a list is actually moving. Done in JS rather than through
         // a Blazor scroll handler on purpose: routing every scroll event through interop into
@@ -90,9 +105,20 @@
     private void OnScoreChanged(int score) =>
         _ = Fx.SetGradientScoreAsync(_gradientHandle, score);
 
+    /// <summary>
+    /// An empty palette is the clear: it restores the brand gradient and removes the CSS
+    /// variables. Routing both through one event means a page cannot apply a tint and forget
+    /// there is a corresponding teardown.
+    /// </summary>
+    private void OnPaletteChanged(IReadOnlyList<string> palette) =>
+        _ = palette.Count == 0
+            ? Fx.ClearComicPaletteAsync(_gradientHandle)
+            : Fx.SetComicPaletteAsync(_gradientHandle, palette);
+
     public async ValueTask DisposeAsync()
     {
         ScoreChanged -= OnScoreChanged;
+        PaletteChanged -= OnPaletteChanged;
         await Fx.StopGradientAsync(_gradientHandle);
 
         if (_scrollGuard is not null)

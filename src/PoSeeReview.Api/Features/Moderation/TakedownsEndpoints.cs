@@ -7,11 +7,18 @@ using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
 using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Api.Features.Takedowns;
+namespace PoSeeReview.Api.Features.Moderation;
 
 /// <summary>
-/// Content takedown slice. Maps <c>/api/takedowns</c>, guarded by an X-Api-Key filter
+/// The keyed takedown route. Maps <c>/api/takedowns</c>, guarded by an X-Api-Key filter
 /// (NET_RULES 3.3). Validation via FluentValidation (NET_RULES 2.2).
+/// <para>
+/// In the Moderation slice because it is the same capability as <c>/api/moderation</c> reached a
+/// different way: both erase a comic and suppress the place so it cannot be regenerated. The two
+/// keep separate gates on purpose — this one is a shared key for machine callers, the other is a
+/// role for humans — but a takedown that suppressed nothing would undo itself on the next tap,
+/// and that shared obligation is why they are now one slice.
+/// </para>
 /// </summary>
 internal static class TakedownsEndpoints
 {

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Shared.Dtos;
@@ -32,6 +33,7 @@ internal static class ComicsEndpoints
         group.MapGet("/cached", GetCachedPlaceIds);
         group.MapGet("/{placeId}/stats", GetComicStats);
         group.MapGet("/{placeId}/image", DownloadComicImage);
+        group.MapGet("/{placeId}/similar", GetSimilarComics);
         group.MapGet("/{placeId}", GetCachedComic);
 
         // The link-preview card. Deliberately NOT under /api: UserAgentValidationMiddleware only
@@ -41,6 +43,10 @@ internal static class ComicsEndpoints
         app.MapGet("/share/{placeId}/card.png", GetShareCard)
             .WithTags("Comics")
             .AllowAnonymous();
+
+        // Short links live in this slice because they only ever address a comic — see
+        // ShareLinksEndpoints for why they are not under /api.
+        app.MapShareLinkEndpoints();
 
         return app;
     }
@@ -142,6 +148,10 @@ internal static class ComicsEndpoints
             StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
             e.Message, "https://tools.ietf.org/html/rfc4918#section-11.2", "content_blocked"),
 
+        ImageDeclinedException e => (
+            StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
+            e.Message, "https://tools.ietf.org/html/rfc4918#section-11.2", "image_declined"),
+
         InsufficientStrangenessException => (
             StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
             "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!",
@@ -206,6 +216,11 @@ internal static class ComicsEndpoints
     /// reserved budget unit was never actually spent and must come back to the user. A generic
     /// 500 is deliberately absent: it can be thrown after the paid call, and refunding there
     /// would let a failing downstream burn quota for free.
+    /// <para>
+    /// <c>image_declined</c> is absent for exactly that reason: the image model answered, and a
+    /// refusal is a billed response. The user is not charged twice — they are charged once, for a
+    /// call that happened.
+    /// </para>
     /// </summary>
     private static bool IsRefundableFailure(string errorType) =>
         errorType is "restaurant_not_found" or "insufficient_reviews" or "insufficient_strangeness"
@@ -241,7 +256,7 @@ internal static class ComicsEndpoints
     /// generate button before a tap rather than after a 429.
     /// </summary>
     private static async Task<IResult> GetBudget(
-        IGenerationBudgetService budgetService,
+        GenerationBudgetService budgetService,
         HttpContext http)
     {
         var budget = await budgetService.GetBudgetAsync(http.RequestAborted);
@@ -337,7 +352,7 @@ internal static class ComicsEndpoints
     private static async Task<IResult> GenerateComic(
         string placeId,
         GenerateComicCommandHandler generateComicCommandHandler,
-        IGenerationBudgetService budgetService,
+        GenerationBudgetService budgetService,
         IContentModerationGate moderationGate,
         ILogger<GenerateComicCommandHandler> logger,
         HttpContext http,
@@ -422,7 +437,7 @@ internal static class ComicsEndpoints
     private static async Task GenerateComicStream(
         string placeId,
         GenerateComicCommandHandler generateComicCommandHandler,
-        IGenerationBudgetService budgetService,
+        GenerationBudgetService budgetService,
         IContentModerationGate moderationGate,
         ILogger<GenerateComicCommandHandler> logger,
         HttpContext http,
@@ -597,6 +612,78 @@ internal static class ComicsEndpoints
                 Phase = value
             });
     }
+
+    /// <summary>
+    /// Comics about the same kind of strangeness as this one.
+    /// <para>
+    /// The first surface here that can answer "and what else?": until now a comic page was a dead
+    /// end, and the only way to reach another comic was to go back and search again. It costs
+    /// nothing to serve — no model call, no Maps call, just a read of rows this app already wrote.
+    /// </para>
+    /// <para>
+    /// Returns an empty list rather than an error whenever it has nothing to say: embeddings
+    /// switched off, no vector on either side, no candidates. A related list is a suggestion, and
+    /// a suggestion that cannot be made is not a failure.
+    /// </para>
+    /// </summary>
+    private static async Task<IResult> GetSimilarComics(
+        string placeId,
+        IComicRepository comicRepository,
+        IEmbeddingService embeddingService,
+        IContentModerationGate moderationGate,
+        IOptions<EmbeddingOptions> embeddingOptions,
+        TimeProvider timeProvider,
+        HttpContext http,
+        int limit = 5)
+    {
+        if (string.IsNullOrWhiteSpace(placeId) || !embeddingService.IsEnabled)
+        {
+            return Results.Ok(new SimilarComicsResponse([]));
+        }
+
+        var source = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
+
+        // A comic drawn before embeddings were switched on has no vector, and no backfill job is
+        // run to invent one: the rows expire within a day, so the feature fills itself in. The
+        // alternative — embedding the narrative on this read — would put a model call behind a GET.
+        if (source is null || source.Embedding.Length == 0)
+        {
+            return Results.Ok(new SimilarComicsResponse([]));
+        }
+
+        var candidates = await comicRepository.GetLiveComicsAsync(
+            timeProvider.GetUtcNow(), embeddingOptions.Value.MaxCandidates, http.RequestAborted);
+
+        var ranked = new List<SimilarComicDto>(candidates.Count);
+
+        foreach (var candidate in candidates)
+        {
+            if (candidate.PlaceId == source.PlaceId || candidate.Embedding.Length == 0)
+            {
+                continue;
+            }
+
+            // A withheld comic must not be recommended: the row would promise something to read
+            // and the tap would land on a 451.
+            var verdict = await moderationGate.EvaluateAsync(candidate.PlaceId, http.RequestAborted);
+            if (!verdict.IsServable)
+            {
+                continue;
+            }
+
+            ranked.Add(new SimilarComicDto(
+                candidate.PlaceId.Value,
+                candidate.RestaurantName,
+                candidate.StrangenessScore,
+                Math.Round(VectorMath.CosineSimilarity(source.Embedding, candidate.Embedding), 4)));
+        }
+
+        return Results.Ok(new SimilarComicsResponse(
+            [.. ranked.OrderByDescending(c => c.Similarity).Take(Math.Clamp(limit, 1, MaxSimilarComics))]));
+    }
+
+    /// <summary>Suggestion list length cap. Related comics are a row under a strip, not a page.</summary>
+    private const int MaxSimilarComics = 10;
 
     /// <summary>
     /// Re-serves a comic image from this origin so the browser will actually save it.

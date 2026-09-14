@@ -6,7 +6,7 @@ using Moq;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Restaurants;
-using PoSeeReview.Api.Features.Takedowns;
+using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Validation;

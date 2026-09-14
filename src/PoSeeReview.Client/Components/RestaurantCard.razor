@@ -5,10 +5,14 @@
    the shared frame budget, which matters here more than anywhere else in the app: this component
    is repeated across a whole results grid, and an IntersectionObserver-and-class-toggle would
    pay an observer, a callback and a style recalculation per card to produce the same fade. *@
-<RadzenCard class="@($"restaurant-card scroll-enter {GetCardClass()}")" 
+@* data-cached is the hook for the card's material (see the "READY vs COSTS SOMETHING" block in
+   app.css). It is an attribute rather than a class because it is a fact about the place, not a
+   style the card chose, and because the CSS wants to key three different treatments off it. *@
+<RadzenCard class="@($"restaurant-card scroll-enter {GetCardClass()}")"
             title="@GetTooltipText()"
             data-testid="restaurant-card"
             data-physics-card
+            data-cached="@(IsCached ? "ready" : "new")"
             @onclick="OnClickIfEnabled">
     <div class="card-header">
         <div>
@@ -33,6 +37,17 @@
         <span class="review-summary">
             @($"{Restaurant.TotalReviews} review{(Restaurant.TotalReviews == 1 ? "" : "s")} to draw from")
         </span>
+        @* The cost of the tap, said before the tap. A cached comic opens instantly and spends
+           nothing; a fresh one spends one of the day's generations and about ten seconds. The
+           map has drawn this distinction since it shipped and the grid — which is what almost
+           everyone actually uses — had no way to say it. *@
+        @if (IsEnabled)
+        {
+            <span class="cache-pill" title="@(IsCached ? "Already drawn — opens instantly and costs nothing" : "Not drawn yet — takes about 10 seconds and uses one of today's generations")">
+                <span class="cache-dot" aria-hidden="true"></span>
+                @(IsCached ? "Ready now" : "~10s to draw")
+            </span>
+        }
     </div>
 
     <div class="card-cta">
@@ -62,6 +77,18 @@
 
     [Parameter]
     public bool IsLoading { get; set; }
+
+    /// <summary>
+    /// Whether a live comic already exists for this place.
+    /// <para>
+    /// Best-effort and allowed to be wrong: it comes from a batched cache probe, and a comic can
+    /// expire between that answer and the tap. Nothing depends on it being right — it changes the
+    /// card's material and which tap cue plays, and a stale "ready" costs the user a ten-second
+    /// wait they were told would be instant, never a wrong result.
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public bool IsCached { get; set; }
 
     /// <summary>
     /// Mirrors the API's floor (ComicOptions.MinimumReviewsRequired = 1): a comic needs at
@@ -98,7 +125,10 @@
         {
             // A click is a trusted gesture, so this is also a valid point to unlock audio.
             await Fx.UnlockAudioAsync();
-            await Fx.PlayTapAtAsync(args.ClientX);
+            // Voiced by consequence, not just position. The cached cue is bright and resolves
+            // immediately; the uncached one is lower and leaves a note hanging, because something
+            // is now going to take ten seconds and spend money.
+            await Fx.PlayTapAtAsync(args.ClientX, IsCached);
             await OnRestaurantClick.InvokeAsync(Restaurant);
         }
     }

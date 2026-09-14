@@ -1,7 +1,7 @@
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Api.Features.ShareLinks;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Short links for comics. Maps <c>/api/share</c> and the public <c>/s/{code}</c> resolver
@@ -11,6 +11,10 @@ namespace PoSeeReview.Api.Features.ShareLinks;
 /// fine in an href and hostile everywhere a link is actually shared: a message, a caption, a
 /// screenshot someone retypes. The short form is also the only stable handle this app has for
 /// counting how a comic travelled.
+/// </para>
+/// <para>
+/// In the Comics slice rather than one of its own: a short link only ever addresses a comic, and
+/// <c>/share/{placeId}/card.png</c> — the other half of sharing — was already mapped here.
 /// </para>
 /// </summary>
 internal static class ShareLinksEndpoints

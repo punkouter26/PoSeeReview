@@ -9,13 +9,23 @@ using PoSeeReview.Shared.Dtos;
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Table-backed daily generation budget.
+/// Table-backed daily spend guard for the paid generation pipeline.
 /// <para>
 /// Two rows are charged per generation: the principal's, and the app-wide
 /// <see cref="GenerationBudgetEntity.ServiceRowKey"/> row. They are separate entities in the
 /// same partition, so this is two optimistic-concurrency updates rather than one transaction —
 /// acceptable because the failure mode of a torn pair is one unit of drift on a daily counter,
 /// not a wrong answer to a user.
+/// </para>
+/// <para>
+/// The protocol callers follow: <c>TryReserveAsync</c> before the pipeline runs, and
+/// <c>ReleaseAsync</c> when it turned out to serve a cached comic and spent nothing. The refund
+/// is best-effort — a failed refund must never fail a request that already succeeded.
+/// </para>
+/// <para>
+/// Charged here rather than in a slice of its own: the spend is the Comics slice's, and slices
+/// do not reference each other (NET_RULES 2.2). No interface, because nothing substitutes it —
+/// the integration tests construct this type directly.
 /// </para>
 /// </summary>
 public sealed class GenerationBudgetService(
@@ -25,7 +35,7 @@ public sealed class GenerationBudgetService(
     ICurrentRequestIdentityAccessor identityAccessor,
     IHttpContextAccessor httpContextAccessor,
     TimeProvider timeProvider,
-    ILogger<GenerationBudgetService> logger) : IGenerationBudgetService
+    ILogger<GenerationBudgetService> logger)
 {
     private readonly TableClient _table =
         tableServiceClient.GetTableClient(storageOptions.Value.BudgetTableName);

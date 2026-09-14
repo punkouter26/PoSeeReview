@@ -111,6 +111,16 @@ public readonly record struct FxAudioLatency(
 public readonly record struct FxShelfEntry(int Rank, double Score);
 
 /// <summary>
+/// One voice of the leaderboard chord.
+/// </summary>
+/// <param name="Seed">
+/// The place id, never the restaurant name. Names collide across chains, and two branches of the
+/// same chain are not the same comic — a motif that cannot tell them apart is not an identity.
+/// </param>
+/// <param name="Score">Strangeness, 0-100. Picks the scale, tempo and timbre.</param>
+public readonly record struct FxMotif(string Seed, double Score);
+
+/// <summary>
 /// Blazor-side facade over <c>wwwroot/js/fx.js</c>.
 /// <para>
 /// Every method swallows <see cref="JSException"/> and returns a benign default. These calls
@@ -256,6 +266,36 @@ public sealed class FxService(IJSRuntime js)
     /// so no per-item <see cref="ElementReference"/> is needed.
     /// </summary>
     public Task PlayTapAtAsync(double clientX) => SafeVoidAsync("poseeFx.playTapAt", clientX);
+    /// <summary>
+    /// A search leaving — location request or text search. A ping and a delayed, quieter echo of
+    /// it: the gap is what distinguishes "a request is outstanding" from "a button was pressed",
+    /// which on the landing page were previously the same sound.
+    /// </summary>
+    public Task PlayLocatingAsync() => SafeVoidAsync("poseeFx.playLocating");
+
+    /// <summary>
+    /// Results landing. The figure's LENGTH carries the count, capped at five notes — "a lot came
+    /// back" and "barely anything came back" are the two states the user is about to act on.
+    /// </summary>
+    public Task PlayArrivalAsync(int count) => SafeVoidAsync("poseeFx.playArrival", count);
+
+    /// <summary>
+    /// Zero results. Deliberately not <see cref="PlayErrorAsync"/>: an empty answer is an answer,
+    /// and a search that found nothing should not sound like the app broke.
+    /// </summary>
+    public Task PlayEmptyAsync() => SafeVoidAsync("poseeFx.playEmpty");
+
+    /// <summary>
+    /// Tap on a restaurant card, voiced by whether that comic already exists.
+    /// <para>
+    /// A cache hit opens instantly and costs nothing; a miss spends a paid image call and about
+    /// ten seconds of waiting. They are adjacent controls in the same grid with wildly different
+    /// consequences, and until now they made exactly the same click.
+    /// </para>
+    /// </summary>
+    public Task PlayTapAtAsync(double clientX, bool cached) =>
+        SafeVoidAsync("poseeFx.playTapCached", clientX, cached);
+
     public Task PlayScoreTickAsync(int value, int target) => SafeVoidAsync("poseeFx.playScoreTick", value, target);
     public Task PlayScoreLandAsync(int score) => SafeVoidAsync("poseeFx.playScoreLand", score);
     public Task PlayPhaseAsync(int index, int total) => SafeVoidAsync("poseeFx.playPhase", index, total);
@@ -285,6 +325,24 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task PlaySignatureAsync(string seed, int score) =>
         SafeVoidAsync("poseeFx.playSignature", seed, score);
+
+    /// <summary>
+    /// The top of the board as a chord, each voice one restaurant's own motif.
+    /// <para>
+    /// Because a motif is deterministic from its place id, a board that has changed sounds
+    /// different from one that has not — before the visitor has read a single row. The Hall of
+    /// Fame had a 3D shelf on it and not one sound.
+    /// </para>
+    /// </summary>
+    public Task PlayBoardChordAsync(IReadOnlyList<FxMotif> entries) =>
+        SafeVoidAsync("poseeFx.playBoardChord", entries);
+
+    /// <summary>
+    /// A row that moved since this visitor last saw the board. Positive is a climb.
+    /// </summary>
+    /// <param name="pan">-1..1, so the cue comes from where the row is on screen.</param>
+    public Task PlayRankDeltaAsync(int delta, double pan) =>
+        SafeVoidAsync("poseeFx.playRankDelta", delta, pan);
 
     /// <summary>
     /// Plays a numeric series as pitch, sweeping left to right. Long series are decimated on the
@@ -349,6 +407,77 @@ public sealed class FxService(IJSRuntime js)
     public Task StopGradientAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopGradient", handle);
 
+    /// <summary>
+    /// Dresses the app in the comic's own colours — the shader backdrop eases to them, and three
+    /// CSS variables carry them to the score ring, the reaction chips and the card rim.
+    /// <para>
+    /// The palette is sampled on the SERVER, off the finished image bytes. It cannot be sampled
+    /// here: the comic blob is served without CORS headers, so a canvas that has drawn it is
+    /// tainted and cannot be read back — the same constraint that keeps the comic post-process
+    /// from attaching for most visitors.
+    /// </para>
+    /// <para>
+    /// The tint only ever reaches accents, never a text colour or a text background. Every
+    /// readable pair in this app is measured against WCAG by ColorContrastTests parsing the real
+    /// tokens out of app.css, and a colour invented at runtime by an image model is precisely
+    /// what that test cannot cover.
+    /// </para>
+    /// </summary>
+    /// <returns>Whether a palette was actually applied. False for a comic drawn before the
+    /// extractor existed, which renders on brand tokens exactly as it always did.</returns>
+    public Task<bool> SetComicPaletteAsync(int handle, IReadOnlyList<string> palette) =>
+        handle == 0 ? Task.FromResult(false)
+                    : SafeAsync("poseeFx.setComicPalette", false, handle, palette);
+
+    /// <summary>
+    /// Restores the brand gradient. MUST be called when leaving a comic: the variables are set
+    /// on the document element, so a tint left behind follows the user to the next route and
+    /// colours a page with no comic to justify it.
+    /// </summary>
+    public Task ClearComicPaletteAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.clearComicPalette", handle);
+
+    /// <summary>
+    /// Turns the canvas's PARENT element into a real refractive glass pane.
+    /// <para>
+    /// What this adds over the CSS <c>.glass</c> material is what a blur radius cannot express:
+    /// the backdrop is genuinely bent at the pane's edges, the colour splits across that bend,
+    /// and a highlight travels the face on the same clock as the backdrop's own lights.
+    /// </para>
+    /// <para>
+    /// It works only because the backdrop is PROCEDURAL. No browser exposes composited DOM to a
+    /// shader, so a pane cannot read what is behind it — but it can recompute it, from the same
+    /// GLSL the full-screen pass uses, at whatever coordinate the refraction asks for. A pane
+    /// over an arbitrary image could not do this; the comic blob is cross-origin and tainting,
+    /// which is the same wall the comic post-process hits.
+    /// </para>
+    /// <para>
+    /// A zero handle is the ordinary case below the Full tier, and the CSS material underneath is
+    /// a complete answer on its own — prefer <see cref="Components.GlassPane"/> over calling this
+    /// directly, since it owns the canvas and the teardown.
+    /// </para>
+    /// </summary>
+    public Task<int> StartGlassAsync(ElementReference canvas, double thickness, double tint, double sheen) =>
+        SafeAsync("poseeFx.startGlass", 0, canvas, thickness, tint, sheen);
+
+    /// <summary>
+    /// Tears a pane down. MUST be called: the JS side flags the parent element so app.css can
+    /// stand the CSS blur down, and a pane abandoned with that flag set leaves the card with no
+    /// material at all — worse than either one alone.
+    /// </summary>
+    public Task StopGlassAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopGlass", handle);
+
+    /// <summary>Live pane count, for the diagnostics panel. Creep here is a leak.</summary>
+    public Task<int> GetGlassPaneCountAsync() => SafeAsync("poseeFx.glassPanes", 0);
+
+    /// <summary>
+    /// Viewport width, for converting a pointer coordinate into a fraction of a full-width
+    /// canvas. Falls back to 1, which every caller clamps against — a bad width places an effect
+    /// in the wrong spot, never off the canvas.
+    /// </summary>
+    public Task<double> GetViewportWidthAsync() => SafeAsync("poseeFx.viewportWidth", 1d);
+
     public Task<int> AttachComicFxAsync(ElementReference canvas, ElementReference image) =>
         SafeAsync("poseeFx.attachComicFx", 0, canvas, image);
 
@@ -385,12 +514,55 @@ public sealed class FxService(IJSRuntime js)
         SafeAsync("poseeFx.startComicReveal", 0, container, bands, comicFxHandle);
 
     /// <summary>
+    /// The reveal, preferring a simulated wet-ink boundary over the CSS mask.
+    /// <para>
+    /// These are two different effects, not two qualities of one. The CSS mask is a function of
+    /// POSITION — the edge looks the way it does because of where it is. The field is a function
+    /// of HISTORY: ink wicks along the paper's grain, runs ahead of itself where the sheet is
+    /// thirsty, and pools at the boundary, because every cell reads what its neighbours did on
+    /// the previous step. State per cell per frame is what a WebGPU compute pass is for, and it
+    /// is the second effect in this app to earn one.
+    /// </para>
+    /// <para>
+    /// The two are mutually exclusive and the JS side enforces it: the field covers the comic in
+    /// paper and eats the cover away, so running the mask as well would develop the artwork twice
+    /// with a seam where the boundaries disagreed.
+    /// </para>
+    /// <para>
+    /// Falls through to the CSS mask without WebGPU or below the Full tier. Never read that as
+    /// degraded — it is what nearly everyone sees, and it is a complete effect.
+    /// </para>
+    /// </summary>
+    /// <param name="canvas">Overlay canvas sized to the strip, above the image, below the reactions.</param>
+    public Task<int> StartComicRevealFieldAsync(ElementReference container, ElementReference canvas,
+        int bands, int comicFxHandle) =>
+        SafeAsync("poseeFx.startComicRevealField", 0, container, canvas, bands, comicFxHandle);
+
+    /// <summary>
     /// Ends a reveal with the comic fully visible. MUST be called on teardown: the mask only
     /// applies while the element carries <c>data-comic-reveal</c>, so abandoning a running reveal
     /// would leave part of the comic permanently hidden.
     /// </summary>
     public Task FinishComicRevealAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.finishComicReveal", handle);
+
+    /// <summary>
+    /// Plays the comic as it is read: one note of its own motif per panel, as that panel crosses
+    /// the middle of the screen.
+    /// <para>
+    /// The notes come from the same seeded sequence the signature uses, so what a reader hears
+    /// while scrolling is the figure that played when the score landed — same notes, same order,
+    /// at their own pace. The travelling highlight that accompanies it is CSS
+    /// (<c>animation-timeline: view()</c>) and costs nothing in the frame budget; only the
+    /// boundary crossing needs JS.
+    /// </para>
+    /// </summary>
+    /// <param name="seed">Place id, never the restaurant name — names collide across chains.</param>
+    public Task<int> StartPanelScrubAsync(ElementReference container, int panels, string seed, int score) =>
+        SafeAsync("poseeFx.startPanelScrub", 0, container, panels, seed, score);
+
+    public Task StopPanelScrubAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopPanelScrub", handle);
 
     /// <summary>
     /// Fires the ink burst. Prefers the WebGPU compute backend, where the drops decelerate, hit
@@ -420,6 +592,36 @@ public sealed class FxService(IJSRuntime js)
 
     public Task StopInkAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopInk", handle);
+
+    /// <summary>
+    /// Opens a persistent reaction pile over the comic. Starts empty; bodies arrive from
+    /// <see cref="ThrowReactionAsync"/> as the user taps.
+    /// <para>
+    /// Separate from <see cref="SettleInkAsync"/> on purpose. That is a one-shot that seeds
+    /// itself and tears itself down after about three seconds; this is a surface that lives for
+    /// the page and accumulates. Stop it with <see cref="StopInkAsync"/> — the handles are the
+    /// same kind — and stop it you must, or the solver keeps a frame task alive after the route
+    /// has gone.
+    /// </para>
+    /// </summary>
+    public Task<int> StartReactionPileAsync(ElementReference canvas) =>
+        SafeAsync("poseeFx.startPile", 0, canvas);
+
+    /// <summary>
+    /// Throws one reaction onto the pile: a handful of emoji bodies that arc off the chip, tumble
+    /// down the comic and land unevenly on whatever is already there.
+    /// <para>
+    /// This is the thing a tally cannot say. A count next to a glyph reports how many people
+    /// pressed it and says nothing about the fact that you just did — and a reaction is the only
+    /// thing a viewer can give a comic that expires in 24 hours.
+    /// </para>
+    /// </summary>
+    /// <param name="originX">0..1 across the canvas — where the tapped chip is.</param>
+    /// <param name="originY">0..1 down the canvas. Near 0, so the bodies have room to fall.</param>
+    /// <param name="clientX">Viewport x of the tap, so the click is panned to where it happened.</param>
+    public Task<bool> ThrowReactionAsync(int handle, string glyph, double originX, double originY, double clientX) =>
+        handle == 0 ? Task.FromResult(false)
+                    : SafeAsync("poseeFx.throwReaction", false, handle, glyph, originX, originY, clientX);
 
     public Task<int> StartLoadingRingAsync(ElementReference canvas, double progress) =>
         SafeAsync("poseeFx.startLoadingRing", 0, canvas, progress);

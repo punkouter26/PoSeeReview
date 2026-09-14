@@ -53,13 +53,13 @@
     <script src="share-utils.js"></script>
     <!-- Resolves design tokens for anything that needs a real colour string rather than a
          var() — SVG presentation attributes (Radzen charts) do not resolve custom properties. -->
-    <script src="theme-tokens.js"></script>
+    <script src="js/theme-tokens.js"></script>
     <!-- Discovery map shim. A few KB; MapLibre itself is dynamically imported the first time
          someone opens the map panel and never on load. -->
-    <script src="map.js"></script>
+    <script src="js/map.js"></script>
     <!-- Must load before Blazor: `beforeinstallprompt` fires early and is only capturable if
          its default is prevented the moment it arrives. -->
-    <script src="pwa.js"></script>
+    <script src="js/pwa.js"></script>
     <!-- Graphics + audio. type="module" so the heavy scenes can be dynamically imported on
          demand; nothing under lib/ is fetched until a page actually asks for it. Loaded before
          Blazor so window.poseeFx exists by the time the first component calls into it. -->

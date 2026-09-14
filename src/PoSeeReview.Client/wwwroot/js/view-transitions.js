@@ -20,6 +20,36 @@ const SETTLE_TIMEOUT_MS = 600;
 let enabled = false;
 let pending = null;
 
+/** Whether this navigation is a card -> comic, so settle() knows to tag the arriving element. */
+let morphArmed = false;
+
+/** Fired on every transition the app opens, so fx.js can pan a cue in the direction of travel. */
+let onNavigate = null;
+
+/**
+ * How "deep" each route is, for deciding whether a navigation is a step forward or a step back.
+ *
+ * A transition that always slides the same way is a cross-fade with extra steps: direction is
+ * only information if going back reverses it. Depth rather than history length because this is a
+ * browsing app, not a wizard — arriving at a comic from a link is forward even on a first load,
+ * and returning to the list it came from is back regardless of how the user got there.
+ */
+const ROUTE_DEPTH = [
+    [/^\/comic\//, 3],
+    [/^\/moderation/, 2],
+    [/^\/diagnostics/, 2],
+    [/^\/insights/, 2],
+    [/^\/my-comics/, 2],
+    [/^\/leaderboard/, 2]
+];
+
+function depthOf(pathname) {
+    for (const [pattern, depth] of ROUTE_DEPTH) {
+        if (pattern.test(pathname)) return depth;
+    }
+    return 1;   // "/" and anything unrecognised is the shallow end.
+}
+
 function reducedMotion() {
     try {
         return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -29,6 +59,26 @@ function reducedMotion() {
 }
 
 /**
+ * Every place in the app a comic can be opened FROM.
+ *
+ * All four are lists of the same thing — a comic you can tap — and every one of them used to
+ * drop the user onto the comic page with no relationship to the row they came from. The morph is
+ * what makes an app of many lists feel like one place: the thing you touched is the thing that
+ * arrives.
+ *
+ *   [data-physics-card] — a restaurant card on discovery
+ *   .leaderboard-card   — the live Hall of Fame
+ *   .archive-entry      — the weekly archive
+ *   .history-card       — /my-comics, both the kept list and the local history
+ */
+const MORPH_SOURCES = '[data-physics-card], .leaderboard-card, .archive-entry, .history-card';
+
+/** The destination half of the pair. Tagged on arrival — see tagMorphTarget. */
+const MORPH_TARGET = '.comic-strip-container';
+
+const MORPH_NAME = 'comic-morph';
+
+/**
  * Marks the tapped card so CSS can morph it into the comic panel. view-transition-name must be
  * unique per document, so exactly one element may carry it at a time — it is cleared on the way
  * out and re-applied per navigation.
@@ -36,7 +86,31 @@ function reducedMotion() {
 function tagMorphSource(element) {
     clearMorphTags();
     if (element) {
-        element.style.viewTransitionName = 'comic-morph';
+        element.style.viewTransitionName = MORPH_NAME;
+    }
+}
+
+/**
+ * Tags the arriving comic with the SAME name, which is what actually makes this a morph.
+ *
+ * This was the missing half. With the name on only the outgoing card, the browser has one
+ * element and nothing to pair it with, so the "morph" degraded to the source fading out — the
+ * card vanished and the comic cross-faded in from nowhere. A shared-element transition needs the
+ * name present in both the before and after snapshots.
+ *
+ * Called from settle(), which runs after Blazor has rendered the destination and before the
+ * transition callback takes the new snapshot. Doing it any earlier is impossible: the element
+ * does not exist yet.
+ */
+function tagMorphTarget() {
+    if (!morphArmed) return;
+    try {
+        const target = document.querySelector(MORPH_TARGET);
+        if (target) {
+            target.style.viewTransitionName = MORPH_NAME;
+        }
+    } catch {
+        // Degrades to the plain cross-fade, which is a complete transition on its own.
     }
 }
 
@@ -80,8 +154,25 @@ function onDocumentClick(event) {
     if (!isSpaRoute(url.pathname)) return;
 
     // Card -> comic gets the shared-element morph; everything else is a plain cross-fade.
-    const card = event.target.closest('[data-physics-card], .leaderboard-card');
-    tagMorphSource(card && url.pathname.startsWith('/comic/') ? card : null);
+    const card = event.target.closest(MORPH_SOURCES);
+    morphArmed = Boolean(card) && url.pathname.startsWith('/comic/');
+    tagMorphSource(morphArmed ? card : null);
+
+    // Direction is stamped on the document element BEFORE the snapshot, so the CSS below can pick
+    // which way the incoming page slides in. Cleared when the transition finishes — leaving it
+    // set would make the next transition inherit a direction it never chose.
+    const direction = depthOf(url.pathname) >= depthOf(location.pathname) ? 'forward' : 'back';
+    try {
+        document.documentElement.dataset.navDirection = direction;
+    } catch { /* the transition simply cross-fades */ }
+
+    if (onNavigate) {
+        try {
+            onNavigate(direction, event.clientX);
+        } catch {
+            // A cue must never be able to cancel a navigation.
+        }
+    }
 
     beginTransition();
 }
@@ -114,6 +205,10 @@ function beginTransition() {
 
     transition.finished.finally(() => {
         clearMorphTags();
+        morphArmed = false;
+        try {
+            delete document.documentElement.dataset.navDirection;
+        } catch { /* nothing to undo */ }
         pending = null;
     }).catch(() => { /* skipTransition or an interrupted navigation */ });
 }
@@ -126,7 +221,14 @@ function onPageHide() {
     pending?.settle();
 }
 
-export function init() {
+/**
+ * @param {{ onNavigate?: (direction: 'forward'|'back', clientX: number) => void }} options
+ *        `onNavigate` is how fx.js pans a cue in the direction of travel. Passed in rather than
+ *        imported, for the reason every coupling in this layer works that way: this module must
+ *        not learn that the app makes noise, and if nobody supplies a callback nothing notices.
+ */
+export function init(options = {}) {
+    onNavigate = typeof options.onNavigate === 'function' ? options.onNavigate : null;
     enabled = SUPPORTED && !reducedMotion();
     if (enabled) {
         document.addEventListener('click', onDocumentClick, true);
@@ -136,8 +238,15 @@ export function init() {
     return { supported: SUPPORTED, enabled };
 }
 
-/** Called from Blazor after the destination route has rendered. */
+/**
+ * Called from Blazor after the destination route has rendered.
+ *
+ * The arriving comic is tagged HERE, immediately before the gate is released: the transition
+ * callback takes the "after" snapshot once this resolves, and the element does not exist any
+ * earlier than this. Tagging after releasing would race the snapshot.
+ */
 export function settle() {
+    tagMorphTarget();
     pending?.settle();
 }
 

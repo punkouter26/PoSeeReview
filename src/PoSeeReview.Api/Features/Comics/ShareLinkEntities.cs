@@ -3,7 +3,7 @@ using Azure;
 using Azure.Data.Tables;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Api.Features.ShareLinks;
+namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Key construction and code minting for short links.

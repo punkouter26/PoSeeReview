@@ -1,13 +1,19 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Configuration for the HuggingFace Inference Providers backend, activated by setting
-/// <c>Ai:ImageProvider</c> to <c>HuggingFace</c>. When on, HuggingFace replaces BOTH AI providers:
-/// chat (Azure OpenAI → Qwen via the OpenAI-compatible router) and image generation
-/// (Google Imagen → FLUX). FLUX is chosen partly because it supports a negative prompt,
-/// which reliably suppresses the garbled text/speech-bubbles that Imagen bakes into the art.
+/// Configuration for the HuggingFace Inference Providers backend, selected by
+/// <c>Ai:ImageProvider</c> (images) and <c>Ai:ChatProvider</c> (chat) independently.
+/// <para>
+/// These used to be one switch, and the doc comment here used to say the pairing was a real
+/// constraint because the chat and image endpoints share a token. That is true of the *token*
+/// and not of the *choice*: nothing stops the router from serving FLUX while Azure scores the
+/// reviews, and keeping them welded meant an image-model experiment could not be run without
+/// changing the scorer underneath it.
+/// </para>
+/// <para>
 /// The token is a HF user access token with the "Inference Providers" permission, stored in
 /// Key Vault as <c>PoSeeReview--HuggingFace--ApiKey</c> (or user-secrets for local dev).
+/// </para>
 /// </summary>
 public class HuggingFaceOptions
 {
@@ -30,4 +36,11 @@ public class HuggingFaceOptions
 
     /// <summary>Denoising steps. FLUX.1-schnell is distilled for ~4 steps.</summary>
     public int ImageSteps { get; set; } = 4;
+
+    /// <summary>
+    /// Completion cap for the analysis call. Safe to set on this provider: an open instruct model
+    /// served through the router has no hidden reasoning budget sharing the allowance, unlike the
+    /// Azure reasoning deployment where the same cap can be consumed thinking.
+    /// </summary>
+    public int? AnalysisMaxTokens { get; set; } = 900;
 }

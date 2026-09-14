@@ -10,7 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Abstractions;
-using PoSeeReview.Api.Features.Analytics;
+using PoSeeReview.Api.Features.Diagnostics;
 using PoSeeReview.Api.Features.Reactions;
 using PoSeeReview.Api.Features.Reports;
 using PoSeeReview.Api.Features.Collections;
@@ -19,7 +19,6 @@ using PoSeeReview.Api.Features.Insights;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
-using PoSeeReview.Api.Features.ShareLinks;
 using PoSeeReview.Api.Storage;
 using Polly.Retry;
 using Polly;
@@ -40,6 +39,13 @@ public static class InfrastructureServiceCollectionExtensions
     /// would silently select the default provider.
     /// </summary>
     public const string AiProviderConfigurationKey = "Ai:ImageProvider";
+
+    /// <summary>
+    /// Configuration path for <see cref="AiChatProvider"/>. Absent means "derive from the image
+    /// provider", which is what keeps every deployment that predates this setting on the exact
+    /// pairing it was already running.
+    /// </summary>
+    public const string AiChatProviderConfigurationKey = "Ai:ChatProvider";
 
     /// <summary>
     /// Registers all infrastructure services and Azure clients
@@ -68,24 +74,38 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(CollectionsOptions.SectionName));
         services.Configure<ModerationOptions>(
             configuration.GetSection(ModerationOptions.SectionName));
+        services.Configure<OllamaOptions>(
+            configuration.GetSection(OllamaOptions.SectionName));
+        services.Configure<EmbeddingOptions>(
+            configuration.GetSection(EmbeddingOptions.SectionName));
+        services.Configure<AiPricingOptions>(
+            configuration.GetSection(AiPricingOptions.SectionName));
 
-        // Master switch: selects BOTH AI providers together — chat (Azure OpenAI → Qwen) and
-        // image generation (Google Imagen → FLUX). Gemini by default; Google Maps (restaurant
-        // data) is unaffected either way. See the AI-provider blocks below.
-        //
-        // Bound from the AiImageProvider enum rather than the former UseHuggingFace boolean.
-        // An unparseable value is a startup failure, not a silent fall back to the default:
-        // quietly running the wrong (paid) provider is worse than refusing to start.
+        // Chat and image are chosen separately. They were one switch, which meant an image-model
+        // experiment could not be run without also changing the scorer underneath it — so every
+        // before/after comparison was really two changes at once. The default for a missing
+        // Ai:ChatProvider reproduces the old pairing exactly, so nothing shifts under an existing
+        // deployment that has not been touched.
         var providerSetting = configuration[AiProviderConfigurationKey];
         var imageProvider = string.IsNullOrWhiteSpace(providerSetting)
             ? AiImageProvider.Gemini
-            : Enum.TryParse<AiImageProvider>(providerSetting, ignoreCase: true, out var parsed)
-                ? parsed
+            : Enum.TryParse<AiImageProvider>(providerSetting, ignoreCase: true, out var parsedImage)
+                ? parsedImage
                 : throw new InvalidOperationException(
                     $"'{providerSetting}' is not a valid {AiProviderConfigurationKey}. " +
                     $"Valid values: {string.Join(", ", Enum.GetNames<AiImageProvider>())}.");
 
+        var chatProviderSetting = configuration[AiChatProviderConfigurationKey];
+        var chatProvider = string.IsNullOrWhiteSpace(chatProviderSetting)
+            ? (imageProvider == AiImageProvider.HuggingFace ? AiChatProvider.HuggingFace : AiChatProvider.AzureOpenAI)
+            : Enum.TryParse<AiChatProvider>(chatProviderSetting, ignoreCase: true, out var parsedChat)
+                ? parsedChat
+                : throw new InvalidOperationException(
+                    $"'{chatProviderSetting}' is not a valid {AiChatProviderConfigurationKey}. " +
+                    $"Valid values: {string.Join(", ", Enum.GetNames<AiChatProvider>())}.");
+
         var useHuggingFace = imageProvider == AiImageProvider.HuggingFace;
+        var useAzureChat = chatProvider == AiChatProvider.AzureOpenAI;
 
         // Storage clients: cloud resolves via System-assigned Managed Identity against the
         // account endpoints (NET_RULES 5.4); connection strings remain only for local Azurite.
@@ -134,10 +154,10 @@ public static class InfrastructureServiceCollectionExtensions
             services.AddSingleton(_ => new BlobServiceClient(blobConnectionString));
         }
 
-        // Register Azure OpenAI client — only when Azure is the active chat provider. Under
-        // the HuggingFace provider the chat path is Qwen (below) and Azure config may be absent,
-        // so we must not fail-fast on missing AzureOpenAI settings.
-        if (!useHuggingFace)
+        // Register Azure OpenAI client — only when Azure is the active CHAT provider. Under the
+        // HuggingFace or Ollama chat path the Azure config may be absent, so we must not
+        // fail-fast on missing AzureOpenAI settings.
+        if (useAzureChat)
         {
             var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName)
                 .Get<AzureOpenAIOptions>()
@@ -182,7 +202,7 @@ public static class InfrastructureServiceCollectionExtensions
         // Same instance behind both, mirroring HallOfFameRepository: the slice reads through the
         // concrete type, Takedowns erases through the Shared contract.
         services.AddScoped<IKeptComicArchive>(sp => sp.GetRequiredService<KeptComicRepository>());
-        services.AddScoped<IGenerationBudgetService, GenerationBudgetService>();
+        services.AddScoped<GenerationBudgetService>();
 
         // Register services
         services.AddHttpClient<GoogleMapsService>()
@@ -213,11 +233,32 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddScoped<IBlobStorageService, BlobStorageService>();
 
-        // Chat provider (strangeness analysis + panel captions): Azure OpenAI, or Qwen via HF.
-        if (useHuggingFace)
-            services.AddScoped<IChatCompletionService, HuggingFaceChatService>();
-        else
-            services.AddScoped<IChatCompletionService, AzureOpenAIChatService>();
+        // Chat provider (strangeness analysis + panel captions). Selected independently of the
+        // image provider; see the note above. Ollama is the local, zero-marginal-cost tier.
+        switch (chatProvider)
+        {
+            case AiChatProvider.HuggingFace:
+                services.AddScoped<IChatCompletionService, HuggingFaceChatService>();
+                break;
+            case AiChatProvider.Ollama:
+                services.AddScoped<IChatCompletionService, OllamaChatService>();
+                break;
+            default:
+                services.AddScoped<IChatCompletionService, AzureOpenAIChatService>();
+                break;
+        }
+
+        // Cost accounting for every model call, tagged by provider and model. Registered once so
+        // there is a single metric whose value is "what this app spent" rather than one metric per
+        // provider on three incomparable scales.
+        services.AddSingleton<AiCostTracker>();
+
+        // Single flight per place: stops a double-tap from commissioning the same paid comic
+        // twice. Singleton because the gates must be shared across requests, not per request.
+        services.AddSingleton<ComicGenerationLock>();
+
+        // Embeddings. Off unless configured, and never able to fail a comic — see IEmbeddingService.
+        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
 
         // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
         // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.

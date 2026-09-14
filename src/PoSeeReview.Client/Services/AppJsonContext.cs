@@ -33,7 +33,11 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(ModerationQueueDto))]
 [JsonSerializable(typeof(ModerationActionDto))]
 [JsonSerializable(typeof(CachedComicsResponse))]
+[JsonSerializable(typeof(SimilarComicsResponse))]
 // Not a wire DTO: the locally-stored comic history. It lives here for the same reason the rest
 // do — the client is trim-analyzed, so every type it serializes needs generated metadata.
 [JsonSerializable(typeof(List<ComicHistoryEntry>))]
+// Also not a wire DTO: the remembered leaderboard ranks (BoardMemoryService). Same reason —
+// the client is trim-analyzed, so reflection-based serialization fails the build.
+[JsonSerializable(typeof(Dictionary<string, int>))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

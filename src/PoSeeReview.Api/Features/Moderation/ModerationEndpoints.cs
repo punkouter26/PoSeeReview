@@ -41,6 +41,10 @@ internal static class ModerationEndpoints
         group.MapPost("/{placeId}/suppress", SuppressAsync);
         group.MapDelete("/{placeId}", RemoveAsync);
 
+        // The keyed takedown route. Same slice, different gate: a shared X-Api-Key for machine
+        // callers rather than the Moderator role above.
+        app.MapTakedownEndpoints();
+
         return app;
     }
 

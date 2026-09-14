@@ -7,6 +7,14 @@ name: Build & Deploy
 on:
   push:
     branches: [master]
+    # A docs-only or infra-only push must not recycle the live App Service and burn a smoke run.
+    # The failure this workflow guards against is /health never returning 200, which a typo in a
+    # markdown file cannot cause. SCRIPTS/** is deliberately NOT ignored — the smoke job executes
+    # post-deploy-smoke.mjs, so a change there does want a run.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'infra/**'
   workflow_dispatch:
 
 env:
@@ -38,6 +46,11 @@ jobs:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
           restore-keys: nuget-${{ runner.os }}-
+      # Tier quotas (NET_RULES 5.1: Unit 100 / Integration 50 / E2EAPI 25 / E2EUI 25).
+      # Published first so a suite that quietly grew past its cap fails the run before the
+      # three-minute publish. `dotnet publish` cannot catch this — it never reads tests/.
+      - name: Check test tier quotas
+        run: node SCRIPTS/check-test-quota.mjs
       - run: dotnet publish ${{ env.API_PROJECT_PATH }} -c Release -o publish
       - uses: actions/upload-artifact@v4
         with:

@@ -14,6 +14,7 @@
 import { gfx } from './gfx-core.js';
 import { audio } from './audio.js';
 import * as gradient from './gradient.js';
+import * as glass from './glass.js';
 
 // 30Hz. The visual response is heavily smoothed on both sides, so sampling every frame buys
 // nothing a viewer can see — and this runs on the same thread as the rendering it modulates.
@@ -30,6 +31,10 @@ function tick(now) {
     state.lastSample = now;
 
     const spectrum = audio.analyse();
+    // Panes refract into the same scene the backdrop draws, so they take the same levels. One
+    // call for all of them — glass.js fans it out internally, because pane handles are owned by
+    // components and this driver has no business tracking their lifetimes.
+    glass.setAudioLevels(spectrum.level, spectrum.bass);
     for (const id of gradient.activeIds()) {
         gradient.setAudioLevels(id, spectrum.level, spectrum.bass);
     }
@@ -56,6 +61,7 @@ export function stop() {
     for (const id of gradient.activeIds()) {
         gradient.setAudioLevels(id, 0, 0);
     }
+    glass.setAudioLevels(0, 0);
 }
 
 /** Follows the audio enable state. Called by fx.js wherever audio is turned on or off. */

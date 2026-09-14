@@ -1,7 +1,7 @@
 using Azure;
 using Azure.Data.Tables;
 
-namespace PoSeeReview.Api.Features.Analytics;
+namespace PoSeeReview.Api.Features.Diagnostics;
 
 /// <summary>
 /// One day's count for one funnel step.

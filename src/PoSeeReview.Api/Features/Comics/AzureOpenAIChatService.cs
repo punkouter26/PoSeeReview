@@ -5,8 +5,8 @@ using System.Text.Json;
 using Azure.AI.OpenAI;
 using Azure;
 using Microsoft.ApplicationInsights;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenAI.Chat;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Contracts;
@@ -24,26 +24,36 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </summary>
 public class AzureOpenAIChatService : IChatCompletionService
 {
+    /// <summary>Telemetry label for this provider, and the key <c>AiPricing:Models</c> is read with.</summary>
+    public const string ProviderLabel = "AzureOpenAI";
+
     private readonly AzureOpenAIClient _openAIClient;
-    private readonly string _deploymentName;
+    private readonly AzureOpenAIOptions _options;
     private readonly ILogger<AzureOpenAIChatService> _logger;
     private readonly TelemetryClient _telemetryClient;
+    private readonly AiCostTracker _costTracker;
     private readonly AsyncRetryPolicy<ClientResult<ChatCompletion>> _chatRetryPolicy;
 
     public AzureOpenAIChatService(
         AzureOpenAIClient openAIClient,
-        IConfiguration configuration,
+        IOptions<AzureOpenAIOptions> options,
         ILogger<AzureOpenAIChatService> logger,
-        TelemetryClient telemetryClient)
+        TelemetryClient telemetryClient,
+        AiCostTracker costTracker)
     {
-        _deploymentName = configuration["AzureOpenAI:DeploymentName"]
-            ?? throw new InvalidOperationException("Azure OpenAI deployment name not configured");
+        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+
+        if (string.IsNullOrWhiteSpace(_options.DeploymentName))
+        {
+            throw new InvalidOperationException("AzureOpenAI deployment name not configured");
+        }
 
         // Injected via DI so the underlying transport can be swapped for a mock in
         // test environments (AddMockedAiBoundaries) — no real Foundry calls / token spend.
         _openAIClient = openAIClient ?? throw new ArgumentNullException(nameof(openAIClient));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+        _costTracker = costTracker ?? throw new ArgumentNullException(nameof(costTracker));
 
         _chatRetryPolicy = Policy<ClientResult<ChatCompletion>>
             .Handle<RequestFailedException>(AzureRetryUtils.IsTransientFailure)
@@ -76,7 +86,7 @@ public class AzureOpenAIChatService : IChatCompletionService
         if (validReviews.Count == 0)
             throw new ArgumentException("No valid reviews provided", nameof(reviews));
 
-        var chatClient = _openAIClient.GetChatClient(_deploymentName);
+        var chatClient = _openAIClient.GetChatClient(_options.DeploymentName);
 
         // Construct prompt for strangeness analysis
         var prompt = ChatPrompts.BuildAnalysisPrompt(validReviews);
@@ -87,19 +97,15 @@ public class AzureOpenAIChatService : IChatCompletionService
             new UserChatMessage(prompt)
         };
 
-        // NOTE: do NOT set MaxOutputTokenCount here. The 2.1.0 SDK serializes that property as
-        // `max_tokens` in the wire format, but reasoning models (e.g. gpt-5.4-nano, 2026-03-17)
-        // reject `max_tokens` with HTTP 400 "unsupported_parameter" and require
-        // `max_completion_tokens` instead. The SDK doesn't yet auto-pick the right parameter,
-        // so the safe move is to let the model use its default cap. If a future model needs
-        // an explicit cap, set it via chatOptions.AdditionalProperties["max_completion_tokens"] = N.
-        // 2026-06-15 incident: this parameter mismatch surfaced as 500 on every prod comic
-        // generation after the model was rotated from gpt-4o-mini to gpt-5.4-nano.
-        var chatOptions = new ChatCompletionOptions
-        {
-            Temperature = 0.3f, // Low temperature for consistent scoring
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
-        };
+        // Temperature 0.3 for a repeatable score. The completion cap is null unless configured,
+        // and it only reaches the wire on an instruct deployment — on a reasoning one the SDK
+        // cannot express it and its reasoning tokens would eat it anyway. See ChatTokenBudget
+        // for the full reasoning, and StartupSecretValidator for the warning raised when a cap is
+        // configured against a model family that will ignore it.
+        var chatOptions = ChatTokenBudget.Build(
+            temperature: 0.3f,
+            maxCompletionTokens: _options.MaxCompletionTokens,
+            isReasoningModel: _options.IsReasoningModel);
 
         // Propagate the caller's token: this call can take 40+ seconds on reasoning models, and
         // an abandoned browser request should stop the pipeline instead of completing a paid call.
@@ -120,79 +126,18 @@ public class AzureOpenAIChatService : IChatCompletionService
 
         if (response.Value.Usage is { } usage)
         {
-            _telemetryClient.GetMetric("AzureOpenAI.Chat.TotalTokens").TrackValue(usage.TotalTokenCount);
-            _telemetryClient.GetMetric("AzureOpenAI.Chat.PromptTokens").TrackValue(usage.InputTokenCount);
-            _telemetryClient.GetMetric("AzureOpenAI.Chat.CompletionTokens").TrackValue(usage.OutputTokenCount);
-
-            // gpt-5.4-nano: ~$0.05 per 1K input tokens, ~$0.40 per 1K output tokens (GlobalStandard).
-            // Use a blended $0.10/1K as a conservative cost-tracking estimate; the controller logs
-            // prompt/completion tokens separately so a more accurate model can be plugged in later.
-            var estimatedCost = usage.TotalTokenCount / 1000.0 * 0.10;
-            _telemetryClient.GetMetric("AzureOpenAI.Chat.EstimatedCostUsd").TrackValue(estimatedCost);
-
-            _logger.LogInformation(
-                "Azure OpenAI usage - prompt: {PromptTokens}, completion: {CompletionTokens}, total: {TotalTokens}, estimated cost ${Cost:F4}",
-                usage.InputTokenCount,
-                usage.OutputTokenCount,
-                usage.TotalTokenCount,
-                estimatedCost);
+            // The rate comes from AiPricing, not from a constant here. The previous estimate was
+            // a single blended $0.10/1K over total tokens, with the input rate 8x cheaper than
+            // the output rate and a comment conceding the figure was a guess — which meant the
+            // number moved with the prompt/completion mix rather than with the price, and so
+            // could not answer the only question a cost metric is asked.
+            _costTracker.Track(ProviderLabel, _options.DeploymentName, usage.InputTokenCount, usage.OutputTokenCount);
         }
 
-        return new StrangenessAnalysis(score, panelCount, result.Narrative);
+        return new StrangenessAnalysis(
+            score,
+            panelCount,
+            result.Narrative,
+            ChatPrompts.NormalizeCaptions(result.Captions, result.Narrative, panelCount));
     }
-
-    /// <summary>
-    /// Generates concise per-panel captions from a comic narrative using GPT.
-    /// Uses low token budget to keep cost minimal.
-    /// </summary>
-    public async Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount, CancellationToken cancellationToken = default)
-    {
-        if (string.IsNullOrWhiteSpace(narrative))
-            return ChatPrompts.FallbackDialogue(narrative ?? string.Empty, panelCount);
-
-        var chatClient = _openAIClient.GetChatClient(_deploymentName);
-
-        var prompt = ChatPrompts.BuildCaptionPrompt(narrative, panelCount);
-
-        var messages = new List<ChatMessage>
-        {
-            new SystemChatMessage(ChatPrompts.CaptionSystemMessage),
-            new UserChatMessage(prompt)
-        };
-
-        // Same reasoning as AnalyzeStrangenessAsync: don't set MaxOutputTokenCount. See the
-        // long comment there for why reasoning models (gpt-5.4-nano) reject `max_tokens`.
-        var options = new ChatCompletionOptions
-        {
-            Temperature = 0.6f,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
-        };
-
-        try
-        {
-            var response = await _chatRetryPolicy.ExecuteAsync(
-                ct => chatClient.CompleteChatAsync(messages, options, ct),
-                cancellationToken);
-
-            _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
-
-            var json = response.Value.Content[0].Text;
-            var result = JsonSerializer.Deserialize<PanelCaptionsResult>(json);
-
-            if (result?.Captions is { Count: > 0 } captions)
-            {
-                _logger.LogInformation("Generated {Count} panel captions via GPT", captions.Count);
-                return captions;
-            }
-
-            _logger.LogWarning("GPT returned empty captions, using sentence fallback");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to generate panel captions via GPT, using sentence fallback");
-        }
-
-        return ChatPrompts.FallbackDialogue(narrative, panelCount);
-    }
-
 }

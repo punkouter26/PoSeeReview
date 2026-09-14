@@ -331,6 +331,65 @@ const SCALES = [
 
 const SEMITONE = Math.pow(2, 1 / 12);
 
+/**
+ * A restaurant's four-note figure. The body of `signature`, lifted out so the leaderboard can
+ * voice several at once without going through the throttle that exists to stop ONE of these
+ * retriggering on a re-render.
+ *
+ * The seed picks the notes and the contour; the SCORE picks the scale, the tempo and the timbre —
+ * so two restaurants sound different from each other, and a strange one sounds strange rather
+ * than merely different.
+ *
+ * @param {{pan?: number, delay?: number, gain?: number, notes?: number}} options
+ *        `pan` overrides the per-note random spread with a fixed position, which is what lets
+ *        three of these be placed as a chord rather than scattered on top of each other.
+ */
+function motif(seed, score = 50, options = {}) {
+    const strange = Math.min(1, Math.max(0, score / 100));
+    const random = seededRandom(hashString(seed));
+
+    const scale = SCALES[Math.min(SCALES.length - 1, Math.floor(strange * SCALES.length))];
+
+    // Root within a fifth of A3, chosen by the seed. Keeping every motif in one octave means
+    // two places played back to back are comparable rather than merely different in register.
+    const rootSemitone = Math.floor(random() * 8) - 3;
+    const root = 220 * Math.pow(SEMITONE, rootSemitone);
+
+    // Faster as it gets stranger. 96bpm at zero, ~184 at 100.
+    const beat = 60 / (96 + strange * 88) / 2;
+
+    // Timbre tracks strangeness too: a sine is inoffensive, a sawtooth is not.
+    const type = strange < 0.33 ? 'sine' : strange < 0.66 ? 'triangle' : 'sawtooth';
+
+    const gain = options.gain ?? 1;
+    const offset = options.delay ?? 0;
+    const noteCount = Math.max(1, Math.min(6, options.notes ?? 4));
+
+    for (let i = 0; i < noteCount; i++) {
+        const degree = Math.floor(random() * scale.length);
+        // The last note jumps an octave a third of the time — a motif that ends where it sat
+        // is a scale fragment, not a phrase.
+        const octave = (i === noteCount - 1 && random() < 0.34) ? 12 : 0;
+        const freq = root * Math.pow(SEMITONE, scale[degree] + octave);
+
+        voice({
+            type,
+            freq,
+            attack: 0.006,
+            decay: beat * (i === noteCount - 1 ? 3.2 : 1.5),
+            peak: (0.20 - i * 0.015) * gain,
+            delay: offset + i * beat,
+            // Slight detune that grows with strangeness: at the top of the range the motif is
+            // audibly out of tune with itself.
+            detune: (random() - 0.5) * strange * 34,
+            // A fixed pan keeps a motif in one place, which is what a chord needs; the random
+            // spread is right for a motif heard alone, where it gives the figure width.
+            pan: options.pan ?? (random() - 0.5) * 1.2,
+            send: 0.2 + strange * 0.4
+        });
+    }
+}
+
 /** Listeners fired whenever a voice starts, so the ambient bed can duck under it. */
 const voiceListeners = new Set();
 
@@ -561,6 +620,185 @@ export const audio = {
         });
     },
 
+    /**
+     * The search going out. A sonar ping: one short tone, then a much quieter, longer, detuned
+     * copy of itself behind the reverb send.
+     *
+     * The delayed copy is doing real work rather than decoration. The gap between the two is the
+     * only thing that says "this is a request that has left and has not come back" — a single
+     * blip is a button press, and the landing page's whole problem was that asking for your
+     * location sounded exactly like tapping anything else. It is centred, because a search has
+     * no direction until it returns.
+     */
+    locating() {
+        if (!canPlay() || throttled('locating', 700)) return;
+
+        voice({ type: 'sine', freq: 1174.66, attack: 0.003, decay: 0.16, peak: 0.24, pan: 0, send: 0.45 });
+        voice({
+            type: 'sine', freq: 1174.66, attack: 0.004, decay: 0.5, peak: 0.07,
+            delay: 0.22, detune: -14, pan: 0, send: 0.7
+        });
+    },
+
+    /**
+     * Results landing. A rising figure whose LENGTH is the result count, capped at five notes.
+     *
+     * Mapping count to length rather than to pitch or volume is the point: "a lot came back" and
+     * "barely anything came back" are the two states the user is about to act on, and a longer
+     * run is legible as more without anyone having to be told what it means. It sweeps left to
+     * right across the stereo field the way the grid fills.
+     */
+    arrival(count = 0) {
+        if (!canPlay() || throttled('arrival', 600)) return;
+
+        const notes = Math.max(2, Math.min(5, Math.round(count / 4)));
+        const span = Math.max(1, notes - 1);
+
+        for (let i = 0; i < notes; i++) {
+            voice({
+                type: 'triangle',
+                freq: PENTATONIC[i % PENTATONIC.length],
+                attack: 0.003,
+                // The last note rings on. Without it the figure stops rather than arriving.
+                decay: i === notes - 1 ? 0.34 : 0.1,
+                peak: 0.18 + i * 0.012,
+                delay: i * 0.065,
+                pan: ((i / span) * 2 - 1) * 0.6,
+                send: 0.22 + (i / span) * 0.2
+            });
+        }
+    },
+
+    /**
+     * Nothing came back. Deliberately NOT `error()` — an empty result is not a failure, it is an
+     * answer, and a search that returned zero restaurants should not sound like the app broke.
+     * Two flat notes, no resolution, dry.
+     */
+    empty() {
+        if (!canPlay() || throttled('empty', 700)) return;
+        voice({ type: 'sine', freq: 392.0, attack: 0.006, decay: 0.2, peak: 0.16, pan: 0, send: 0.1 });
+        voice({ type: 'sine', freq: 392.0, attack: 0.006, decay: 0.28, peak: 0.12, delay: 0.14, pan: 0, send: 0.12 });
+    },
+
+    /**
+     * Tap on something already drawn, versus something that will have to be generated.
+     *
+     * These are one control apart in the same grid and they cost wildly different things — a
+     * cached comic opens instantly and free, a fresh one spends a paid image call and about ten
+     * seconds. The cached cue is bright and immediately resolved; the uncached one is lower,
+     * slower, and leaves a note hanging, because something is now going to take a while.
+     */
+    tapCached(clientX) {
+        if (!canPlay() || throttled('tap', 40)) return;
+        const pan = panForClientX(clientX);
+        voice({ type: 'triangle', freq: 880, attack: 0.002, decay: 0.05, peak: 0.3, pan, send: 0.14 });
+        voice({ type: 'sine', freq: 1318.51, attack: 0.002, decay: 0.09, peak: 0.16, delay: 0.035, pan, send: 0.2 });
+    },
+
+    /** @see tapCached */
+    tapUncached(clientX) {
+        if (!canPlay() || throttled('tap', 40)) return;
+        const pan = panForClientX(clientX);
+        voice({ type: 'triangle', freq: 494, attack: 0.003, decay: 0.07, peak: 0.3, pan, send: 0.16 });
+        voice({ type: 'sine', freq: 659.25, attack: 0.004, decay: 0.42, peak: 0.11, delay: 0.05, pan, send: 0.34 });
+    },
+
+    /**
+     * One note of a comic's own motif, for a panel crossing the middle of the screen.
+     *
+     * Deliberately drawn from the SAME seeded sequence `signature` uses, so the notes a reader
+     * hears while scrolling are the notes that played when the score landed — in the same order,
+     * at their own pace. A separate random source would be a different tune about the same
+     * restaurant, which is the one thing a per-place motif cannot afford to be.
+     *
+     * Long and soft. A reader scrolling is not waiting for a cue; this has to sit under what they
+     * are doing, which is why it is a slow attack rather than the sharp blip `panelReveal` uses
+     * during the reveal.
+     */
+    panelNote(seed, score, index, total) {
+        if (!canPlay() || throttled(`panelNote${index}`, 400)) return;
+
+        const strange = Math.min(1, Math.max(0, (score ?? 50) / 100));
+        const random = seededRandom(hashString(seed));
+        const scale = SCALES[Math.min(SCALES.length - 1, Math.floor(strange * SCALES.length))];
+
+        const rootSemitone = Math.floor(random() * 8) - 3;
+        const root = 220 * Math.pow(SEMITONE, rootSemitone);
+
+        // Advance the sequence to this panel's position, so panel 2 gets the motif's second note
+        // rather than its first. Re-seeding per call is what makes that reproducible.
+        let degree = 0;
+        for (let i = 0; i <= index; i++) {
+            degree = Math.floor(random() * scale.length);
+        }
+
+        const span = Math.max(1, (total ?? 1) - 1);
+        voice({
+            type: strange < 0.5 ? 'sine' : 'triangle',
+            freq: root * Math.pow(SEMITONE, scale[degree]) * 2,
+            attack: 0.05,
+            decay: 0.9,
+            peak: 0.11,
+            // Panned down the strip: the first panel from the left, the last from the right.
+            pan: total > 1 ? ((index / span) * 2 - 1) * 0.5 : 0,
+            send: 0.45
+        });
+    },
+
+    /**
+     * A row that moved since the visitor last saw this board. Up is a rising pair, down a
+     * falling one, and the interval widens with the size of the move.
+     *
+     * Small on purpose, and panned to the row. This plays while someone is reading a list, so it
+     * has to be the sound of a detail being pointed at, not an announcement — several of these
+     * land in sequence as the board renders.
+     */
+    rankDelta(delta, pan = 0) {
+        if (!canPlay() || !delta) return;
+
+        const up = delta > 0;
+        const size = Math.min(6, Math.abs(delta));
+        // Two to seven semitones. Beyond a fifth the interval stops reading as "moved" and starts
+        // reading as a different event entirely.
+        const interval = Math.pow(SEMITONE, 2 + size);
+        const base = 587.33;
+
+        voice({
+            type: 'sine', freq: up ? base : base * interval,
+            attack: 0.003, decay: 0.07, peak: 0.13, pan, send: 0.18
+        });
+        voice({
+            type: 'sine', freq: up ? base * interval : base,
+            attack: 0.003, decay: 0.12, peak: 0.12, delay: 0.055, pan, send: 0.22
+        });
+    },
+
+    /**
+     * Moving between routes. Rises going deeper, falls coming back, and sweeps across the stereo
+     * field in the direction of travel.
+     *
+     * Very quiet, and short. This fires on every internal navigation, so it has to be the sound
+     * of a page turning rather than an event — anything with presence would become the loudest
+     * thing in the app by sheer repetition. It starts panned to where the link was tapped, which
+     * is what ties it to the thing the user actually touched.
+     */
+    navigate(direction, clientX) {
+        if (!canPlay() || throttled('navigate', 250)) return;
+
+        const forward = direction !== 'back';
+        const from = panForClientX(clientX ?? window.innerWidth / 2);
+        const to = forward ? Math.min(0.8, from + 0.5) : Math.max(-0.8, from - 0.5);
+
+        voice({
+            type: 'sine', freq: forward ? 523.25 : 659.25,
+            attack: 0.004, decay: 0.09, peak: 0.09, pan: from, send: 0.2
+        });
+        voice({
+            type: 'sine', freq: forward ? 659.25 : 523.25,
+            attack: 0.004, decay: 0.14, peak: 0.07, delay: 0.05, pan: to, send: 0.28
+        });
+    },
+
     /** Confirmation for something added to a collection. Two rising ticks, deliberately small. */
     confirm() {
         if (!canPlay() || throttled('confirm', 300)) return;
@@ -631,45 +869,42 @@ export const audio = {
      */
     signature(seed, score = 50) {
         if (!canPlay() || throttled('signature', 600)) return;
+        motif(seed, score);
+    },
 
-        const strange = Math.min(1, Math.max(0, score / 100));
-        const random = seededRandom(hashString(seed));
+    /**
+     * A whole leaderboard, heard at once.
+     *
+     * Three motifs are not three sounds played together — they are one chord in which each voice
+     * is a specific restaurant. Because a motif is deterministic from its place id, the top of
+     * the board becomes something a returning user recognises by ear, and a board that has
+     * CHANGED sounds different before they have read a single row.
+     *
+     * Spread across the stereo field in rank order and staggered, so they arrive as an arpeggio
+     * rather than a cluster — three four-note figures starting on the same beat is mud.
+     * Attenuated, because three simultaneous motifs at full level is three times the peak of
+     * anything else the app plays.
+     *
+     * @param {{seed: string, score: number}[]} entries top of the board, best first
+     */
+    boardChord(entries) {
+        if (!canPlay() || !Array.isArray(entries) || entries.length === 0) return;
+        if (throttled('boardChord', 1500)) return;
 
-        const scale = SCALES[Math.min(SCALES.length - 1, Math.floor(strange * SCALES.length))];
+        const picked = entries.slice(0, 3);
 
-        // Root within a fifth of A3, chosen by the seed. Keeping every motif in one octave means
-        // two places played back to back are comparable rather than merely different in register.
-        const rootSemitone = Math.floor(random() * 8) - 3;
-        const root = 220 * Math.pow(SEMITONE, rootSemitone);
-
-        // Faster as it gets stranger. 96bpm at zero, ~184 at 100.
-        const beat = 60 / (96 + strange * 88) / 2;
-
-        // Timbre tracks strangeness too: a sine is inoffensive, a sawtooth is not.
-        const type = strange < 0.33 ? 'sine' : strange < 0.66 ? 'triangle' : 'sawtooth';
-
-        const noteCount = 4;
-        for (let i = 0; i < noteCount; i++) {
-            const degree = Math.floor(random() * scale.length);
-            // The last note jumps an octave a third of the time — a motif that ends where it sat
-            // is a scale fragment, not a phrase.
-            const octave = (i === noteCount - 1 && random() < 0.34) ? 12 : 0;
-            const freq = root * Math.pow(SEMITONE, scale[degree] + octave);
-
-            voice({
-                type,
-                freq,
-                attack: 0.006,
-                decay: beat * (i === noteCount - 1 ? 3.2 : 1.5),
-                peak: 0.20 - i * 0.015,
-                delay: i * beat,
-                // Slight detune that grows with strangeness: at the top of the range the motif is
-                // audibly out of tune with itself.
-                detune: (random() - 0.5) * strange * 34,
-                pan: (random() - 0.5) * 1.2,
-                send: 0.2 + strange * 0.4
+        picked.forEach((entry, i) => {
+            motif(entry.seed, entry.score, {
+                // #1 in the centre, the others out to the sides — the same reasoning as
+                // shelf.js's fanSlot: rank order along a line puts the winner at an edge.
+                pan: picked.length === 1 ? 0 : (i === 0 ? 0 : (i === 1 ? -0.65 : 0.65)),
+                delay: i * 0.28,
+                gain: 0.55 - i * 0.08,
+                // A shorter figure. Four notes each is twelve notes of arpeggio, which stops
+                // being a chord and becomes a tune.
+                notes: 3
             });
-        }
+        });
     },
 
     /**

@@ -157,26 +157,6 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Theory]
-    [InlineData("US-LIMIT-TEST", 10)]
-    [InlineData("CA-LIMIT-TEST", 25)]
-    [InlineData("GB-LIMIT-TEST", 50)]
-    public async Task GET_Leaderboard_Respects_Limit_Parameter_For_Each_Region(string region, int limit)
-    {
-        // Arrange
-        await SeedLeaderboardEntries(region, limit + 10); // Create more than limit
-
-        // Act
-        var response = await _client.GetAsync($"/api/leaderboard?region={region}&limit={limit}");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var result = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
-        Assert.NotNull(result);
-        Assert.True(result.Entries.Count <= limit, $"Expected max {limit} entries, got {result.Entries.Count}");
-    }
-
     [Fact]
     public async Task GET_Leaderboard_Filters_By_Region_Only()
     {

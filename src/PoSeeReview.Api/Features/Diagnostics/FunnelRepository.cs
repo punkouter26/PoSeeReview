@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
 
-namespace PoSeeReview.Api.Features.Analytics;
+namespace PoSeeReview.Api.Features.Diagnostics;
 
 /// <summary>
 /// Daily funnel counters. Owned by the Analytics slice (NET_RULES 2.2).

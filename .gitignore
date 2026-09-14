@@ -133,10 +133,15 @@ tests/e2e/debug-*
 tests/e2e/adhoc-screenshots/
 
 # Blazor specific
-wwwroot/lib/
-wwwroot/_framework/
-wwwroot/css/*.min.css
-wwwroot/js/*.min.js
+# These were previously written without the `**/` prefix, and a pattern containing an internal
+# slash is anchored to the directory holding this file. The client's wwwroot is at
+# src/PoSeeReview.Client/wwwroot/, so none of these four ever matched anything — verified with
+# `git check-ignore`. `wwwroot/lib/` is deliberately not re-added: the app vendors no libraries
+# (the graphics layer is hand-rolled, and MapLibre is a CDN dynamic import), so a new `lib/`
+# directory is something we want to see in review rather than something to hide.
+**/wwwroot/_framework/
+**/wwwroot/css/*.min.css
+**/wwwroot/js/*.min.js
 
 # Node modules (if using npm for client-side libraries)
 node_modules/

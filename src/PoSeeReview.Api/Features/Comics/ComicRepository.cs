@@ -127,4 +127,42 @@ public class ComicRepository : IComicRepository
 
         return expiredComics;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Comic>> GetLiveComicsAsync(
+        DateTimeOffset cutoff,
+        int maxResults,
+        CancellationToken cancellationToken = default)
+    {
+        if (maxResults <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxResults), "maxResults must be greater than zero");
+        }
+
+        var comics = new List<Comic>(capacity: Math.Min(maxResults, 100));
+
+        // Single-partition scan: every comic shares one partition, so this is the cheapest read
+        // available here, and the cap is the bounding device the way InsightsOptions.MaxRowsScanned
+        // is for the charts. Ordered by ExpiresAt so the newest comics are the ones that survive
+        // the cap — an old live row is about to stop being interesting either way.
+        var filter = TableClient.CreateQueryFilter<ComicEntity>(entity =>
+            entity.PartitionKey == ComicEntity.PartitionKeyValue && entity.ExpiresAt > cutoff);
+
+        var query = _tableClient.QueryAsync<ComicEntity>(
+            filter: filter,
+            maxPerPage: Math.Min(maxResults, 100),
+            cancellationToken: cancellationToken);
+
+        await foreach (var entity in query.WithCancellation(cancellationToken))
+        {
+            comics.Add(entity.ToDomain());
+
+            if (comics.Count >= maxResults)
+            {
+                break;
+            }
+        }
+
+        return comics;
+    }
 }

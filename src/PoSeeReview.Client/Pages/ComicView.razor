@@ -27,7 +27,20 @@
             <h1>@_errorTitle</h1>
             <p class="error-message">@_error</p>
             <div class="error-actions">
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary" Click="@(_ => GoBack())">
+                @* A 429 that says "wait about a minute" needs somewhere to wait a minute and try
+                   again. Only offered when a retry could plausibly end differently — a restaurant
+                   that does not exist or reviews that are too ordinary will not change. *@
+                @if (_canRetry)
+                {
+                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary"
+                                  Disabled="@(_budget is { CanGenerate: false })"
+                                  Click="@(_ => RetryAsync())" data-testid="comic-retry-btn">
+                        Try Again
+                    </RadzenButton>
+                }
+                <RadzenButton ButtonStyle="@(_canRetry ? ButtonStyle.Base : ButtonStyle.Primary)"
+                              class="@(_canRetry ? "btn btn-secondary" : "btn btn-primary")"
+                              Click="@(_ => GoBack())">
                     &#8592; @BackLabel
                 </RadzenButton>
             </div>
@@ -64,14 +77,19 @@
     else if (_comic != null)
     {
         <RadzenCard class="comic-container glass">
+            @* Real glass, not a blur — the backdrop is genuinely bent at this card's edges and
+               the colour splits across the bend. First child on purpose: js/glass.js takes the
+               canvas's parent as the pane, so the card needs no ref of its own. *@
+            <GlassPane />
+
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
                 <div class="strangeness-ring-wrap">
                     <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                             <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#7C3AED"/>
-                                <stop offset="100%" stop-color="#f5576c"/>
+                                <stop offset="0%" class="ring-grad-start"/>
+                                <stop offset="100%" class="ring-grad-end"/>
                             </linearGradient>
                         </defs>
                         <circle class="ring-bg" cx="50" cy="50" r="42" />
@@ -107,14 +125,18 @@
                content on an https page, so the strip would not render at all locally. *@
             <ComicStrip @ref="_strip"
                         ImageUrl="@ComicImageUrl.For(_comic.BlobUrl, _comic.PlaceId)"
-                        RestaurantName="@_comic.RestaurantName" />
+                        RestaurantName="@_comic.RestaurantName"
+                        PlaceId="@_comic.PlaceId"
+                        StrangenessScore="@_comic.StrangenessScore" />
 
             <ComicActions Comic="_comic"
                           Budget="_budget"
                           OnRegenerate="RegenerateAsync"
                           OnReport="() => _isReporting = true" />
 
-            <ReactionBar PlaceId="@_comic.PlaceId" />
+            @* The page relays the throw because the bar and the strip are siblings — the pile
+               lives on a canvas over the artwork, and the bar has no reference to it. *@
+            <ReactionBar PlaceId="@_comic.PlaceId" OnReacted="ThrowReactionAsync" />
 
             <div class="comic-narrative-block">
                 <p class="comic-narrative">@_comic.Narrative</p>
@@ -136,6 +158,27 @@
             </div>
 
             <ScoreContext Stats="_stats" />
+
+            @* The one surface in the app that answers "and what else?". Until this existed a comic
+               page was a dead end: the only way to reach another comic was to go back and search
+               again, which is a strange shape for the thing people actually enjoyed. *@
+            @if (_similar is { Comics.Count: > 0 })
+            {
+                <section class="also-strange" aria-labelledby="also-strange-heading">
+                    <h2 id="also-strange-heading" class="also-strange-heading">Also strange</h2>
+                    <ul class="also-strange-list">
+                        @foreach (var related in _similar.Comics)
+                        {
+                            <li>
+                                <a class="also-strange-item" href="@($"/comic/{related.PlaceId}?from=comic")">
+                                    <span class="also-strange-name">@related.RestaurantName</span>
+                                    <span class="also-strange-score">@related.StrangenessScore</span>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
 
             @* The AI provenance disclosure sits with the comic, not in a footer. The strip
                names a real business and reads as a claim about it. *@
@@ -170,13 +213,41 @@
 
     private ComicDto? _comic;
     private ComicStatsDto? _stats;
+    private SimilarComicsResponse? _similar;
     private GenerationBudgetDto? _budget;
     private bool _isReporting;
     private bool _needsGeneration;
     private bool _isLoading = true;
+
+    /// <summary>
+    /// The paid pipeline is in flight. Distinct from <see cref="_isLoading"/>, which also covers
+    /// the free cached read: leaving during that used to count as an abandoned generation.
+    /// </summary>
+    private bool _isGenerating;
+
+    /// <summary>
+    /// Whether the last failure is one a retry could change. A rate limit or a dropped
+    /// connection is; a missing restaurant or too-ordinary reviews is not.
+    /// </summary>
+    private bool _canRetry;
+
+    /// <summary>
+    /// Set by <see cref="DisposeAsync"/>. Generation is deliberately not cancelled on teardown —
+    /// the server runs it to completion so the comic is cached for a return visit — so every
+    /// continuation after an await checks this before touching the page.
+    /// </summary>
+    private bool _disposed;
+
     private string? _error;
     private string _errorTitle = "Oops!";
     private Timer? _scoreRevealTimer;
+
+    /// <summary>
+    /// Bumped each time a reveal starts. A timer callback already queued when a regenerate
+    /// restarts the count-up compares against it and drops out, instead of mutating the new
+    /// reveal's score.
+    /// </summary>
+    private int _revealGeneration;
 
     /// <summary>Score currently painted in the ring while it counts up to the real one.</summary>
     private int _revealedScore;
@@ -252,6 +323,10 @@
         // Viewing is read-only: try the cached comic first (GET, free). Generation (POST,
         // paid AI pipeline) only runs when the user explicitly asked for it — the search
         // flow navigates with ?generate=true; Hall of Fame / shared links never auto-spend.
+        // Started alongside the comic rather than after it: it gates only the generate controls,
+        // and a slow budget read must not delay a comic that is already cached.
+        var budgetTask = ReadBudgetAsync();
+
         try
         {
             _comic = await ApiClient.GetCachedComicAsync(PlaceId);
@@ -261,9 +336,12 @@
             // Fall through: treat lookup failure like a cache miss.
         }
 
-        // Read alongside the comic rather than before it: it gates only the generate controls,
-        // and a slow budget read must not delay a comic that is already cached.
-        _budget = await ApiClient.GetGenerationBudgetAsync();
+        _budget = await budgetTask;
+
+        if (_disposed)
+        {
+            return;
+        }
 
         if (_comic == null)
         {
@@ -302,6 +380,7 @@
 
         await History.RecordAsync(_comic);
         _stats = await ApiClient.GetComicStatsAsync(_comic.PlaceId);
+        _similar = await ApiClient.GetSimilarComicsAsync(_comic.PlaceId);
 
         _canNarrate = await Fx.CanNarrateAsync();
 
@@ -318,7 +397,33 @@
     private async Task RegenerateAsync()
     {
         await LoadComic(forceRegenerate: true);
-        _budget = await ApiClient.GetGenerationBudgetAsync();
+        _budget = await ReadBudgetAsync();
+    }
+
+    /// <summary>
+    /// Runs the same generation again after a failure that could end differently this time.
+    /// </summary>
+    private async Task RetryAsync()
+    {
+        await LoadComic(forceRegenerate: false);
+        _budget = await ReadBudgetAsync();
+    }
+
+    /// <summary>
+    /// The budget gates a button; it is never worth failing the page for. The client already
+    /// swallows HTTP failures, but a malformed body or a timeout would still throw out of
+    /// <see cref="OnInitializedAsync"/> into the framework error strip.
+    /// </summary>
+    private async Task<GenerationBudgetDto?> ReadBudgetAsync()
+    {
+        try
+        {
+            return await ApiClient.GetGenerationBudgetAsync();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -329,6 +434,7 @@
     private void StartScoreReveal()
     {
         var target = _comic?.StrangenessScore ?? 0;
+        var generation = ++_revealGeneration;
 
         _scoreRevealTimer?.Dispose();
         _revealedScore = 0;
@@ -344,6 +450,14 @@
 
         _scoreRevealTimer = new Timer(_ =>
         {
+            // Dispose() does not recall a callback already queued; a regenerate that restarted
+            // the reveal, or a teardown, would otherwise have this tick count against the wrong
+            // target or render into a component that no longer exists.
+            if (generation != _revealGeneration || _disposed)
+            {
+                return;
+            }
+
             _revealedScore = Math.Min(target, _revealedScore + step);
             var landed = _revealedScore >= target;
 
@@ -354,6 +468,11 @@
 
             InvokeAsync(async () =>
             {
+                if (generation != _revealGeneration || _disposed)
+                {
+                    return;
+                }
+
                 StateHasChanged();
 
                 // Interop must run on the renderer's context, not the timer thread.
@@ -386,6 +505,10 @@
 
         await Fx.PlayScoreLandAsync(score);
         await Fx.PlaySplatAsync(score / 100.0);
+
+        // A regenerate lands a second burst on the same canvas. Stop the previous one before the
+        // handle is overwritten, or its frame task outlives everything that could reach it.
+        await Fx.StopParticlesAsync(_burstHandle);
         _burstHandle = await Fx.BurstParticlesAsync(_burstCanvas, score);
 
         // The comic reacting to its own score. Until now the ring counted, a chord played and
@@ -421,8 +544,31 @@
         // Tint the app-wide backdrop to this comic (FX #2).
         Layout.MainLayout.RaiseScoreChanged(score);
 
+        // And to its actual colours. Fired with the score rather than on arrival: the palette is
+        // the same "this comic, specifically" statement the signature makes, and landing it while
+        // the strip is still developing would spend it on a page the user is not looking at yet.
+        // An empty palette clears to the brand gradient, so an older comic needs no special case.
+        Layout.MainLayout.RaisePaletteChanged(_comic?.Palette ?? []);
+
         // Drops the conic sweep behind the ring, which is only meaningful while counting.
         StateHasChanged();
+    }
+
+    /// <summary>
+    /// Throws a reaction onto the comic: a handful of emoji bodies that arc off the bar, tumble
+    /// down the strip and pile up unevenly on whatever is already there.
+    /// <para>
+    /// A reaction is the only thing a viewer can give a comic that expires in 24 hours, and a
+    /// tally next to a glyph reports how many people pressed it while saying nothing at all about
+    /// the fact that you just did.
+    /// </para>
+    /// </summary>
+    private async Task ThrowReactionAsync(ReactionBar.ReactionThrown reaction)
+    {
+        if (_strip is not null)
+        {
+            await _strip.ThrowReactionAsync(reaction.Glyph, reaction.ClientX);
+        }
     }
 
     /// <summary>
@@ -451,14 +597,21 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+
         // Leaving mid-generation is the clearest signal that the wait is too long, and it is
-        // invisible to the server — the pipeline runs to completion regardless.
-        if (_isLoading)
+        // invisible to the server — the pipeline runs to completion regardless. Keyed on the
+        // paid pipeline specifically: leaving during the free cached read is not an abandonment.
+        if (_isGenerating)
         {
             Analytics.TrackGenerationAbandoned();
         }
 
         _scoreRevealTimer?.Dispose();
+
+        // The comic's colours are written to the document element, so they outlive this route
+        // unless cleared — the leaderboard would otherwise wear the last comic's palette.
+        Layout.MainLayout.RaisePaletteChanged([]);
 
         // The bed and the narration both outlive this component unless they are stopped: the
         // worklet node is attached to the app-wide AudioContext, and speechSynthesis is a
@@ -472,7 +625,9 @@
     private async Task LoadComic(bool forceRegenerate)
     {
         _isLoading = true;
+        _isGenerating = true;
         _error = null;
+        _canRetry = false;
         _activeStepIndex = 0;
         StateHasChanged();
 
@@ -481,10 +636,14 @@
             // Streamed so the stepper reflects the stage the pipeline is genuinely in. The
             // reported phase is mapped through _comicSteps rather than cast, so an unknown
             // phase from a newer API leaves the stepper where it is instead of jumping.
-            var progress = new Progress<ComicGenerationPhase>(phase =>
+            // Reported inline, not through Progress<T>: that type captures no
+            // SynchronizationContext here and would queue each phase to the thread pool — the
+            // same race the server moved onto a Channel to avoid. The stream is read on the
+            // renderer's context, so the callback already runs where StateHasChanged is legal.
+            var progress = new InlineProgress<ComicGenerationPhase>(phase =>
             {
                 var index = Array.FindIndex(_comicSteps, s => s.Phase == phase);
-                if (index >= 0)
+                if (index >= 0 && !_disposed)
                 {
                     _activeStepIndex = index;
                     StateHasChanged();
@@ -493,6 +652,15 @@
 
             Analytics.TrackGenerationStarted();
             _comic = await ApiClient.GenerateComicStreamAsync(PlaceId, forceRegenerate, progress);
+
+            // The route was torn down while the pipeline ran. The comic is cached server-side
+            // for a return visit; restarting the bed, the reveal timer and the palette here
+            // would leak all three past a page that no longer exists.
+            if (_disposed)
+            {
+                return;
+            }
+
             Analytics.TrackGenerationCompleted(fromCache: _comic.IsCached);
 
             await OnComicReadyAsync();
@@ -501,6 +669,12 @@
         catch (HttpRequestException ex)
         {
             Analytics.TrackGenerationFailed();
+
+            // Only the outcomes that time or a second attempt could change.
+            _canRetry = ex.StatusCode is not (
+                System.Net.HttpStatusCode.BadRequest
+                or System.Net.HttpStatusCode.UnprocessableEntity
+                or System.Net.HttpStatusCode.NotFound);
 
             (_errorTitle, _error) = ex.StatusCode switch
             {
@@ -535,22 +709,38 @@
         catch (Exception ex)
         {
             Analytics.TrackGenerationFailed();
+            _canRetry = true;
             _errorTitle = "Unexpected Error";
             _error = $"An unexpected error occurred: {ex.Message}";
         }
         finally
         {
+            _isGenerating = false;
             _isLoading = false;
-            if (_error is not null)
+
+            if (!_disposed)
             {
-                await Fx.PlayErrorAsync();
+                if (_error is not null)
+                {
+                    await Fx.PlayErrorAsync();
+                }
+                StateHasChanged();
             }
-            StateHasChanged();
         }
     }
 
     private void GoBack()
     {
         Navigation.NavigateTo(From == "leaderboard" ? "/leaderboard" : "/");
+    }
+
+    /// <summary>
+    /// <see cref="IProgress{T}"/> that reports on the caller's own context, synchronously.
+    /// <see cref="Progress{T}"/> posts to whatever SynchronizationContext it was constructed
+    /// on, and here there is none, so it would fall back to the thread pool.
+    /// </summary>
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }

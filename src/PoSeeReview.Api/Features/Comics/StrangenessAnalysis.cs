@@ -8,7 +8,14 @@ namespace PoSeeReview.Api.Features.Comics;
 /// <param name="StrangenessScore">0-100, clamped by the service.</param>
 /// <param name="PanelCount">1-2, clamped by the service.</param>
 /// <param name="Narrative">Short paragraph the image model draws from.</param>
+/// <param name="Captions">
+/// Exactly <paramref name="PanelCount"/> narrator captions, one per panel, produced by the same
+/// call as the score. Null only for a hand-constructed value (tests); every implementation
+/// normalises this before returning, and callers still pass it through
+/// <see cref="ChatPrompts.NormalizeCaptions"/> so the pipeline is total either way.
+/// </param>
 public sealed record StrangenessAnalysis(
     int StrangenessScore,
     int PanelCount,
-    string Narrative);
+    string Narrative,
+    IReadOnlyList<string>? Captions = null);

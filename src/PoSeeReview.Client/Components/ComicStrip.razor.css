@@ -33,15 +33,15 @@
     background: var(--surface-film);
 }
 
-/* Mobile-responsive scaling for landscape comic */
-@media (max-width: 768px) {
+/* Breakpoints are the design system's four (40/48/64/80rem), not ad-hoc pixel values. */
+@media (max-width: 48rem) {
     .comic-strip-container {
         margin: 1rem 0;
         border-radius: 8px;
     }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 40rem) {
     .comic-strip-container {
         border-radius: 0;
         box-shadow: 0 0 0 3px var(--color-comic-ink);
@@ -97,8 +97,49 @@
     z-index: 1;
 }
 
+/* The reaction pile, above the ink.
+
+   Ordering is the claim each layer makes: the printed page at the bottom, ink thrown at it in
+   front of that, and the reactions people left in front of everything — they are the most recent
+   thing to happen to the comic and the only layer the viewer put there themselves.
+
+   Reactions are not `overflow`-clipped to the strip on purpose: `border-radius: inherit` keeps
+   them inside the rounded corners, and a body that settles against the bottom edge should look
+   like it is resting on the panel rather than being cut off by it. */
+.fx-reaction-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 2;
+}
+
 @media (prefers-reduced-motion: reduce) {
-    .fx-ink-canvas {
+    .fx-ink-canvas,
+    /* Reduced motion takes the tumbling bodies away. The reaction still registers — the tally in
+       the bar is the part that carries the information, and it is unaffected. */
+    .fx-reaction-canvas {
         display: none;
     }
+}
+
+/* The wet-ink reveal surface (js/ink-field.js, WebGPU).
+
+   Between the post-process and the reactions. It has to be above BOTH the image and the shader
+   canvas, because while it is developing it is standing in for blank paper — covering only one
+   of them would leave a fully-drawn copy of the comic showing through underneath, which is the
+   same trap the CSS mask avoids by living on the container rather than on a child.
+
+   No reduced-motion rule: js/ink-field.js refuses to start below the `full` tier, and reduced
+   motion pins the tier to `off`. A canvas that never gets a frame is already invisible. */
+.fx-ink-field-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    border-radius: inherit;
+    z-index: 1;
 }

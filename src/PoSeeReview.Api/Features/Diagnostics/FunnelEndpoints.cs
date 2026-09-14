@@ -1,23 +1,32 @@
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Shared.Dtos;
 
-namespace PoSeeReview.Api.Features.Analytics;
+namespace PoSeeReview.Api.Features.Diagnostics;
 
 /// <summary>
-/// Client funnel telemetry slice. Maps <c>/api/analytics</c> (NET_RULES 3.3).
+/// Client funnel telemetry. Maps <c>/api/analytics</c> (NET_RULES 3.3).
 /// <para>
 /// The PRD sets targets — time-to-first-comic under 30 seconds, cache hit rate above 40% — that
 /// nothing measured. The server only ever tracked <c>ComicGenerated</c>, which by construction
 /// cannot see a user who denied location, searched and gave up, or abandoned a generation
 /// halfway. Those steps happen in the browser, so the browser reports them here.
 /// </para>
+/// <para>
+/// In the Diagnostics slice because the funnel has exactly one consumer — <c>/diagnostics</c>,
+/// which renders it beside the snapshot — and the two share an audience: whoever can read one is
+/// the person who reads the other.
+/// </para>
 /// </summary>
-internal static class AnalyticsEndpoints
+internal static class FunnelEndpoints
 {
-    /// <summary>Named limiter for event submission.</summary>
+    /// <summary>
+    /// Named limiter for event submission. The name is a literal again in
+    /// <c>RateLimitingServiceCollectionExtensions</c>, which configures the policy — the middleware
+    /// layer must not reference a slice, so the two spellings have to be kept in step by hand.
+    /// </summary>
     public const string RateLimitPolicy = "analytics-post";
 
-    public static IEndpointRouteBuilder MapAnalyticsEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapFunnelEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/analytics").WithTags("Analytics");
 

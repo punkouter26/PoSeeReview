@@ -197,7 +197,7 @@
     color: var(--color-on-dark);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 40rem) {
     /* Everything must fit a 320px viewport: icon-only nav links, no tagline,
        and shrinkable flex children so the bar never overflows the screen. */
     .nav-shell {
@@ -341,7 +341,7 @@
 
    The bug above hid this problem rather than solving it: an unstyled 22px anchor happened to fit,
    so the squeeze only appears once these rules start applying. */
-@media (max-width: 640px) {
+@media (max-width: 40rem) {
     .nav-user-zone ::deep .nav-mycomics,
     .nav-user-zone ::deep .nav-insights {
         position: relative;
@@ -403,7 +403,7 @@
    So the switch collapses to a 30px circle here, the same move the user badge already makes, and
    the 44px touch area is restored with an invisible expanded hit box. Shrinking the visual and
    shrinking the target are different things, and only the first one is acceptable. */
-@media (max-width: 640px) {
+@media (max-width: 40rem) {
     .nav-sound-btn {
         position: relative;
         min-width: 30px;

@@ -98,6 +98,47 @@ function ensureSprites(palette) {
     return sprites;
 }
 
+/**
+ * Emoji sprites for the reaction pile, rendered once per glyph and cached.
+ *
+ * Separate from the ink sprites because they are a different kind of thing: ink is tinted from
+ * the design tokens and must follow the theme, whereas an emoji is a glyph the platform draws
+ * and there is nothing to tint. Keyed by the character, so the four reactions cost four canvases
+ * for the life of the page no matter how many bodies are in flight.
+ *
+ * Drawn at 96px and scaled down per body. Rendering at the body's own radius would mean a new
+ * canvas per size, and the sizes vary continuously.
+ */
+const glyphSprites = new Map();
+
+function glyphSprite(glyph) {
+    const cached = glyphSprites.get(glyph);
+    if (cached !== undefined) return cached;
+
+    let sprite = null;
+    try {
+        const size = 96;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.font = `${Math.round(size * 0.78)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(glyph, size / 2, size / 2 + size * 0.04);
+            sprite = canvas;
+        }
+    } catch {
+        sprite = null;
+    }
+
+    // Cached even when null: a platform that cannot render the glyph will not start being able
+    // to, and retrying per body would allocate a canvas per frame.
+    glyphSprites.set(glyph, sprite);
+    return sprite;
+}
+
 /** Fixed-capacity, struct-of-arrays. One allocation per world, none per frame. */
 function createWorld(capacity) {
     const n = Math.min(MAX_BODIES, capacity);
@@ -111,6 +152,13 @@ function createWorld(capacity) {
         radius: new Float32Array(n),
         // Index into the pre-tinted sprite set. Render-only; the solver never reads it.
         tint: new Uint8Array(n),
+        // Emoji drawn instead of an ink blob, for the reaction pile. Render-only, and a plain
+        // array because these are strings — the solver stays entirely typed-array.
+        glyph: new Array(n).fill(null),
+        // Accumulated tumble, in radians. Also render-only: Verlet has no angular term, so this
+        // is integrated from horizontal travel in the draw loop rather than solved. A reaction
+        // that lands face-up every time reads as a sprite being placed, not as an object falling.
+        spin: new Float32Array(n),
         quiet: new Uint8Array(n),
         asleep: new Uint8Array(n),
         width: 0,
@@ -123,13 +171,16 @@ function createWorld(capacity) {
         cols: 0,
         rows: 0,
         heads: null,
-        next: null
+        next: null,
+        // Ring-buffer overwrite once full. Off for the one-shot presets, which seed exactly once
+        // and would only lose bodies to it; on for the pile, which is fed by taps.
+        recycle: false,
+        oldest: 0
     };
 }
 
-function addBody(world, x, y, vx, vy, radius, tint) {
-    if (world.count >= world.capacity) return -1;
-    const i = world.count++;
+/** Fills one slot. Split out so a fresh body and a recycled one cannot drift apart. */
+function writeBody(world, i, x, y, vx, vy, radius, tint, glyph) {
     world.x[i] = x;
     world.y[i] = y;
     // Verlet seeds velocity as a position offset, so it must be scaled by the timestep.
@@ -137,8 +188,25 @@ function addBody(world, x, y, vx, vy, radius, tint) {
     world.py[i] = y - vy * FIXED_DT;
     world.radius[i] = radius;
     world.tint[i] = tint;
+    world.glyph[i] = glyph;
+    world.spin[i] = Math.random() * Math.PI * 2;
     world.quiet[i] = 0;
     world.asleep[i] = 0;
+}
+
+function addBody(world, x, y, vx, vy, radius, tint, glyph = null) {
+    // The pile is the one preset that can outlive its own capacity: a user who keeps tapping
+    // reactions would otherwise hit the cap and have later taps silently do nothing. Recycling
+    // the OLDEST body keeps the newest tap visible, which is the one the user is looking at.
+    if (world.count >= world.capacity) {
+        if (!world.recycle) return -1;
+        const i = world.oldest;
+        world.oldest = (world.oldest + 1) % world.capacity;
+        writeBody(world, i, x, y, vx, vy, radius, tint, glyph);
+        return i;
+    }
+    const i = world.count++;
+    writeBody(world, i, x, y, vx, vy, radius, tint, glyph);
     return i;
 }
 
@@ -414,14 +482,28 @@ export function start(canvas, options = {}) {
     world.width = width;
     world.height = height;
 
-    const mode = options.mode === 'shatter' ? 'shatter' : 'ink';
+    const mode = options.mode === 'shatter' ? 'shatter'
+        : options.mode === 'pile' ? 'pile'
+        : 'ink';
     const score = options.score ?? 50;
-    seed(world, mode, score,
-        (options.originX ?? 0.5) * width,
-        (options.originY ?? 0.5) * height);
+
+    // `pile` starts EMPTY. It is the only preset that is not a one-shot: bodies arrive from
+    // emit() as the user taps reactions, so seeding it would put ink on screen for a tap nobody
+    // has made yet. It also never ages out on its own — see holdMs below.
+    if (mode === 'pile') {
+        world.recycle = true;
+    } else {
+        seed(world, mode, score,
+            (options.originX ?? 0.5) * width,
+            (options.originY ?? 0.5) * height);
+    }
 
     const id = nextId++;
-    const holdMs = options.holdMs ?? 2600;
+    // Infinity for the pile: it is a persistent surface for the life of the comic page, and a
+    // fade would quietly delete reactions the user can still see themselves having left. Every
+    // other preset is a one-shot that must stop, because a rAF task redrawing an identical still
+    // frame is exactly what the shared scheduler exists to prevent.
+    const holdMs = options.holdMs ?? (mode === 'pile' ? Infinity : 2600);
     const fadeMs = 900;
     const startedAt = performance.now();
 
@@ -429,6 +511,7 @@ export function start(canvas, options = {}) {
         canvas,
         ctx,
         world,
+        mode,
         stop: null
     };
 
@@ -456,7 +539,12 @@ export function start(canvas, options = {}) {
         // the single cheapest thing that makes this read as ink rather than as bubbles.
         ctx.globalCompositeOperation = 'multiply';
 
+        // Two passes, not one interleaved loop with a branch. Emoji must composite normally —
+        // multiply would darken every reaction against whatever it overlaps and turn a pile of
+        // yellow faces brown — and flipping globalCompositeOperation per body is the exact kind
+        // of 2D-context state change this renderer was written to avoid.
         for (let i = 0; i < world.count; i++) {
+            if (world.glyph[i]) continue;
             const r = world.radius[i];
             // One drawImage, no state change: the tint is already baked into the sprite.
             ctx.drawImage(tinted[world.tint[i]] ?? tinted[0],
@@ -464,11 +552,35 @@ export function start(canvas, options = {}) {
         }
 
         ctx.globalCompositeOperation = 'source-over';
+
+        for (let i = 0; i < world.count; i++) {
+            const glyph = world.glyph[i];
+            if (!glyph) continue;
+            const sprite = glyphSprite(glyph);
+            if (!sprite) continue;
+
+            const r = world.radius[i];
+            // Tumble integrated from horizontal travel. Verlet carries no angular term, and
+            // solving one for decoration would mean an inertia tensor per body; reading the spin
+            // off the motion the solver already produces costs one multiply and stops the moment
+            // the body does, which is the only property that actually matters here.
+            world.spin[i] += (world.x[i] - world.px[i]) * 0.05;
+
+            ctx.save();
+            ctx.translate(world.x[i], world.y[i]);
+            ctx.rotate(world.spin[i]);
+            ctx.drawImage(sprite, -r, -r, r * 2, r * 2);
+            ctx.restore();
+        }
+
         ctx.globalAlpha = 1;
 
         // Everything asleep AND faded out means there is nothing left to compute or show.
         // Holding a rAF task alive to redraw an identical still frame is exactly the kind of
         // idle wake-up gfx-core exists to prevent.
+        // A pile never self-terminates (holdMs is Infinity, so `fade` is pinned at 1 and this
+        // comparison is false). It is stopped by its component's teardown instead — the reactions
+        // are the user's own marks on the page and are theirs until they leave it.
         if (fade <= 0 || (awake === 0 && age > holdMs + fadeMs)) {
             stop(id);
         }
@@ -477,6 +589,70 @@ export function start(canvas, options = {}) {
     instances.set(id, instance);
     canvas.dataset.physics = mode;
     return id;
+}
+
+/**
+ * Throws one reaction into a running `pile`.
+ *
+ * This is what a reaction bar had no way to express before: a tally next to a glyph says how
+ * many people pressed it, and says nothing at all about the fact that YOU just did. A body that
+ * arcs off the chip, tumbles down the comic and lands unevenly on whatever is already there is
+ * the same information with a sense of having been added to.
+ *
+ * The launch is upward and slightly outward from the tap point, because a reaction that simply
+ * drops reads as something falling off rather than as something thrown on.
+ *
+ * @param {number} id handle from start() with mode 'pile'
+ * @param {{ glyph: string, originX?: number, originY?: number, count?: number }} options
+ *        originX/originY are 0..1 fractions of the canvas, so callers do not handle DPR.
+ * @returns {boolean} whether anything was launched
+ */
+export function emit(id, options = {}) {
+    const instance = instances.get(id);
+    if (!instance || instance.mode !== 'pile') return false;
+
+    const glyph = String(options.glyph ?? '').trim();
+    if (!glyph || !glyphSprite(glyph)) return false;
+
+    const { world } = instance;
+    const size = measure(instance.canvas);
+    world.width = size.width;
+    world.height = size.height;
+
+    const originX = (options.originX ?? 0.5) * size.width;
+    const originY = (options.originY ?? 0.5) * size.height;
+    const base = Math.max(8, Math.min(size.width, size.height) * 0.045);
+    const count = Math.max(1, Math.min(6, options.count ?? 3));
+
+    // Launch speed derived from the canvas, not hardcoded. Under this solver's gravity a body
+    // rises v^2 / 2g, so picking a speed picks an arc height only for one particular panel size —
+    // and the comic strip is very different heights on a phone and a desktop. Solving for
+    // "about half the panel" keeps the toss reading the same on both.
+    const apex = Math.sqrt(2 * world.gravity * size.height * 0.45);
+
+    for (let i = 0; i < count; i++) {
+        // Spread in size as well as direction. A monodisperse handful lands in a neat arc; mixed
+        // sizes settle into a heap, which is the whole reason this is a solver and not a
+        // keyframed animation.
+        const radius = base * (0.8 + Math.random() * 0.5);
+        addBody(world,
+            originX + (Math.random() - 0.5) * base * 2,
+            originY,
+            (Math.random() - 0.5) * 260,
+            // Negative y is up in canvas coordinates. Every body falls a moment later.
+            -apex * (0.8 + Math.random() * 0.35),
+            radius, 0, glyph);
+    }
+
+    // Anything already asleep next to the landing zone has to be woken, or the new bodies fall
+    // straight through a settled pile — the pile is skipped by integration AND collision while
+    // asleep. Cheap enough to do wholesale at this body count, and only on a tap.
+    for (let i = 0; i < world.count; i++) {
+        world.asleep[i] = 0;
+        world.quiet[i] = 0;
+    }
+
+    return true;
 }
 
 export function stop(id) {

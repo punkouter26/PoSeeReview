@@ -62,7 +62,21 @@ public sealed partial class GeminiComicService : IImageGenerationService
             throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelCount));
 
         var stopwatch = Stopwatch.StartNew();
-        var prompt = BuildComicPrompt(SanitizeNarrative(narrative), panelCount);
+        var (sanitizedNarrative, bluntedTerms) = SanitizeNarrative(narrative);
+
+        if (bluntedTerms.Count > 0)
+        {
+            // Recorded rather than silent. Blunting stays because the alternative is a refusal on
+            // the one-star reviews this product exists to mine, but a rewrite should be visible:
+            // "rat" becoming "unusual" changes what the artwork depicts, and a counter is the
+            // only way to notice that it is happening often enough to matter.
+            _telemetryClient.GetMetric("Gemini.Image.PromptTermsBlunted").TrackValue(bluntedTerms.Count);
+            _logger.LogInformation(
+                "Blunted {Count} term(s) the image safety filter rejects: {Terms}",
+                bluntedTerms.Count, string.Join(", ", bluntedTerms));
+        }
+
+        var prompt = BuildComicPrompt(sanitizedNarrative, panelCount);
 
         // Transient failures (429/503/timeouts) are handled by the standard resilience handler
         // configured on the "GeminiApi" HttpClient, so no hand-rolled retry is needed here.
@@ -71,12 +85,20 @@ public sealed partial class GeminiComicService : IImageGenerationService
         {
             imageBytes = await GenerateAsync(prompt, cancellationToken);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("safety", StringComparison.OrdinalIgnoreCase)
-            || ex.Message.Contains("declined", StringComparison.OrdinalIgnoreCase)
-            || ex.Message.Contains("blocked", StringComparison.OrdinalIgnoreCase))
+        catch (InvalidOperationException ex) when (IsRefusal(ex))
         {
-            _logger.LogWarning("Gemini blocked content, falling back to generic comic prompt");
-            imageBytes = await GenerateAsync(BuildFallbackComicPrompt(panelCount), cancellationToken);
+            // A refusal is NOT retried with a generic prompt, and that reversal is the point.
+            //
+            // The old behaviour answered a safety decline by paying for a second image of a
+            // cheerful restaurant that had nothing to do with the reviews — then published it
+            // under those reviews' strangeness score, with no marker anywhere that the subject
+            // had been swapped. A user asking about a restaurant where something unpleasant
+            // happened got a stock picture of a happy waiter and no way to tell. Spending money
+            // to make the product lie is the worst of the three available outcomes; refusing is
+            // the only one that is honest, and it is also the one a moderator can act on.
+            _telemetryClient.GetMetric("Gemini.Image.Declined").TrackValue(1);
+            _logger.LogWarning("Gemini declined to draw this comic: {Reason}", ex.Message);
+            throw new ImageDeclinedException(ex.Message);
         }
 
         stopwatch.Stop();
@@ -188,19 +210,44 @@ public sealed partial class GeminiComicService : IImageGenerationService
         throw new InvalidOperationException("Gemini returned no image data for this prompt.");
     }
 
+    private static bool IsRefusal(InvalidOperationException ex) =>
+        ex.Message.Contains("safety", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("declined", StringComparison.OrdinalIgnoreCase)
+        || ex.Message.Contains("blocked", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
-    /// Blunts terms Imagen's safety filter rejects. This was 37 separate
-    /// <see cref="Regex"/>.Replace passes — 37 interpolated patterns and 37 full-string rewrites
-    /// per image, thrashing a process-wide pattern cache that holds 15. One generated alternation,
-    /// one pass.
+    /// Blunts terms the image safety filter rejects, and reports which ones it blunted.
+    /// <para>
+    /// This was 37 separate <see cref="Regex"/>.Replace passes — 37 interpolated patterns and 37
+    /// full-string rewrites per image, thrashing a process-wide pattern cache that holds 15. One
+    /// generated alternation, one pass.
+    /// </para>
     /// </summary>
     [GeneratedRegex(
         @"\b(?:blood|bloody|kill|murder|dead|death|die|dying|gun|shoot|weapon|knife|stab|fight|attack|drug|cocaine|heroin|meth|naked|nude|sex|sexual|hate|racist|racial|vomit|puke|disgusting|roach|cockroach|rat|mice|vermin|poison|toxic|contaminated)\w*\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FlaggedTermRegex();
 
-    private static string SanitizeNarrative(string narrative) =>
-        FlaggedTermRegex().Replace(narrative, "unusual");
+    private static (string Narrative, List<string> BluntedTerms) SanitizeNarrative(string narrative)
+    {
+        var matches = FlaggedTermRegex().Matches(narrative);
+        if (matches.Count == 0)
+        {
+            return (narrative, []);
+        }
+
+        var terms = new List<string>(matches.Count);
+        foreach (Match match in matches)
+        {
+            var term = match.Value.ToLowerInvariant();
+            if (!terms.Contains(term, StringComparer.Ordinal))
+            {
+                terms.Add(term);
+            }
+        }
+
+        return (FlaggedTermRegex().Replace(narrative, "unusual"), terms);
+    }
 
     private static string BuildComicPrompt(string narrative, int panelCount)
     {
@@ -243,33 +290,6 @@ Visual style:
 - Pure visual storytelling: every emotion carried by faces, gestures, and posture alone
 - Every wall, sign, menu, and surface rendered as plain solid color or simple decoration
 - Wordless, silent, pantomime scenes throughout
-""";
-    }
-
-    private static string BuildFallbackComicPrompt(int panelCount)
-    {
-        var panelLayout = panelCount switch
-        {
-            1 => "Single-panorama comic strip (one wide scene filling the frame)",
-            2 => "Two-panel comic strip with equal landscape panels stacked vertically",
-            3 => "Three-panel strip with cinematic flow (left-to-right storytelling)",
-            _ => "Four-panel comic strip arranged left-to-right, top-to-bottom"
-        };
-
-        return $"""
-Create a vibrant {panelCount}-panel wordless pantomime comic strip in a clean, modern cartoon illustration style, told purely through pictures, in the tradition of silent-film slapstick.
-
-Scene: A cheerful, brightly lit restaurant. A happy customer sits at a table. A friendly waiter
-brings an unusually large or creative dish. The customer reacts with wide-eyed surprise and delight.
-
-Layout: {panelLayout}
-- Bold outlines, vivid colors, exaggerated happy facial expressions
-- Modern cartoon illustration style, family-friendly
-- Pure visual storytelling: every emotion carried by faces, gestures, and posture alone
-- Every wall, sign, menu, and surface rendered as plain solid color or simple decoration
-- Wordless, silent, pantomime scenes throughout
-
-REMINDER: This image must contain absolutely NO text, letters, words, speech bubbles, or word balloons.
 """;
     }
 }

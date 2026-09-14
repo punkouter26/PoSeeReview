@@ -17,6 +17,10 @@ import { audio } from './audio.js';
 import { haptics } from './haptics.js';
 import * as ambient from './ambient.js';
 import * as gradient from './gradient.js';
+import * as comicTint from './comic-tint.js';
+import * as glass from './glass.js';
+import * as paper from './paper.js';
+import * as panelScrub from './panel-scrub.js';
 import * as comicFx from './comic-fx.js';
 import * as comicReveal from './comic-reveal.js';
 import * as particles from './particles.js';
@@ -60,6 +64,30 @@ async function loadPhysics() {
  * Resolves to the WebGPU particle backend, or null on a device without WebGPU. Probed BEFORE the
  * import so a browser that cannot use the module never fetches it.
  */
+/**
+ * Resolves to the wet-ink compute module, or null without WebGPU. Probed before the import for
+ * the same reason particles-gpu is: a device that cannot run WGSL never fetches any.
+ */
+let inkFieldModule = null;
+
+async function loadInkField() {
+    if (inkFieldModule !== null) {
+        return inkFieldModule;
+    }
+    try {
+        const { isSupported } = await import('./webgpu-pool.js');
+        if (!isSupported()) {
+            inkFieldModule = false;
+            return false;
+        }
+        inkFieldModule = await import('./ink-field.js');
+        return inkFieldModule;
+    } catch {
+        inkFieldModule = false;
+        return false;
+    }
+}
+
 async function loadParticlesGpu() {
     if (particlesGpuModule !== null) {
         return particlesGpuModule;
@@ -100,8 +128,18 @@ const info = gfx.init();
 const audioInfo = audio.init();
 haptics.init(audioInfo.enabled);
 ambient.init();
-viewTransitions.init();
+// The navigation cue is composed here, not inside view-transitions.js: that module must not
+// learn that the app makes noise, on the same terms gradient.js must not learn about the
+// analyser. A page turn that sweeps in the direction of travel is a product decision.
+viewTransitions.init({
+    onNavigate: (direction, clientX) => guard(() => audio.navigate(direction, clientX))
+});
 guard(() => initPerfHud());
+// One small texture, built once and handed to CSS as a custom property. Not an effect: nothing
+// is registered with the scheduler, and after this the paper ageing on /my-comics is ordinary
+// painting. Installed here rather than lazily on that route so the first render of the grid
+// already has it — a grain that fades in after the cards reads as a loading glitch.
+guard(() => paper.install());
 
 // Audio may already be enabled from a previous session's stored preference. The reactive driver
 // has to follow that, or a returning user gets sound with a backdrop that ignores it.
@@ -131,6 +169,17 @@ function reflectTier(tier) {
 reflectTier(info.tier);
 gfx.onTierChanged(reflectTier);
 
+// The other half of the pane/backdrop pairing enforced in startGlass below. A gradient can stop
+// for reasons that have nothing to do with the tier — a lost context is the realistic one — and
+// a pane that kept running would then be refracting a scene the page is no longer showing.
+// Composed here because gradient.js must not know panes exist and glass.js must not know the
+// backdrop has a CSS fallback.
+gradient.onActiveChanged((count) => {
+    if (count === 0) {
+        guard(() => glass.stopAll());
+    }
+});
+
 // Reduced motion turns audio off inside audio.js, and the three dependants have to follow it
 // there too — otherwise the bed keeps playing under a muted app.
 gfx.onTierChanged(() => {
@@ -143,6 +192,13 @@ gfx.onTierChanged(() => {
 // ever holds the one opaque integer the .NET side already models.
 const backendHandles = new Map();
 let nextCompositeHandle = 1;
+
+// The current scene, mirrored here because glass panes are started and stopped independently of
+// the backdrop and have to be able to catch up. A pane mounted after the score landed would
+// otherwise refract a default-coloured scene while the page behind it shows the comic's own —
+// the one failure mode that makes glass look like a bug rather than a material.
+let lastScore = 40;
+let lastPalette = null;
 
 export const fx = {
     // ── Capability + tier ────────────────────────────────────────────────────────────────
@@ -194,6 +250,39 @@ export const fx = {
         audio.tapAt(clientX);
         haptics.tap();
     }),
+    /**
+     * The discovery beats. These exist because the landing page — the first screen every visitor
+     * sees — had exactly two cues on it: a tap, and the audio unlock hung off the same handler.
+     * Asking for your location, waiting, and getting fifteen restaurants back all sounded
+     * identical to pressing a button.
+     */
+    playLocating: () => guard(() => {
+        audio.locating();
+        haptics.locating();
+    }),
+    playArrival: (count) => guard(() => {
+        audio.arrival(count ?? 0);
+        haptics.arrival(count ?? 0);
+    }),
+    /** Zero results. Not an error cue: an empty answer is an answer. */
+    playEmpty: () => guard(() => audio.empty()),
+
+    /**
+     * Tap on a card, voiced by whether the comic already exists.
+     *
+     * A cache hit opens instantly and costs nothing; a miss spends a paid image call and about
+     * ten seconds. Same control, wildly different consequence, and until now the same click.
+     */
+    playTapCached: (clientX, cached) => guard(() => {
+        if (cached) {
+            audio.tapCached(clientX);
+            haptics.tap();
+        } else {
+            audio.tapUncached(clientX);
+            haptics.tapUncached();
+        }
+    }),
+
     playScoreTick: (value, target) => guard(() => audio.scoreTick(value, target)),
     playScoreLand: (score) => guard(() => {
         audio.scoreLand(score);
@@ -232,6 +321,24 @@ export const fx = {
      */
     playSignature: (seed, score) => guard(() => audio.signature(seed, score)),
 
+    /**
+     * The top of the leaderboard as a chord — each voice one restaurant's own motif.
+     *
+     * `/leaderboard` had a 3D shelf and not one sound on it. Because a motif is deterministic
+     * from its place id, this makes a board that has CHANGED audibly different from one that has
+     * not, before a single row has been read.
+     */
+    playBoardChord: (entries) => guard(() => audio.boardChord(entries ?? [])),
+
+    /**
+     * A row that moved since this visitor last saw the board. Panned to the row, and small: this
+     * plays while someone is reading, so it must be a detail being pointed at.
+     */
+    playRankDelta: (delta, pan) => guard(() => {
+        audio.rankDelta(delta ?? 0, pan ?? 0);
+        if (Math.abs(delta ?? 0) >= 3) haptics.tap();
+    }),
+
     /** Plays a numeric series as pitch. Used by /insights to make a chart's shape audible. */
     playSeries: (values, options) => guard(() => audio.sonify(values ?? [], options ?? {})),
 
@@ -253,8 +360,98 @@ export const fx = {
 
     // ── Background gradient ──────────────────────────────────────────────────────────────
     startGradient: (canvas, score) => guard(() => gradient.start(canvas, { score }), 0),
-    setGradientScore: (id, score) => guard(() => gradient.setScore(id, score)),
-    stopGradient: (id) => guard(() => gradient.stop(id)),
+    setGradientScore: (id, score) => guard(() => {
+        lastScore = score ?? lastScore;
+        gradient.setScore(id, score);
+        glass.setScene(lastScore, lastPalette);
+    }),
+    stopGradient: (id) => guard(() => {
+        // A gradient going away takes the tint with it, or the next route inherits the colours
+        // of a comic that is no longer on screen.
+        comicTint.clear();
+        gradient.stop(id);
+    }),
+
+    // ── Comic palette ────────────────────────────────────────────────────────────────────
+    //
+    // Composed here, not in either module, because deciding that a comic's colours reach BOTH
+    // the shader backdrop and the CSS accents is a product decision — the same reason a tap
+    // also buzzes. gradient.js knows nothing about CSS variables and comic-tint.js knows
+    // nothing about WebGL; either alone is a half-tinted page.
+
+    /**
+     * Dresses the app in a comic's own colours. `palette` is the three hex strings the server
+     * sampled off the finished artwork. Anything else clears back to the brand gradient, which
+     * is what a comic drawn before the extractor existed still gets.
+     */
+    setComicPalette: (id, palette) => guard(() => {
+        const applied = comicTint.apply(palette);
+        lastPalette = applied ? palette : null;
+        gradient.setPalette(id, palette);
+        // Panes refract INTO the backdrop, so a retint that reached only the backdrop would put
+        // every glass card visibly out of register with the page behind it.
+        glass.setScene(lastScore, palette);
+        return applied;
+    }, false),
+
+    /** Restores the brand gradient. Called on leaving a comic route. */
+    clearComicPalette: (id) => guard(() => {
+        comicTint.clear();
+        lastPalette = null;
+        gradient.setPalette(id, null);
+        glass.setScene(lastScore, null);
+    }),
+
+    // ── Refractive glass ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Turns the canvas's PARENT into a real glass pane — refraction, edge dispersion, a
+     * travelling highlight. Taking the parent rather than a second element reference is what
+     * keeps the Blazor side to a single component with no id plumbing.
+     *
+     * A new pane is handed the current scene immediately: one mounted after a score landed would
+     * otherwise refract a default-coloured backdrop while the page behind it shows the comic's,
+     * which reads as a rendering bug rather than as glass.
+     */
+    startGlass: (canvas, thickness, tint, sheen) => guard(() => {
+        const target = canvas?.parentElement;
+        if (!target) return 0;
+
+        // THE PANE AND THE BACKDROP ARE A PAIR, and this guard is the reason the pairing is
+        // enforced here rather than inside glass.js.
+        //
+        // A pane refracts the PROCEDURAL backdrop — it recomputes the scene rather than reading
+        // pixels. So if gradient.js is not actually running, what the page is showing is the CSS
+        // fallback on .fx-backdrop, and the pane would faithfully refract a scene that is not on
+        // screen. That is not a subtle degradation: it puts a differently-coloured rectangle in
+        // the middle of the page. (Observed exactly once, when the frame-budget watchdog
+        // downgraded the backdrop to 'lite' while a pane started at 'full'.)
+        //
+        // gradient.js must not learn that glass exists, and glass.js must not learn that the
+        // backdrop has a CSS fallback. Composing them is this file's job.
+        if (gradient.activeIds().length === 0) {
+            return 0;
+        }
+
+        const id = glass.start(canvas, target, { thickness, tint, sheen });
+        if (id) {
+            glass.setScene(lastScore, lastPalette);
+        }
+        return id;
+    }, 0),
+
+    stopGlass: (id) => guard(() => glass.stop(id)),
+
+    glassPanes: () => guard(() => glass.activeCount(), 0),
+
+    /**
+     * Viewport width, for callers that need to convert a pointer coordinate into a fraction of
+     * a full-width canvas. Here rather than as a raw JS eval on the .NET side so it goes through
+     * the same guard as everything else and cannot throw into interop.
+     */
+    viewportWidth: () => guard(() => window.innerWidth || 1, 1),
+
+    comicTintApplied: () => guard(() => comicTint.isApplied(), false),
 
     // ── Comic panel post-process ─────────────────────────────────────────────────────────
     attachComicFx: (canvas, image) => guard(() => comicFx.attach(canvas, image), 0),
@@ -285,7 +482,87 @@ export const fx = {
         }
     }), 0),
 
-    finishComicReveal: (id) => guard(() => comicReveal.finish(id)),
+    /**
+     * The reveal, preferring the simulated wet-ink boundary.
+     *
+     * Two genuinely different effects, not two qualities of one. The CSS mask is a function of
+     * POSITION — the boundary looks the way it does because of where it is. The field is a
+     * function of HISTORY: ink wicks along the grain, runs ahead of itself where the paper is
+     * thirsty, and pools at the edge, because each cell reads what its neighbours did last step.
+     * That needs state, and state per cell per frame is what a compute pass is for.
+     *
+     * They are mutually exclusive. The field COVERS the comic in paper and eats the cover away;
+     * running the mask as well would develop the artwork twice, with a visible seam wherever the
+     * two boundaries disagreed. So the mask is suppressed only once a field has actually started.
+     *
+     * Async because the device is acquired on demand. A zero from the field is the ordinary case
+     * — no WebGPU, or below the full tier — and it falls through to exactly what shipped before.
+     */
+    startComicRevealField: (container, canvas, bands, fxHandle) => guardAsync(async () => {
+        const inkField = await loadInkField();
+        const fieldId = inkField ? await inkField.start(canvas) : 0;
+
+        const revealId = comicReveal.start(container, {
+            bands: bands ?? 2,
+            fxHandle: fxHandle ?? 0,
+            suppressMask: fieldId !== 0,
+            onProgress: fieldId ? (progress) => inkField.setProgress(fieldId, progress) : null,
+            onBand: (index, total) => {
+                audio.panelReveal(index, total);
+                haptics.tap();
+            }
+        });
+
+        // A field with no reveal driving it would sit at front = 0 for ever: a comic permanently
+        // covered in blank paper. That is the one failure here a user would actually notice, so
+        // it is torn down rather than left running.
+        if (!revealId && fieldId) {
+            inkField.stop(fieldId);
+            return 0;
+        }
+
+        if (!revealId) return 0;
+
+        const handle = nextCompositeHandle++;
+        backendHandles.set(handle, { kind: 'reveal', id: revealId, fieldId });
+        return handle;
+    }, 0),
+
+    finishComicReveal: (id) => guardAsync(async () => {
+        const entry = backendHandles.get(id);
+        if (!entry) {
+            // A handle from the plain startComicReveal, which returns comic-reveal's own id.
+            comicReveal.finish(id);
+            return;
+        }
+
+        backendHandles.delete(id);
+        comicReveal.finish(entry.id);
+        if (entry.fieldId) {
+            const inkField = await loadInkField();
+            inkField?.stop(entry.fieldId);
+        }
+    }),
+
+    // ── Reading the strip ────────────────────────────────────────────────────────────────
+
+    /**
+     * Plays the comic as it is read: one note of its own motif per panel, as that panel crosses
+     * the middle of the screen.
+     *
+     * The note choice is composed here, not in panel-scrub.js — that module knows only that a
+     * boundary was crossed. Deliberately NOT the same cue as the reveal's `panelReveal`: this is
+     * the comic's identity, re-heard at the reader's own pace, so it is the signature's own
+     * scale rather than a generic blip. `seed` is the place id for the same reason it always is.
+     */
+    startPanelScrub: (container, panels, seed, score) => guard(() => panelScrub.start(container, {
+        panels: panels ?? 2,
+        onPanel: (index, total) => {
+            audio.panelNote(seed, score ?? 50, index, total);
+        }
+    }), 0),
+
+    stopPanelScrub: (id) => guard(() => panelScrub.stop(id)),
 
     // ── Particle burst ───────────────────────────────────────────────────────────────────
 
@@ -333,6 +610,46 @@ export const fx = {
      * Ink that lands. Runs after the burst and is where it ends up: a Verlet pile at the bottom
      * of the panel that the stateless shader sim cannot express. `mode` is 'ink' or 'shatter'.
      */
+    /**
+     * Opens a persistent pile on a canvas — empty until `throwReaction` feeds it.
+     *
+     * Deliberately a separate entry point from settleInk. That one is a one-shot that seeds
+     * itself, runs for about three seconds and tears itself down; this is a surface that stays
+     * for the life of the page and accumulates. Folding them into one call would mean a `mode`
+     * that silently changes the lifetime of the handle it returns.
+     */
+    startPile: (canvas) => guardAsync(async () => {
+        const physics = await loadPhysics();
+        const id = physics.start(canvas, { mode: 'pile' });
+        if (!id) return 0;
+        const handle = nextCompositeHandle++;
+        backendHandles.set(handle, { kind: 'physics', id });
+        return handle;
+    }, 0),
+
+    /**
+     * Throws a reaction onto the pile, with the sound and the buzz that go with it.
+     *
+     * Composed here rather than in ReactionBar because it is three modules agreeing: the body is
+     * physics, the click is audio panned to the tap, and the buzz is haptics. That pairing is a
+     * product decision and this file is where those are made.
+     */
+    throwReaction: (handle, glyph, originX, originY, clientX) => guardAsync(async () => {
+        const entry = backendHandles.get(handle);
+        if (!entry || entry.kind !== 'physics') return false;
+        const physics = await loadPhysics();
+        const thrown = physics.emit(entry.id, {
+            glyph,
+            originX: originX ?? 0.5,
+            originY: originY ?? 0.1
+        });
+        if (thrown) {
+            audio.tapAt(clientX ?? window.innerWidth / 2);
+            haptics.tap();
+        }
+        return thrown;
+    }, false),
+
     settleInk: (canvas, score, mode, originX, originY) => guardAsync(async () => {
         const physics = await loadPhysics();
         const id = physics.start(canvas, {

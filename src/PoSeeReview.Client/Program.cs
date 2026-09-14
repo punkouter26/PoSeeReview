@@ -28,6 +28,7 @@ builder.Services.AddScoped<ShareService>();
 builder.Services.AddScoped<FxService>();
 builder.Services.AddScoped<PwaService>();
 builder.Services.AddScoped<ComicHistoryService>();
+builder.Services.AddScoped<BoardMemoryService>();
 builder.Services.AddScoped<InsightsClient>();
 builder.Services.AddScoped<CollectionsClient>();
 builder.Services.AddScoped<ModerationClient>();

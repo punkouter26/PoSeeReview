@@ -21,6 +21,7 @@ internal static class ComicMapping
         BlobUrl = comic.ImageUrl,
         GeneratedAt = comic.CreatedAt,
         ExpiresAt = comic.ExpiresAt,
-        IsCached = isCached ?? comic.CacheState == ComicCacheState.Cached
+        IsCached = isCached ?? comic.CacheState == ComicCacheState.Cached,
+        Palette = comic.Palette
     };
 }

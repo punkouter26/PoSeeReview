@@ -27,44 +27,36 @@ public sealed class ThemeUiTests(PlaywrightFixture fixture)
         return page;
     }
 
+    /// <summary>
+    /// Both halves of "the OS preference wins by default". Kept as one test because the two
+    /// schemes are one contract, and because this tier's budget is method-counted — the
+    /// assertions and the viewport coverage are unchanged.
+    /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_FollowsOsLightPreference(string viewport)
+    public async Task Theme_FollowsOsPreference(string viewport)
     {
-        var page = await LoginPageAsync(viewport, ColorScheme.Light);
+        var light = await LoginPageAsync(viewport, ColorScheme.Light);
+        Assert.Equal("#F8F7FF", await TokenAsync(light, "--color-surface"));
 
-        Assert.Equal("#F8F7FF", await TokenAsync(page, "--color-surface"));
+        var dark = await LoginPageAsync(viewport, ColorScheme.Dark);
+        Assert.Equal("#12101A", await TokenAsync(dark, "--color-surface"));
     }
 
+    /// <summary>
+    /// An explicit <c>data-theme</c> beats the OS in both directions — the case that matters
+    /// because only <c>ThemeUiTests</c> ever sets that attribute.
+    /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_FollowsOsDarkPreference(string viewport)
+    public async Task Theme_ExplicitChoiceOverridesTheOs(string viewport)
     {
-        var page = await LoginPageAsync(viewport, ColorScheme.Dark);
+        var light = await LoginPageAsync(viewport, ColorScheme.Light);
+        await light.EvaluateAsync("() => document.documentElement.setAttribute('data-theme', 'dark')");
+        Assert.Equal("#12101A", await TokenAsync(light, "--color-surface"));
 
-        Assert.Equal("#12101A", await TokenAsync(page, "--color-surface"));
+        var dark = await LoginPageAsync(viewport, ColorScheme.Dark);
+        await dark.EvaluateAsync("() => document.documentElement.setAttribute('data-theme', 'light')");
+        Assert.Equal("#F8F7FF", await TokenAsync(dark, "--color-surface"));
     }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_ExplicitDarkOverridesLightOs(string viewport)
-    {
-        var page = await LoginPageAsync(viewport, ColorScheme.Light);
-
-        await page.EvaluateAsync("() => document.documentElement.setAttribute('data-theme', 'dark')");
-
-        Assert.Equal("#12101A", await TokenAsync(page, "--color-surface"));
-    }
-
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Theme_ExplicitLightOverridesDarkOs(string viewport)
-    {
-        var page = await LoginPageAsync(viewport, ColorScheme.Dark);
-
-        await page.EvaluateAsync("() => document.documentElement.setAttribute('data-theme', 'light')");
-
-        Assert.Equal("#F8F7FF", await TokenAsync(page, "--color-surface"));
-    }
-
 }

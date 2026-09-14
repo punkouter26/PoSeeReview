@@ -254,6 +254,46 @@ export const haptics = {
         return fire([14, 46, 22]);
     },
 
+    /**
+     * A search leaving. Mirrors audio.locating: one run, a long gap, a much shorter second run.
+     * The gap is the cue — a single buzz would be indistinguishable from the tap that caused it,
+     * and what this has to say is that something is now outstanding.
+     */
+    locating() {
+        if (throttled('locating', 700)) return false;
+        return fire([18, 200, 8]);
+    },
+
+    /**
+     * Results landing. The run count is the result count, on the same mapping audio.arrival
+     * uses — so on a phone with the sound off, how much came back is still felt rather than
+     * merely seen.
+     */
+    arrival(count = 0) {
+        if (throttled('arrival', 600)) return false;
+        const notes = Math.max(2, Math.min(5, Math.round(count / 4)));
+        const voices = [];
+        for (let i = 0; i < notes; i++) {
+            voices.push({
+                delay: i * 0.065,
+                attack: 0.003,
+                decay: i === notes - 1 ? 0.34 : 0.1,
+                peak: 0.18 + i * 0.012
+            });
+        }
+        return fire(fromEnvelope(voices));
+    },
+
+    /**
+     * Tapping something that will cost a generation. One noticeably longer run than `tap`.
+     * There is no matching cue for the cached case: that one is instant, and the absence of
+     * extra weight is itself the signal.
+     */
+    tapUncached() {
+        if (throttled('tap', 40)) return false;
+        return fire([26]);
+    },
+
     /** Raw escape hatch for a caller with its own shape. Clamped like everything else. */
     pulse: (pattern) => fire(Array.isArray(pattern) ? pattern : [pattern])
 };

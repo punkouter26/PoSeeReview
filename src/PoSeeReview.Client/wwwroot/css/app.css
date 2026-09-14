@@ -1170,21 +1170,65 @@
         animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    /* The tapped restaurant card morphs into the comic panel. Slightly slower than the page
-       cross-fade so the shared element reads as the thing being followed, not as a flicker. */
+    /* The tapped card morphs into the comic panel. Slightly slower than the page cross-fade so
+       the shared element reads as the thing being followed, not as a flicker.
+
+       Both halves now carry the name — js/view-transitions.js tags the source on the click and
+       the arriving .comic-strip-container in settle(). With the name on only one of them the
+       browser has nothing to pair, and what looked like a morph was really the card fading out
+       while the comic cross-faded in from nowhere. */
     ::view-transition-group(comic-morph) {
         animation-duration: 380ms;
         animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
     }
 
+    /* Cross-fade the two snapshots while the group interpolates position and size. The old one
+       leaves quickly and the new one arrives over the whole duration, so the middle of the
+       transition is dominated by the destination rather than by a fifty-fifty blend of two
+       differently-shaped images. */
     ::view-transition-old(comic-morph) {
-        animation: none;
-        opacity: 0;
+        animation: posee-morph-out 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
     ::view-transition-new(comic-morph) {
-        animation: none;
+        animation: posee-morph-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
+
+    /* ── Direction of travel ──────────────────────────────────────────────────────────────
+       A transition that always moves the same way is a cross-fade with extra steps. Depth is
+       stamped on <html> as data-nav-direction before the snapshot: going deeper (a list to a
+       comic) slides in from the right, coming back slides in from the left, and the pair reads
+       as one stack rather than as unrelated pages.
+
+       Small offsets — 3% — because this runs on every internal navigation. Anything larger
+       becomes the app's dominant motion by repetition, and the reduced-motion block below
+       removes it entirely for anyone who asked. */
+    :root[data-nav-direction="forward"]::view-transition-new(root) {
+        animation: posee-slide-from-right 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    :root[data-nav-direction="back"]::view-transition-new(root) {
+        animation: posee-slide-from-left 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+}
+
+@keyframes posee-morph-out {
+    to { opacity: 0; }
+}
+
+@keyframes posee-morph-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes posee-slide-from-right {
+    from { opacity: 0; transform: translateX(3%); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes posee-slide-from-left {
+    from { opacity: 0; transform: translateX(-3%); }
+    to   { opacity: 1; transform: translateX(0); }
 }
 
 /* Belt and braces. js/view-transitions.js already refuses to start under reduced motion; this
@@ -1538,4 +1582,492 @@
     [data-freshness="expired"] .history-name {
         color: var(--color-text-muted);
     }
+
+    /* ── Paper ageing ─────────────────────────────────────────────────────────────────────
+       The desaturation above says "older". This says "on paper, and it is going" — grain, uneven
+       foxing, and a curl at the corner.
+
+       The texture is one small tileable PNG built once by js/paper.js and handed over as
+       --paper-grain. That is the whole reason this is affordable on a grid: after the property is
+       set there is no rAF task, no observer and nothing registered with the shared scheduler —
+       it is `background-image` and `mix-blend-mode`, which is painting the browser was doing
+       anyway. An feTurbulence filter would be re-evaluated on every paint of the thumbnails,
+       which are the heaviest elements on the page.
+
+       Every rule resolves `var(--paper-grain, none)`, so a browser where the texture could not be
+       built simply keeps the desaturation. Nothing here is load-bearing. */
+    [data-freshness="fading"] .history-thumb::after,
+    [data-freshness="expired"] .history-thumb::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border-radius: inherit;
+        background-image: var(--paper-grain, none);
+        background-repeat: repeat;
+        /* Multiply so the grain darkens what is under it instead of laying a grey film over it.
+           The texture is black-with-varying-alpha precisely so this works over either theme. */
+        mix-blend-mode: multiply;
+        opacity: 0.55;
+    }
+
+    [data-freshness="expired"] .history-thumb::after {
+        opacity: 0.85;
+    }
+
+    /* The thumb has to be a containing block for the overlay above, and the anchor is not
+       positioned by default. */
+    [data-freshness="fading"] .history-thumb,
+    [data-freshness="expired"] .history-thumb {
+        position: relative;
+    }
+
+    /* The curl. A corner lifting off the page, drawn as a gradient rather than a transform,
+       because transforming the thumbnail would move the link's hit area away from the pixels the
+       user is aiming at. */
+    [data-freshness="expired"] .history-thumb::before {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 auto;
+        width: 34%;
+        aspect-ratio: 1;
+        pointer-events: none;
+        z-index: 1;
+        background: linear-gradient(
+            315deg,
+            var(--color-surface-alt) 0%,
+            color-mix(in srgb, var(--color-surface-alt) 60%, transparent) 42%,
+            transparent 52%);
+    }
+
+    @media (hover: hover) {
+        /* Hover clears the grain along with the desaturation. The decay is a status indicator,
+           not a punishment, and not being able to see the thing you are deciding about would be
+           the wrong trade — the same reasoning as the filter rule above, and they have to agree
+           or hovering half-restores a card. */
+        [data-freshness="fading"]:hover .history-thumb::after {
+            opacity: 0;
+            transition: opacity var(--duration-slow) var(--ease-out);
+        }
+    }
+}
+
+/* ============================================================================================
+   COMIC TINT — the page wears the comic's own colours
+
+   Three hex values sampled from the finished artwork on the SERVER (ComicPaletteExtractor) and
+   published here by js/comic-tint.js as --comic-tint-1..3. Not sampled in the browser: the comic
+   blob is served without CORS headers, so a canvas that has drawn it is tainted and cannot be
+   read back — the same constraint that stops comic-fx.js attaching for most visitors.
+
+   WHAT THE TINT MAY TOUCH IS DELIBERATELY A SHORT LIST: accents only — ring stroke, ring glow,
+   card rim, reaction chip edge. Never a text colour and never a text background. Every readable
+   pair in this app is measured against WCAG by ColorContrastTests, which parses the real token
+   values out of this file; a colour invented at runtime by an image model is exactly what that
+   test cannot cover. So the tint decorates edges that carry no information on their own, and
+   every pair a reader has to read stays on the audited tokens.
+
+   `shared`, not `page`, on purpose: the score ring lives in a scoped sheet, and `page` sits
+   BELOW `shared` in the layer order — so these win without a single !important, which is the
+   whole reason that order exists.
+   ============================================================================================ */
+
+@layer shared {
+    /* The SVG gradient the ring is stroked with. `stop-color` is a real CSS property, so var()
+       resolves here — unlike an SVG presentation *attribute*, which does not, and which is why
+       the Insights charts have to resolve their colours through theme-tokens.js instead. The
+       fallbacks are the brand stops the markup already carries, so a comic with no palette is
+       byte-identical to what shipped before. */
+    :root[data-comic-tint] .strangeness-ring linearGradient stop:first-child {
+        stop-color: var(--comic-tint-3, #7C3AED);
+    }
+
+    :root[data-comic-tint] .strangeness-ring linearGradient stop:last-child {
+        stop-color: var(--comic-tint-2, #f5576c);
+    }
+
+    /* A transition on the stroke rather than a swap. The palette lands at the same moment the
+       score does, and the backdrop underneath is easing over roughly a second — a ring that
+       snapped would be the one element out of step with it. */
+    :root[data-comic-tint] .ring-fill {
+        transition: stroke-dasharray var(--duration-base) var(--ease-out),
+                    filter var(--duration-deliberate) var(--ease-out);
+        filter: drop-shadow(0 0 6px color-mix(in srgb, var(--comic-tint-3) 55%, transparent));
+    }
+
+    /* The comic card takes the artwork's rim. Kept to the border and a wash of shadow: the card
+       is a text surface, so its background stays on --color-card and the contrast tokens hold. */
+    :root[data-comic-tint] .comic-container {
+        border-color: color-mix(in srgb, var(--comic-tint-3) 42%, var(--color-border));
+        box-shadow:
+            0 1px 0 0 color-mix(in srgb, var(--comic-tint-3) 20%, transparent) inset,
+            0 10px 40px color-mix(in srgb, var(--comic-tint-1) 30%, transparent);
+        transition: border-color var(--duration-deliberate) var(--ease-out),
+                    box-shadow var(--duration-deliberate) var(--ease-out);
+    }
+
+    /* Reaction chips pick up the edge only. The "mine" state keeps its own token fill, because
+       that one is a state a user has to be able to read at a glance and an arbitrary colour
+       would make it unreliable. */
+    :root[data-comic-tint] .reaction:not(.reaction--mine) {
+        border-color: color-mix(in srgb, var(--comic-tint-3) 38%, var(--color-border));
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        :root[data-comic-tint] .ring-fill,
+        :root[data-comic-tint] .comic-container {
+            transition: none;
+        }
+    }
+}
+
+/* ============================================================================================
+   DISCOVERY: THE ARRIVAL SEQUENCE
+
+   The landing page is the first screen every visitor sees and it had, in effect, no feedback of
+   its own — a tap sound shared with every other button, then skeletons, then a grid. The three
+   states below are the three things actually happening, and none of them costs frame budget:
+   everything here animates transform and opacity, which the compositor evaluates off the main
+   thread.
+   ============================================================================================ */
+
+@layer shared {
+    /* A request in flight. Two rings leaving the card, offset by half the period so there is
+       always one in view — one ring alone has a dead beat between repeats that reads as the
+       animation having stopped rather than as a pulse.
+
+       Anchored to the card and NOT to the button: the answer to this request is often a browser
+       permission dialog, which can sit unanswered indefinitely. A spinner next to a disabled
+       button says "stuck"; a ring still leaving says "waiting on you". */
+    @media (prefers-reduced-motion: no-preference) {
+        .prompt-card--searching {
+            position: relative;
+        }
+
+        .prompt-card--searching::after,
+        .prompt-card--searching::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            border: 1px solid var(--color-brand);
+            pointer-events: none;
+            opacity: 0;
+            animation: posee-sonar 2.4s var(--ease-out) infinite;
+        }
+
+        .prompt-card--searching::before {
+            animation-delay: 1.2s;
+        }
+    }
+}
+
+@keyframes posee-sonar {
+    from { transform: scale(1); opacity: 0.5; }
+    to   { transform: scale(1.06); opacity: 0; }
+}
+
+/* ============================================================================================
+   READY vs COSTS SOMETHING
+
+   A cache hit opens instantly and spends nothing. A miss spends a paid image call and about ten
+   seconds. Those are adjacent cards in one grid and, until this, the only place the app drew the
+   distinction at all was pin colour on a map panel most people never open.
+
+   The treatment is deliberately asymmetric. "Ready" gets a live sheen, because it is the one the
+   app would rather you picked; "new" gets a quieter, static dashed edge rather than a warning
+   colour, because spending a generation is the product working as intended and dressing it as a
+   hazard would be a lie.
+   ============================================================================================ */
+
+@layer shared {
+    .cache-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2xs);
+        margin-left: auto;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        font-size: var(--text-2xs);
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        border: 1px solid var(--color-border);
+        color: var(--color-text-muted);
+    }
+
+    .cache-dot {
+        width: 0.45rem;
+        height: 0.45rem;
+        border-radius: 50%;
+        background: currentColor;
+        flex: none;
+    }
+
+    /* --color-success-ink, not --color-success: the token pair split exists because the bright
+       one is a background and the ink one is the readable text version. Using the surface colour
+       as text here is exactly the mistake the split was introduced to stop. */
+    [data-cached="ready"] .cache-pill {
+        color: var(--color-success-ink);
+        border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
+        background: color-mix(in srgb, var(--color-success) 10%, transparent);
+    }
+
+    [data-cached="ready"] .cache-dot {
+        background: var(--color-success);
+    }
+
+    /* The sheen. A pseudo-element translated across a clipped card — transform only, so it is a
+       compositor animation. A background-position sweep would be the obvious way to write this
+       and would repaint the whole card every frame, for every card in the grid at once. */
+    @media (prefers-reduced-motion: no-preference) {
+        /* `clip`, not `hidden`, and the margin is the reason. The sheen has to be clipped to the
+           card or it sweeps across its neighbours — but `overflow: hidden` would also clip the
+           CTA button's focus ring where it sits near the card edge, which trades a decoration in
+           for a keyboard-accessibility regression. `overflow-clip-margin` clips the sheen and
+           lets the ring bleed. */
+        :root[data-fx-tier="full"] [data-cached="ready"]:not(.disabled) {
+            overflow: clip;
+            overflow-clip-margin: 6px;
+        }
+
+        :root[data-fx-tier="full"] [data-cached="ready"]:not(.disabled)::after {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 0;
+            width: 40%;
+            pointer-events: none;
+            background: linear-gradient(
+                100deg,
+                transparent,
+                color-mix(in srgb, var(--color-success) 16%, transparent),
+                transparent);
+            transform: translateX(-120%);
+            /* Long period on purpose. A grid of these at a fast cadence is a disco; at eleven
+               seconds a card catches the light about once while you are reading the one above it. */
+            animation: posee-sheen 11s var(--ease-in-out) infinite;
+        }
+    }
+
+    [data-cached="new"] .cache-pill {
+        border-style: dashed;
+    }
+}
+
+@keyframes posee-sheen {
+    0%   { transform: translateX(-120%); }
+    /* The sweep occupies the first fifth of the period; the rest is the card sitting still. */
+    22%  { transform: translateX(350%); }
+    100% { transform: translateX(350%); }
+}
+
+/* ============================================================================================
+   REFRACTIVE GLASS (js/glass.js)
+
+   The pane canvas sits behind its card's content and standing in for the CSS `.glass` material,
+   which it replaces only once the shader has actually started. That handshake is the whole
+   safety of this feature: js/glass.js sets `data-glass-pane` on the parent AFTER a successful
+   compile, and clears it unconditionally on teardown, so every path that does not produce a
+   running shader leaves the blur exactly as it was.
+
+   Note what is NOT here: no fallback, no @supports, no reduced-motion rule of its own. There is
+   nothing to fall back to — the absence of the attribute IS the fallback, and the shader refuses
+   to start under reduced motion or below the `full` tier before any of this is reached.
+   ============================================================================================ */
+
+@layer shared {
+    .fx-glass-canvas {
+        /* Behind the card's own content but above its background. Everything else in the card
+           establishes no stacking context of its own, so a single negative-free z-index here is
+           enough — and `isolation` on the card keeps that local. */
+        z-index: 0;
+    }
+
+    .glass:has(> .fx-glass-canvas) {
+        isolation: isolate;
+    }
+
+    .glass:has(> .fx-glass-canvas) > *:not(.fx-glass-canvas) {
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Once a pane is running, the CSS material stands down. Both halves matter: the blur is the
+       expensive one (it is why scroll-guard.js exists), and leaving the translucent tint on top
+       of a pane that is already transmitting the backdrop double-tints it into mud. */
+    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        :root[data-fx-tier="full"] .glass[data-glass-pane="on"] {
+            -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+            background: transparent;
+        }
+
+        /* The CSS rim would sit on top of the shader's own, which draws a real specular edge
+           from the SDF gradient. Two rims read as a double border. */
+        :root[data-fx-tier="full"] .glass[data-glass-pane="on"]::before {
+            display: none;
+        }
+
+        /* And the scroll guard has nothing to switch off any more — a shader pass does not get
+           cheaper by being told the page is moving, and dropping the background here would flash
+           an opaque card in mid-scroll. */
+        .is-scrolling .glass[data-glass-pane="on"] {
+            background: transparent;
+        }
+    }
+}
+
+/* ============================================================================================
+   BOARD MOVEMENT
+
+   The live Hall of Fame churns — comics expire in 24 hours and the ranking turns over with them
+   — so a returning visitor had no way to tell a board that had completely reshuffled from one
+   that had not moved at all. A rank is a fact; a rank next to where it was is the only thing on
+   the page that rewards coming back.
+
+   `still` is deliberately the same as a first visit. "Nothing happened" and "we have no record"
+   should look identical, because in both cases there is nothing to point at — and a first visit
+   that marked all ten rows as new would be noise pretending to be information.
+   ============================================================================================ */
+
+@layer shared {
+    .rank-delta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.15rem;
+        margin-top: var(--space-2xs);
+        padding: 0.1rem 0.35rem;
+        border-radius: 999px;
+        font-size: var(--text-2xs);
+        font-weight: 800;
+        line-height: 1;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* The ink tokens, not the surface ones. --color-success is a bright background and
+       --color-success-ink is its readable text form; the split exists precisely so a badge like
+       this cannot be written with the wrong half. */
+    .rank-delta[data-direction="up"] {
+        color: var(--color-success-ink);
+        background: color-mix(in srgb, var(--color-success) 14%, transparent);
+    }
+
+    .rank-delta[data-direction="down"] {
+        color: var(--color-text-muted);
+        background: color-mix(in srgb, var(--color-border-strong) 22%, transparent);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        /* Rows that moved arrive FROM the direction they moved, then settle. This runs once on
+           mount rather than on the scroll timeline that .scroll-enter uses: a scroll-driven
+           entrance replays whenever the row re-enters the viewport, and "this climbed two places"
+           is a fact about the visit, not about where the page is scrolled. */
+        [data-move="up"] .rank-badge,
+        [data-move="down"] .rank-badge {
+            animation: posee-rank-settle var(--duration-deliberate) var(--ease-spring) both;
+        }
+
+        [data-move="down"] .rank-badge {
+            animation-name: posee-rank-settle-down;
+            /* Not the spring. Overshoot on a fall reads as a bounce, and a restaurant losing
+               rank should not look pleased about it. */
+            animation-timing-function: var(--ease-out);
+        }
+    }
+}
+
+@keyframes posee-rank-settle {
+    from { transform: translateY(14px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes posee-rank-settle-down {
+    from { transform: translateY(-10px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+/* Where a forgotten comic goes. Fixed rather than absolute: the grid scrolls and the bodies are
+   simulated in viewport space, so an absolutely-positioned canvas would leave the dismissal
+   behind as soon as the user scrolled. aria-hidden and pointer-events:none like every overlay
+   canvas in this app — the list underneath is the real feature. */
+@layer shared {
+    .fx-dust-canvas {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: 5;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .fx-dust-canvas {
+            display: none;
+        }
+    }
+}
+
+/* ============================================================================================
+   READING THE STRIP
+
+   A travelling highlight down the comic as it scrolls past, so the panel at the middle of the
+   screen is the one lit. The notes that go with it are js/panel-scrub.js; this half is the part
+   that has to be free.
+
+   `animation-timeline: view()` means the compositor drives it from the element's own position in
+   the scrollport — no scroll handler, no observer, no rAF task, nothing in the shared 20ms
+   budget. That matters here more than almost anywhere else in the app: this animates the largest
+   image on the page while the user is scrolling, which is exactly when the main thread is busy.
+
+   The sentinels panel-scrub.js appends are zero-size and non-interactive; they exist only to be
+   observed and must never affect layout.
+   ============================================================================================ */
+
+@layer shared {
+    .panel-marker {
+        position: absolute;
+        left: 0;
+        width: 100%;
+        height: 1px;
+        pointer-events: none;
+        visibility: hidden;
+    }
+
+    @supports (animation-timeline: view()) {
+        @media (prefers-reduced-motion: no-preference) {
+            /* On the CONTAINER, so the highlight covers the image and the post-process canvas
+               together — the same reason the reveal mask is on the container. Lighting only the
+               <img> would put a bright band under a shader layer drawn on top of it. */
+            :root[data-fx-tier="full"] .comic-strip-container[data-panel-scrub]::after {
+                content: "";
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+                z-index: 3;
+                border-radius: inherit;
+                /* A soft band, not a hard edge. The gradient stop positions are animated below,
+                   which is a paint on one element rather than a filter over the artwork —
+                   brightening the image itself would mean re-decoding it into a filtered layer. */
+                background: linear-gradient(
+                    to bottom,
+                    transparent 0%,
+                    color-mix(in srgb, var(--color-on-dark, #fff) 9%, transparent) 42%,
+                    color-mix(in srgb, var(--color-on-dark, #fff) 14%, transparent) 50%,
+                    color-mix(in srgb, var(--color-on-dark, #fff) 9%, transparent) 58%,
+                    transparent 100%);
+                mix-blend-mode: soft-light;
+                animation: posee-reading-light linear both;
+                animation-timeline: view();
+                /* Spans the whole time the strip is in the scrollport, so the band travels the
+                   full height of the artwork exactly once per pass. `both` is required or the
+                   strip sits at the authored end state before it is ever scrolled to. */
+                animation-range: entry 0% exit 100%;
+            }
+        }
+    }
+}
+
+@keyframes posee-reading-light {
+    from { transform: translateY(-100%); }
+    to   { transform: translateY(100%); }
 }

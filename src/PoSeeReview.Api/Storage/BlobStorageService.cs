@@ -161,15 +161,23 @@ public class BlobStorageService : IBlobStorageService
 
     /// <summary>
     /// Resolves a blob URL (with or without a SAS query string) to a client in the comics
-    /// container. The path is <c>/{container}/{blob}</c>, where the blob part may contain virtual
-    /// directories; a single-segment path is treated as a bare blob name.
+    /// container. Azure paths are <c>/{container}/{blob}</c>; Azurite's are
+    /// <c>/{account}/{container}/{blob}</c>. The blob name is everything after the container
+    /// segment, wherever it sits — skipping a fixed one segment resolved every local URL to
+    /// <c>comics/{blob}</c> inside the comics container, so downloads, existence checks and
+    /// deletes all 404'd against Azurite while the JSON said the comic was there.
+    /// A single-segment path is treated as a bare blob name.
     /// </summary>
     private BlobClient ResolveBlobClient(string blobUrl)
     {
         var pathParts = new Uri(blobUrl).AbsolutePath.TrimStart('/').Split('/');
-        var blobName = pathParts.Length >= 2
-            ? string.Join("/", pathParts.Skip(1))
-            : pathParts[0];
+        var containerIndex = Array.IndexOf(pathParts, _containerName);
+
+        var blobName = containerIndex >= 0 && containerIndex < pathParts.Length - 1
+            ? string.Join("/", pathParts.Skip(containerIndex + 1))
+            : pathParts.Length >= 2
+                ? string.Join("/", pathParts.Skip(1))
+                : pathParts[0];
 
         return _blobServiceClient.GetBlobContainerClient(_containerName).GetBlobClient(blobName);
     }

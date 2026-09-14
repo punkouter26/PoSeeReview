@@ -66,6 +66,15 @@ export function start(container, options = {}) {
     const fxHandle = options.fxHandle ?? 0;
     const onBand = typeof options.onBand === 'function' ? options.onBand : null;
 
+    // The wet-ink field, when one started (WebGPU only — see ink-field.js). It is a SUBSTITUTE
+    // for the CSS mask, not a layer on top of it: the field covers the un-developed comic in
+    // paper colour and eats the cover away, so running the mask as well would develop the comic
+    // twice and leave a visible seam where the two boundaries disagreed. This loop still owns the
+    // timing and the cues either way — the field decides what the edge LOOKS like, not when the
+    // reveal is over.
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const suppressMask = options.suppressMask === true;
+
     // A second start on the same container replaces the first — a regenerate swaps the src on
     // the same element, and two loops writing one property is a fight neither wins.
     for (const [existingId, existing] of instances) {
@@ -91,8 +100,12 @@ export function start(container, options = {}) {
     };
 
     try {
-        container.dataset[ATTRIBUTE] = 'running';
-        write(0);
+        // The attribute is what makes the CSS mask apply at all, so withholding it is how the
+        // field takes over cleanly — no rule to disable, nothing to keep in sync.
+        if (!suppressMask) {
+            container.dataset[ATTRIBUTE] = 'running';
+            write(0);
+        }
     } catch {
         return 0;
     }
@@ -107,8 +120,16 @@ export function start(container, options = {}) {
         const raw = Math.min(1, (now - startedAt) / durationMs);
         const progress = ease(raw);
 
-        write(progress);
+        if (!suppressMask) write(progress);
         if (fxHandle) setShaderReveal(fxHandle, progress);
+        if (onProgress) {
+            try {
+                onProgress(progress);
+            } catch {
+                // The field failing must not stall the reveal — and if it has stopped drawing,
+                // suppressMask means there is no mask either, so the comic is simply visible.
+            }
+        }
 
         // Announce each band as its development passes the halfway mark, not as it starts:
         // a panel is recognisable at half-developed, and a cue that fires when the first

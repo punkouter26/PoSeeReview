@@ -8,6 +8,7 @@
 @inject ShareService ShareService
 @inject NavigationManager Navigation
 @inject FxService Fx
+@inject BoardMemoryService BoardMemory
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
@@ -168,9 +169,27 @@
         <div class="leaderboard-list cq-list">
             @foreach (var entry in leaderboardEntries ?? [])
             {
-                <div class="leaderboard-card glass scroll-enter @GetRankClass(entry.Rank)">
+                @* data-move drives the row's arrival animation. An attribute rather than a class
+                   because it carries three states and CSS wants to key different treatments off
+                   each — see "BOARD MOVEMENT" in app.css. *@
+                <div class="leaderboard-card glass scroll-enter @GetRankClass(entry.Rank)"
+                     data-move="@MoveStateFor(entry.PlaceId)"
+                     @onmouseenter="() => PreviewSignatureAsync(entry)"
+                     @onfocusin="() => PreviewSignatureAsync(entry)">
                     <div class="rank-badge">
                         <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
+                        @* Rendered only for rows that actually moved since this browser last
+                           looked. A board that churns daily previously gave a returning visitor
+                           no way to tell a complete reshuffle from no change at all. *@
+                        @if (DeltaFor(entry.PlaceId) is { } delta && delta != 0)
+                        {
+                            <span class="rank-delta" data-direction="@(delta > 0 ? "up" : "down")"
+                                  title="@(delta > 0 ? $"Up {delta} since your last visit" : $"Down {-delta} since your last visit")">
+                                <span aria-hidden="true">@(delta > 0 ? "▲" : "▼")</span>
+                                <span class="visually-hidden">@(delta > 0 ? $"Up {delta} places since your last visit" : $"Down {-delta} places since your last visit")</span>
+                                @Math.Abs(delta)
+                            </span>
+                        }
                     </div>
 
                     <div class="comic-thumbnail">
@@ -250,6 +269,18 @@
     private bool isLoading = false;
     private string? shareToast;
     private System.Threading.Timer? shareToastTimer;
+
+    /// <summary>
+    /// Rank change per place since this browser last saw this region's board. Empty on a first
+    /// visit, which is deliberate: ten "new" badges at once would say nothing about change.
+    /// </summary>
+    private Dictionary<string, int> _deltas = [];
+
+    /// <summary>Guards the arrival chord so a re-render cannot replay it.</summary>
+    private bool _chordPlayed;
+
+    /// <summary>Last place whose motif was previewed, so a jittery pointer does not retrigger.</summary>
+    private string? _previewedPlaceId;
 
     private ElementReference _shelfCanvas;
     private int _shelfHandle;
@@ -393,6 +424,17 @@
                     .ToList();
                 lastLoadedLocal = DateTimeOffset.Now;
                 Logger.LogInformation("Loaded {Count} leaderboard entries with comics", leaderboardEntries.Count);
+
+                // Best-effort and never allowed to fail the page: the board is the thing the user
+                // came for, and "what changed since last time" is a bonus on top of it.
+                try
+                {
+                    await ReportBoardChangeAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Could not report board movement for {Region}", _region);
+                }
             }
             else
             {
@@ -408,6 +450,90 @@
         {
             isLoading = false;
         }
+    }
+
+    /// <summary>Rank change for a row, or null if it did not move / is new / first visit.</summary>
+    private int? DeltaFor(string placeId) =>
+        _deltas.TryGetValue(placeId, out var delta) ? delta : null;
+
+    /// <summary>
+    /// Which arrival treatment a row gets: climbed, fell, or neither. Rows that did not move are
+    /// deliberately indistinguishable from rows on a first visit — "nothing happened" and "we
+    /// don't know" should look the same, because in both cases there is nothing to point at.
+    /// </summary>
+    private string MoveStateFor(string placeId) => DeltaFor(placeId) switch
+    {
+        > 0 => "up",
+        < 0 => "down",
+        _ => "still"
+    };
+
+    /// <summary>
+    /// Works out what moved, sounds the board, then records the current standings.
+    /// <para>
+    /// Order matters and is easy to get wrong: saving before comparing would compare the board
+    /// against itself and report every row as unchanged, for ever.
+    /// </para>
+    /// </summary>
+    private async Task ReportBoardChangeAsync()
+    {
+        var entries = leaderboardEntries;
+        if (entries is null || entries.Count == 0)
+        {
+            return;
+        }
+
+        var previous = await BoardMemory.GetAsync(_region);
+
+        _deltas = [];
+        if (previous.Count > 0)
+        {
+            foreach (var entry in entries)
+            {
+                if (previous.TryGetValue(entry.PlaceId, out var was) && was != entry.Rank)
+                {
+                    // Positive is a CLIMB. Ranks count the other way (1 is best), so the
+                    // subtraction is deliberately reversed — getting this backwards would show a
+                    // green up-arrow on every row that fell.
+                    _deltas[entry.PlaceId] = was - entry.Rank;
+                }
+            }
+        }
+
+        await BoardMemory.SaveAsync(_region, entries.Select(e => (e.PlaceId, e.Rank)));
+
+        // The chord is the board heard at once — each voice one restaurant's own motif, seeded
+        // from its place id. It plays only if audio is already unlocked, which on this route means
+        // the visitor turned sound on earlier in the session; nothing here can unlock it, because
+        // rendering a list is not a user gesture.
+        if (!_chordPlayed)
+        {
+            _chordPlayed = true;
+            await Fx.PlayBoardChordAsync(
+                [.. entries.Take(3).Select(e => new FxMotif(e.PlaceId, e.StrangenessScore))]);
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Plays a row's own motif on hover or keyboard focus.
+    /// <para>
+    /// This is what makes the board recognisable by ear rather than merely noisy: the figure is
+    /// deterministic from the place id, so the same restaurant always sounds the same. Guarded
+    /// against the same row retriggering, because a pointer crossing a card generates a stream of
+    /// enter events and the motif is nearly a second long.
+    /// </para>
+    /// </summary>
+    private async Task PreviewSignatureAsync(LeaderboardEntryDto entry)
+    {
+        if (_previewedPlaceId == entry.PlaceId)
+        {
+            return;
+        }
+
+        _previewedPlaceId = entry.PlaceId;
+        await Fx.PlaySignatureAsync(entry.PlaceId, (int)Math.Round(entry.StrangenessScore));
     }
 
     // Rank 1 is gold — it carries .medal-gold styling, so a party popper read as a mismatch

@@ -37,4 +37,17 @@ public class ComicOptions
     /// threshold lives in LeaderboardOptions and is unaffected.
     /// </summary>
     public int MinimumStrangenessScore { get; set; }
+
+    /// <summary>
+    /// Version stamp for the prompt and model behind a comic, folded into the cache check.
+    /// <para>
+    /// The cache is keyed by place and age alone, so a prompt tune or a model swap kept serving
+    /// the old output until somebody paid for a forced regeneration — which made evaluating a
+    /// prompt change cost one generation per restaurant tested, and made it easy to compare a
+    /// new prompt against an old comic and conclude the wrong thing. Bump this whenever the
+    /// prompt, the rubric or the model changes; rows written under a different version simply
+    /// miss the cache and are regenerated on demand, with no migration and no bulk job.
+    /// </para>
+    /// </summary>
+    public int PromptVersion { get; set; } = 1;
 }

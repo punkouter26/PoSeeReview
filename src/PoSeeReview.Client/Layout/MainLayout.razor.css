@@ -6,6 +6,23 @@
     background: var(--color-brand-surface);
 }
 
+/* The backdrop shader was never visible.
+   `.fx-backdrop` is `position: fixed; z-index: -1`, and this opaque background painted straight
+   over it — so the strangeness-reactive scene, the thing the score is supposed to retune and the
+   comic palette is supposed to colour, was covered on every route.
+
+   The page stands aside only once js/gradient.js confirms a backdrop is actually drawing. That
+   handshake is what makes this safe: every path where the shader does not run (no WebGL2,
+   reduced motion, a downgraded tier, a lost context) leaves this background exactly as it was,
+   so the page is never bare.
+
+   The shader builds its field from --color-surface / --color-brand-surface / --color-brand, the
+   same tokens the CSS fallback on .fx-backdrop uses, so handing the ground over does not change
+   which surface the text tokens are measured against. */
+:root[data-fx-backdrop="on"] .page {
+    background: transparent;
+}
+
 main {
     flex: 1;
 }

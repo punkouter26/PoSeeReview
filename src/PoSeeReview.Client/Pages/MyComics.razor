@@ -5,6 +5,8 @@
 @inject ComicHistoryService History
 @inject CollectionsClient Collections
 @inject NavigationManager Navigation
+@inject FxService Fx
+@implements IAsyncDisposable
 
 <PageTitle>My Comics - PoSeeReview</PageTitle>
 
@@ -12,6 +14,10 @@
            Subtitle="What you have kept, and what this browser remembers"
            Width="PageShell.ShellWidth.Wide"
            Class="my-comics-container">
+
+    @* Where a forgotten card goes. One canvas for the whole page rather than one per card: the
+       solver is a single world, and a pile that knows about every dismissal can stack them. *@
+    <canvas @ref="_dustCanvas" class="fx-overlay fx-dust-canvas" aria-hidden="true"></canvas>
 
     @* Two lists, and the split is the point. Kept comics live on the server: they survive the
        24-hour expiry, follow the account to another device, and are capped. History is whatever
@@ -57,7 +63,7 @@
                                 <a href="@($"/comic/{comic.PlaceId}")" class="btn btn-primary history-open">Open</a>
                                 <button type="button"
                                         class="btn btn-icon history-forget"
-                                        @onclick="() => ForgetKeptAsync(comic.PlaceId)"
+                                        @onclick="(e) => ForgetKeptAsync(comic.PlaceId, e)"
                                         title="@($"Stop keeping {comic.RestaurantName}")"
                                         aria-label="@($"Stop keeping {comic.RestaurantName}")">
                                     <span aria-hidden="true">×</span>
@@ -154,7 +160,7 @@
                             </a>
                             <button type="button"
                                     class="btn btn-icon history-forget"
-                                    @onclick="() => ForgetAsync(entry.PlaceId)"
+                                    @onclick="(e) => ForgetAsync(entry.PlaceId, e)"
                                     title="@($"Forget {entry.RestaurantName}")"
                                     aria-label="@($"Forget {entry.RestaurantName}")">
                                 <span aria-hidden="true">×</span>
@@ -190,8 +196,9 @@
         _keptLimit = collection?.Limit ?? 0;
     }
 
-    private async Task ForgetKeptAsync(string placeId)
+    private async Task ForgetKeptAsync(string placeId, MouseEventArgs args)
     {
+        await ScatterAsync(args);
         await Collections.ForgetAsync(placeId);
         await ReloadAsync();
     }
@@ -209,10 +216,71 @@
             ? $"/comic/{entry.PlaceId}?generate=true"
             : $"/comic/{entry.PlaceId}";
 
-    private async Task ForgetAsync(string placeId)
+    private async Task ForgetAsync(string placeId, MouseEventArgs args)
     {
+        await ScatterAsync(args);
         await History.RemoveAsync(placeId);
         await ReloadAsync();
+    }
+
+    /// <summary>
+    /// The card coming apart where it was dismissed.
+    /// <para>
+    /// A row that simply vanishes from a grid is indistinguishable from a render glitch, and this
+    /// page is entirely about things going away — half of it is a countdown to expiry. Giving the
+    /// removal a body makes it read as the user having done something rather than as the list
+    /// having lost track.
+    /// </para>
+    /// <para>
+    /// Fired BEFORE the removal, on purpose: the burst is anchored to where the card is, and after
+    /// the reload the grid has already reflowed and that position belongs to a different card.
+    /// </para>
+    /// </summary>
+    private async Task ScatterAsync(MouseEventArgs args)
+    {
+        await Fx.UnlockAudioAsync();
+        await Fx.PlayTapAtAsync(args.ClientX);
+
+        if (_dustHandle == 0)
+        {
+            return;
+        }
+
+        // Coordinates are 0..1 over the canvas, which spans the page; the page is scrolled, so the
+        // viewport coordinate has to be shifted by the scroll offset the canvas does not share.
+        var originX = _viewportWidth > 0 ? Math.Clamp(args.ClientX / _viewportWidth, 0, 1) : 0.5;
+        await Fx.ThrowReactionAsync(_dustHandle, "📄", originX, 0.35, args.ClientX);
+    }
+
+    private ElementReference _dustCanvas;
+    private int _dustHandle;
+    private double _viewportWidth = 1;
+
+    /// <summary>
+    /// Opens the dismissal pile once the grid has rendered. A zero handle is the ordinary case
+    /// below the Full tier and every call site treats it as "no effect".
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _dustHandle = await Fx.StartReactionPileAsync(_dustCanvas);
+        _viewportWidth = await Fx.GetViewportWidthAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // The solver holds a frame task until it is told to stop, and a pile never ages out on
+        // its own — that is the property that makes it right for reactions and makes forgetting
+        // it here a leak that survives the route.
+        if (_dustHandle != 0)
+        {
+            await Fx.StopInkAsync(_dustHandle);
+            _dustHandle = 0;
+        }
     }
 
     private async Task ClearAsync()

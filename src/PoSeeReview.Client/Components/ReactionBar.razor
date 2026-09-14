@@ -21,7 +21,7 @@
 
         <button type="button"
                 class="reaction @(isMine ? "reaction--mine" : "")"
-                @onclick="() => ToggleAsync(kind)"
+                @onclick="(e) => ToggleAsync(kind, glyph, e)"
                 disabled="@_isSaving"
                 aria-pressed="@(isMine ? "true" : "false")"
                 aria-label="@($"{label}{(count > 0 ? $", {count}" : "")}")"
@@ -38,6 +38,28 @@
 @code {
     [Parameter, EditorRequired]
     public string PlaceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Raised when a reaction is ADDED (never when one is withdrawn), with the glyph and the
+    /// viewport x of the tap.
+    /// <para>
+    /// The bar does not throw the body itself: the pile lives on a canvas over the comic strip,
+    /// which is a sibling component. Handing the page an event keeps the two uncoupled, and the
+    /// page already owns both.
+    /// </para>
+    /// <para>
+    /// Withdrawal is deliberately silent. Taking a reaction back is a correction, and answering
+    /// it with the same flourish as giving one would make undoing a mis-tap feel like an
+    /// achievement.
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public EventCallback<ReactionThrown> OnReacted { get; set; }
+
+    /// <param name="Glyph">The emoji to throw.</param>
+    /// <param name="ClientX">Viewport x of the tap, so the sound pans to where it happened.</param>
+    public readonly record struct ReactionThrown(string Glyph, double ClientX);
+
 
     /// <summary>
     /// Panned click for any reaction. Also an unlock point: an AudioContext only leaves
@@ -90,7 +112,7 @@
         _ => 0
     };
 
-    private async Task ToggleAsync(ReactionKind kind)
+    private async Task ToggleAsync(ReactionKind kind, string glyph, MouseEventArgs args)
     {
         if (_isSaving)
         {
@@ -110,6 +132,15 @@
             if (updated is not null)
             {
                 _counts = updated;
+
+                // Thrown only when the reaction was ADDED, and only after the server confirmed
+                // it. Withdrawal is silent — taking a mis-tap back is a correction, and giving it
+                // the same flourish as leaving a reaction would be celebrating an undo. Firing
+                // before the round-trip would throw a body for a write that then failed.
+                if (updated.MyReaction == kind)
+                {
+                    await OnReacted.InvokeAsync(new ReactionThrown(glyph, args.ClientX));
+                }
             }
         }
         finally

@@ -53,6 +53,12 @@ docker compose up -d azurite    # container name is "PoSeeReview", ports 10000-1
 Set `"Storage:UseAzurite": true` in `appsettings.Development.json` — without it local dev
 short-circuits to the **real** Azure storage account via Key Vault.
 
+Azurite blob URLs carry the account as their first path segment
+(`/devstoreaccount1/comics/{blob}`); Azure's are `/comics/{blob}`. `BlobStorageService.ResolveBlobClient`
+anchors on the container segment rather than skipping a fixed one — skipping one resolved every
+local URL to `comics/{blob}` inside the comics container, so `/api/comics/{id}/image`, existence
+checks and blob deletes all 404'd against Azurite while the JSON said the comic was there.
+
 ### Deploy & smoke
 
 `git push origin master` triggers [.github/workflows/deploy.yml](.github/workflows/deploy.yml):
@@ -73,8 +79,14 @@ $env:BASE_URL = "https://app-poseereview.azurewebsites.net"; node SCRIPTS/post-d
 src/PoSeeReview.Api        ASP.NET Core host; also serves the WASM client
   Features/<Slice>/        endpoints + handlers + entities + repositories + services together
                            (Auth, Comics, Restaurants, Leaderboard, DevSessions, Diagnostics,
-                            Takedowns, Reports, Reactions, Analytics, Insights, Collections,
-                            Moderation, ShareLinks)
+                            Insights, Reports, Reactions, Collections, Moderation)
+                           Eleven, not the fourteen this list used to name. ShareLinks moved into
+                           Comics (a short link only ever addresses a comic, and the link-preview
+                           card was already there); Analytics moved into Diagnostics (its only
+                           reader is `/diagnostics`); Takedowns moved into Moderation — the same
+                           erasure reached through a different gate, and the same obligation to
+                           suppress first. Routes did not move: `/api/share`, `/s/{code}`,
+                           `/api/analytics` and `/api/takedowns` all still answer where they did.
   Storage/                 cross-slice TableStorageRepository, BlobStorageService
   Identity/                ICurrentRequestIdentityAccessor + HttpContext impl
   Telemetry/               App Insights + OpenTelemetry, RoleNameTelemetryInitializer
@@ -204,6 +216,77 @@ only endpoint that spends money. Notes:
   A mid-stream failure is surfaced, not retried, because a retry pays for the same comic twice.
 - App Service's proxy may still buffer the whole response despite `X-Accel-Buffering: no`. That
   degrades to a correct comic with useless progress, which is why the fallback is not wired to it.
+- The client request must call `SetBrowserResponseStreamingEnabled(true)`. `ResponseHeadersRead`
+  alone is not enough on WASM: the browser `HttpClient` buffers the whole body, so every phase
+  arrived in one burst after `complete` and the stepper never moved. The proxy was blamed for
+  what the client was doing.
+
+### The AI pipeline: one call, one flight, one price
+
+**Chat is not the image provider, and the two are now chosen separately.** `Ai:ImageProvider`
+still picks the painter (`Gemini` → `GeminiComicService`, `HuggingFace` → `FLUX`), and
+`Ai:ChatProvider` picks the scorer (`AzureOpenAI` | `HuggingFace` | `Ollama`). A missing
+`Ai:ChatProvider` derives the old pairing, so nothing shifted under an untouched deployment.
+They were one setting, and that made every image-model experiment a scorer experiment too —
+there was no way to tell "this comic is worse" from "this scorer is stricter". `Ollama`
+(`OllamaChatService`, `http://localhost:11434/v1`) is the local tier: zero marginal cost, no
+key, and the only way to exercise the whole pipeline without a bill. `AiPricing:FreeProviders`
+lists the providers with no token price so a local call does not report a fictional dollar
+figure. **Inference stays on the server** — a client-side scorer would need the review text in
+the browser, would produce a score only that device agrees with, and `webgpu-pool.js` is scoped
+to effects where compute changes what the effect *can be*.
+
+**There is one chat call, not two.** Captions used to come from a second completion issued after
+the image existed, though it shared no input with the image call it waited behind — it needs
+only the narrative, which the first call produced. `IChatCompletionService` has one method and
+`ChatPrompts.BuildAnalysisPrompt` asks for `captions` alongside `narrative`. The neat part is
+what that removes: `ComicTextOverlayService` no longer holds a chat service at all, so the
+drawing step is text-in/pixels-out and the model coupling lives in one place.
+`ChatPrompts.NormalizeCaptions` makes the result total — a language model asked to count panels
+gets it wrong often enough to matter, and topping up from the narrative beats paying a second
+call to improve a subtitle.
+
+**Single flight.** `ComicGenerationLock` is a per-place `SemaphoreSlim`; the pipeline takes it
+after the first cache miss and re-reads the cache under it. Without it a double-tap or two tabs
+both miss and both pay, and the second comic is discarded by the upsert. It is deliberately
+**in-process** — a distributed lease would add an ETag protocol and a failure mode where a
+crashed instance blocks a restaurant.
+
+**`Comics:PromptVersion` is part of the cache key.** The cache was keyed by place and age, so a
+prompt tune kept serving the previous output until somebody paid for a forced regeneration,
+which made evaluating a prompt change cost one generation per restaurant tested. A row whose
+version differs misses; rows written before versioning read back as 0 and miss once. No
+migration, no backfill job.
+
+**Cost is now a number worth reading.** `AiCostTracker` emits `Ai.Cost.Usd` and `Ai.Tokens`
+tagged `Provider`/`Model`, priced from `AiPricing:Models` per **input and output** rate. It
+replaced a single hardcoded blended `$0.10/1K` over total tokens, which moved with the
+prompt/completion mix rather than with the price and so could not answer the one question a cost
+metric is asked.
+
+**A token cap on a reasoning model does not reach the wire, and startup says so.** Reasoning
+deployments reject `max_tokens` (the 2026-06-15 outage) and require `max_completion_tokens`,
+which OpenAI SDK 2.1.0 cannot express — `ChatCompletionOptions` has no additional-properties bag.
+`ChatTokenBudget.CanApplyCap` is what lets `StartupSecretValidator` warn instead of leaving a
+spend ceiling sitting in appsettings looking active. On a reasoning model the cap would be the
+wrong instrument anyway: reasoning tokens are billed against the same allowance.
+
+**An image refusal is a refusal, not a retry.** Gemini's `SAFETY`/`PROHIBITED_CONTENT` used to be
+answered by redrawing with a fixed "happy restaurant" prompt and publishing *that* under the
+reviews' score, with no marker that the subject had been swapped — the app spending money to
+lie. `ImageDeclinedException` now surfaces as a 422 and flags the place for moderation, because
+a refusal is a real signal about the source material. `SanitizeNarrative` still blunts the terms
+the image filter rejects (the alternative is refusing the one-star reviews the product mines)
+but now reports which ones via `Gemini.Image.PromptTermsBlunted` — a rewrite should be visible.
+
+**Embeddings, and the `/comics/{placeId}/similar` row.** `IEmbeddingService` (`Embedding:*`,
+**opt-in and off by default**) vectors the narrative onto the comic row; `VectorMath` packs it
+little-endian into an `Edm.Binary` column and ranks by cosine. This is the app's first "and what
+else?" — a comic page was a dead end. Two rules: the service **never throws** (a lost vector
+costs one related link, never a comic), and only *live* comics are candidates, because a similar
+comic is something to open and an expired one is a dead link wearing a recommendation. Comics
+drawn before the feature was switched on have no vector and are **not** backfilled; the rows
+expire within a day, so the feature fills itself in rather than embedding on a GET.
 
 ### Client-side comic history
 
@@ -219,6 +302,11 @@ trim-analyzed, so reflection-based serialization fails the build.
 
 `/my-comics` is linked from the **right-hand session zone**, not `nav.nav-links`: it is per-user
 state, and `HeaderContractUiTests` asserts the primary nav is exactly two items.
+
+`BoardMemoryService` is the same pattern for a different question — where each place sat on the
+leaderboard last visit, keyed per region under `posee_board_ranks_<region>`. Both are registered in
+`AppJsonContext` (`List<ComicHistoryEntry>`, `Dictionary<string, int>`) for the reason every wire
+DTO is: the client is trim-analyzed, so reflection-based serialization fails the build.
 
 ### Design system and CSS architecture
 
@@ -320,7 +408,19 @@ Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/
 
 Effect modules: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`, `comic-fx.js`,
 `particles.js`, `loading-ring.js`, `scroll-guard.js`, `shelf.js`, `physics.js`, `comic-reveal.js`,
-`haptics.js`, `ambient.js` (+ `posee-synth-processor.js`), `webgpu-pool.js`, `particles-gpu.js`.
+`haptics.js`, `ambient.js` (+ `posee-synth-processor.js`), `webgpu-pool.js`, `particles-gpu.js`,
+`glsl-backdrop.js`, `glass.js`, `comic-tint.js`, `ink-field.js`, `panel-scrub.js`, `paper.js`.
+
+> **The backdrop was invisible, and that is worth knowing before touching it.** `.fx-backdrop` is
+> `position: fixed; z-index: -1`, and `.page` painted an opaque `--color-brand-surface` straight
+> over it — so the strangeness-reactive scene, the thing the score retunes, was covered on every
+> route. `.page` now stands aside only while `:root[data-fx-backdrop="on"]`, a flag `gradient.js`
+> sets when a backdrop is genuinely drawing and clears when it stops. Every path where the shader
+> does not run leaves the CSS background exactly where it was, so the page is never bare. The
+> shader's field is built from `--color-surface` / `--color-brand-surface` / `--color-brand` (not
+> the three hardcoded dark purples it used to carry) so handing the ground over does not change
+> which surface the text tokens are measured against; `uAmbient` is 0.94 in light and 0.62 in
+> dark, because the same floor cannot serve both.
 
 **`fx.js` is the composition root, and that is load-bearing.** `audio.js` does not know haptics
 exist; `haptics.js` does not know about the bed; `gradient.js` does not know about the analyser.
@@ -340,16 +440,80 @@ min-width: 0` against a session zone that cannot shrink, so anything added on th
 straight out of the primary nav — a full-size button squeezed it to zero width and the header
 contract test caught it as "hidden".
 
+### Refractive glass, and the one reason it is possible
+
+`.glass` in app.css is `backdrop-filter: blur()`. That is frosting, not glass: real glass **bends**
+what is behind it, splits the colour where the bend is steepest, and catches a highlight that
+moves. `glass.js` does all three, on a pooled surface, `full` tier only.
+
+**It works only because the backdrop is procedural.** No browser exposes composited DOM to a
+shader, so a pane cannot read what is behind it — but `gradient.js` is a pure function of position
+and time, so a pane can *evaluate* it, at any coordinate the refraction asks for, including
+outside its own bounds. Both passes share `glsl-backdrop.js` precisely so they cannot disagree
+about what that coordinate contains. This is why glass over the **comic** is not on the table:
+that blob is cross-origin and taints a texture upload, the same wall `comic-fx.js` hits.
+
+Three things here were shipped wrong once and are easy to reintroduce:
+
+- **The pane and the backdrop are a pair**, enforced in `fx.js`. A pane running while
+  `gradient.activeIds()` is empty refracts a scene that is not on screen — observed exactly once,
+  when the budget watchdog downgraded the backdrop while a pane started. `gradient.onActiveChanged`
+  is the other half, for a gradient stopping on a lost context rather than a tier change.
+- **The edge field is a superellipse, not a rounded-box SDF.** The box SDF's gradient is
+  axis-aligned inside the box and flips along the diagonals, so a normal taken from it draws a
+  hard **X** across the pane. That shipped.
+- **`paneY` is `1 - rect.bottom / vh`, not `rect.top / vh`.** `vUv.y = 1` is the top of the frame;
+  `getBoundingClientRect().top` measures down. Getting it wrong mirrors the sampled scene, which
+  still looks like a material — which is why it survives a glance. Same class of mistake as the
+  `present()` flip in `gl-pool.js`.
+
+Mount it as `<GlassPane />`, the **first child** of any `.glass` element: the JS takes the canvas's
+parent as the pane, so there is no second `ElementReference` and no id plumbing. It flags that
+parent `data-glass-pane="on"` **after** a successful compile, and app.css stands the CSS blur down
+only on that flag — so every failure path keeps the material that shipped before.
+
+### The page wears the comic's colours
+
+`ComicPaletteExtractor` (server) samples three colours off the finished image bytes and ships them
+on `ComicDto.Palette`; `ComicEntity.PaletteHex` persists them in one column, absent on older rows.
+**It has to run on the server**: the blob is served without CORS headers, so a browser canvas that
+has drawn it cannot be read back. Not a quantizer — population alone returns three browns for
+every comic, because paper and gutters dominate — so buckets are ranked by population **weighted
+by chroma** and the survivors must differ in hue.
+
+The palette is **blended into** the theme's base, never substituted for it: lightness stays the
+theme's, only hue travels. An image model's idea of a mid-tone is not a surface `ColorContrastTests`
+has ever measured. For the same reason `comic-tint.js` publishes `--comic-tint-1..3` for **accents
+only** — ring stroke, card rim, chip edge — and never a text colour or a text background.
+`MainLayout.RaisePaletteChanged([])` is the clear, and a comic route **must** raise it on teardown
+or the leaderboard wears the last comic's colours.
+
 ### WebGPU, and why it is narrow
 
 `webgpu-pool.js` owns one shared `GPUDevice` on the same terms `gl-pool.js` owns one WebGL2
-context. It is deliberately used by **one** effect. WebGPU is not a faster WebGL; what it has that
-WebGL2 does not is **compute**, and compute is what the ink burst wants. `particles.js` simulates
+context. It is used by **two** effects, and the bar for a third is the same one both cleared: not
+"would this be faster in WGSL" but "does compute change what the effect can be". WebGPU is not a
+faster WebGL; what it has that WebGL2 does not is **compute**. `particles.js` simulates
 every particle in the vertex shader from immutable seeds — which is why 1500 cost the same as 20,
 and also why no particle can know about the floor or about any other particle. `particles-gpu.js`
 writes state back to a storage buffer, so the drops decelerate, hit the bottom of the panel and
 **settle**. The visible difference is the ending: the WebGL2 burst fades out mid-air because a
 stateless sim has no other option.
+
+`ink-field.js` is the second, and the argument has the same shape. The CSS reveal mask and the
+shader's noise threshold are both functions of **position** — the boundary looks the way it does
+because of where it is. Ink on paper is a function of **history**: it wicks along the grain, runs
+ahead of itself where the sheet is thirsty, and pools at the front, because each cell reads what
+its neighbours did last step. That is a 96x192 diffusion grid, ping-ponged between two storage
+buffers (a compute pass cannot read and write one buffer coherently across workgroups), and it
+cannot be expressed statelessly. It **covers** the comic in paper colour and eats the cover away
+rather than masking it — `mask-image` takes a URL, not a live canvas, so a simulated boundary
+cannot become a mask without a per-frame readback.
+
+> The front is **driven, not simulated**: `comic-reveal.js` pushes its own eased progress in. A
+> diffusion front left to find its own pace takes as long as it takes, and the comic would still
+> be half covered when the reader started scrolling. The sim decides what the edge *looks like*;
+> the reveal decides when it is over.
 
 Everything else in the app is a fullscreen fragment pass where WebGL2 is entirely adequate and
 already pooled; porting those would mean maintaining WGSL and GLSL for identical output. The
@@ -380,8 +544,21 @@ ink that *lands*, piles unevenly, and where it piles depends on where the last d
 - 2D canvas, never `gl-pool`: it asks for no WebGL context, so it does not spend a slot in a pool
   capped at eight to save nothing. It still registers with the shared rAF loop, so its cost lands
   in the budget that can downgrade it.
-- Two presets. `ink` follows the burst; `shatter` breaks the score ring apart and is gated at
-  **90**, because a ring that shatters on every comic stops meaning anything.
+- Three presets. `ink` follows the burst; `shatter` breaks the score ring apart and is gated at
+  **90**, because a ring that shatters on every comic stops meaning anything; `pile` is the
+  reaction surface over the comic.
+- **`pile` is the one preset that is not a one-shot.** It starts empty, is fed by `emit()` as the
+  user taps, recycles its oldest body at capacity (so a tap is never silently dropped), and has
+  `holdMs = Infinity` — it is stopped by its component's teardown, never by ageing out, because
+  the reactions are the user's own marks on the page. Forgetting to stop it leaks a frame task
+  past the route. Its bodies carry a `glyph` and are drawn in a **second pass** with
+  `source-over`: `multiply` would turn a heap of yellow faces brown, and flipping the composite
+  mode per body is exactly the 2D state change this renderer avoids. Tumble is integrated from
+  horizontal travel in the draw loop — Verlet has no angular term, and solving one for decoration
+  would need an inertia tensor per body.
+- **Contact must wake sleepers.** `emit()` clears `asleep` wholesale, because a new body falls
+  straight through a settled pile otherwise — a sleeping body is skipped by integration *and*
+  collision.
 
 ### Ink development: the comic arrives instead of appearing
 
@@ -437,7 +614,27 @@ A negative age is the inactive sentinel, so the branch is cold the rest of the t
   hash of the place id: the same restaurant always plays the same four-note figure. The *seed*
   picks the notes and contour; the *score* picks the scale, tempo and timbre, so two places sound
   different from each other and a strange one sounds strange rather than merely different. Seed
-  with the place id, never the name — names collide across chains.
+  with the place id, never the name — names collide across chains. The body lives in `motif()`,
+  lifted out of `signature()` so the board can voice several at once without going through the
+  throttle that exists to stop *one* of them retriggering on a re-render.
+- **The board as a chord.** `audio.boardChord` plays the top three as one chord, each voice that
+  restaurant's own motif — #1 centred (same reasoning as `shelf.js`'s `fanSlot`), the others out
+  to the sides, staggered so it arrives as an arpeggio rather than mud, and shortened to three
+  notes because twelve notes of arpeggio is a tune. Because a motif is deterministic, a board that
+  has **changed** sounds different before a single row has been read. `/leaderboard` had a 3D
+  shelf on it and not one sound.
+- **Rank movement.** `BoardMemoryService` remembers where each place sat last visit, per region, in
+  `localStorage` — on exactly the terms `ComicHistoryService` is justified. Compare *before*
+  saving or the board is compared against itself and every row reads as unchanged. A first visit
+  reports **nothing**: "we have no record" and "nothing moved" must look identical, because in
+  both cases there is nothing to point at, and ten "new" badges would be noise pretending to be
+  information. Positive is a climb, so the subtraction is `was - now` — ranks count the other way.
+- **The discovery beats.** The landing page had two cues on it, one of them the audio unlock.
+  `locating()` is a ping with a delayed echo — the *gap* is what says a request is outstanding,
+  which a click cannot; `arrival(count)` maps the result count to figure LENGTH, so "a lot came
+  back" is legible without being explained; `empty()` is deliberately not `error()`, because a
+  search that found nothing is an answer, not a malfunction. `tapCached` / `tapUncached` voice the
+  consequence of the tap rather than just its position.
 - **Sonification** (`audio.sonify`) plays a numeric series as pitch, sweeping left to right, and
   drives the 🎧 control on each `/insights` chart. Long series are **decimated, not truncated**:
   the contour is the only thing being communicated. Whether a distribution is flat, humped or
@@ -480,6 +677,37 @@ card to produce the same fade.
   until the link is already dead; `fresh` / `fading` (past half of the 24-hour window) / `expired`
   makes the list itself communicate the deadline. Hover restores a faded thumbnail — the decay is
   a status indicator, not a punishment.
+- **Paper ageing** rides the same attribute. `paper.js` builds ONE tileable grain texture once and
+  publishes it as `--paper-grain`; after that the ageing is `background-image` plus
+  `mix-blend-mode`, which is painting the browser was doing anyway — no rAF task, no observer,
+  nothing on the shared scheduler. An `feTurbulence` filter is the obvious alternative and is
+  re-evaluated on every paint of the thumbnails, which are the heaviest elements on the page. The
+  tile is sampled on a torus so it genuinely seams; the noise is in the **alpha** of black pixels,
+  which is what lets one texture age a card in either theme. Every rule resolves
+  `var(--paper-grain, none)`, so a browser that could not build it just keeps the desaturation.
+- **Reading the strip plays it.** `panel-scrub.js` fires one note of the comic's own motif per
+  panel as that panel crosses the middle of the screen, drawn from the *same* seeded sequence
+  `signature()` uses — so it is the figure the score reveal played, re-heard at the reader's pace.
+  The travelling highlight that goes with it is `animation-timeline: view()` in app.css and costs
+  nothing; only the crossing needs JS, and that is an `IntersectionObserver` with a
+  `-50% 0px -50% 0px` root margin (a 1px band across the viewport centre), which fires two or four
+  times for the whole page. Continuous things belong on `view()`; discrete crossings do not.
+- **Shared-element transitions need the name on BOTH halves.** `view-transitions.js` tags the
+  tapped card on the click and the arriving `.comic-strip-container` in `settle()` — which is the
+  only moment the destination exists and is still before the "after" snapshot. With the name on
+  only the source, as it was, the browser has nothing to pair and the "morph" was really the card
+  fading out while the comic cross-faded in from nowhere. Sources are every list a comic opens
+  from: `[data-physics-card]`, `.leaderboard-card`, `.archive-entry`, `.history-card`.
+  `data-nav-direction` (from a small route-depth table, not history length) decides which way the
+  incoming page slides; a transition that always moves the same way is a cross-fade with extra
+  steps.
+- **Cached vs uncached is a material.** `data-cached="ready|new"` on a restaurant card: a hit opens
+  instantly and free, a miss spends a paid image call and ten seconds, and the only place the app
+  drew that distinction was pin colour on a map panel most people never open. "Ready" gets a
+  compositor-side sheen on an 11s period (a `transform` sweep, not a `background-position` one,
+  which would repaint every card in the grid every frame) under `overflow: clip` +
+  `overflow-clip-margin: 6px` — `hidden` would clip the CTA's focus ring. "New" gets a dashed
+  edge, not a warning colour: spending a generation is the product working.
 
 
 **`gl-pool.js` owns every WebGL2 context.** Effects no longer call `canvas.getContext('webgl2')`;
@@ -607,7 +835,7 @@ board churns with them, so nothing accumulated and there was no reason to return
 promoted as scores are recorded and outlive the comic — which is why `ImageExpired` exists, and
 why a takedown must purge the archive too (it is the copy that survives everything else).
 
-**Funnel analytics (`Features/Analytics`).** The PRD sets targets the app never measured; the
+**Funnel analytics (`Features/Diagnostics`, `FunnelEndpoints`).** The PRD sets targets the app never measured; the
 server only tracked `ComicGenerated`, which cannot see a denied location or an abandoned
 generation. The client reports steps from a **closed vocabulary** (`FunnelSteps`) that the server
 enforces — an open one would let a client bug mint unbounded telemetry dimensions, which is a
@@ -846,9 +1074,9 @@ These govern how the agent operates in this repo, not how the code is written.
   (`dotnet run --project src/PoSeeReview.Api --launch-profile https`, or the
   `start-api-clean` VS Code task), and confirm it actually came up before reporting done.
   Config/appsettings/Key Vault changes need a full restart — `dotnet watch` will not pick them up.
-- **Read [docs/](docs/) first** for the project overview, when it exists. The generated reports
-  were cleared out and are due to be rebuilt; until then this file and [README.md](README.md) are
-  the authoritative overview, so do not assume `docs/index.html` is there to read.
+- **No `docs/` directory exists yet.** The generated reports were cleared out and are due to be
+  rebuilt. This file and [README.md](README.md) are the authoritative overview — do not go looking
+  for `docs/index.html`.
 - **No `dotnet user-secrets`.** Non-secret config goes in `appsettings*.json`; real secrets go in
   Key Vault `kv-poshared` under the `PoSeeReview--` prefix. The one existing exception is
   `Takedowns:ApiKey` for local dev — it is a live credential, so it must never land in an

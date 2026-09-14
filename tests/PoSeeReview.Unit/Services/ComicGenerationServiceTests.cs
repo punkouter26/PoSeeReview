@@ -26,6 +26,7 @@ public class ComicGenerationServiceTests
     private readonly Mock<IChatCompletionService> _mockOpenAIService;
     private readonly Mock<IImageGenerationService> _mockImageGenerationService;
     private readonly Mock<IComicTextOverlayService> _mockTextOverlayService;
+    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
     private readonly Mock<IBlobStorageService> _mockBlobStorageService;
     private readonly Mock<IComicRepository> _mockComicRepository;
     private readonly Mock<ILeaderboardService> _mockLeaderboardService;
@@ -40,6 +41,7 @@ public class ComicGenerationServiceTests
         _mockOpenAIService = new Mock<IChatCompletionService>();
         _mockImageGenerationService = new Mock<IImageGenerationService>();
         _mockTextOverlayService = new Mock<IComicTextOverlayService>();
+        _mockEmbeddingService = new Mock<IEmbeddingService>();
         _mockBlobStorageService = new Mock<IBlobStorageService>();
         _mockComicRepository = new Mock<IComicRepository>();
         _mockLeaderboardService = new Mock<ILeaderboardService>();
@@ -54,10 +56,16 @@ public class ComicGenerationServiceTests
         // Default setup: text overlay returns input bytes unchanged (passthrough)
         _mockTextOverlayService.Setup(x => x.AddTextOverlayAsync(
             It.IsAny<byte[]>(),
-            It.IsAny<string>(),
+            It.IsAny<IReadOnlyList<string>>(),
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()))
-            .ReturnsAsync((byte[] imageBytes, string narrative, int panelCount, CancellationToken ct) => imageBytes);
+            .ReturnsAsync((byte[] imageBytes, IReadOnlyList<string> captions, int panelCount, CancellationToken ct) => imageBytes);
+
+        // Default: no embedding backend — the same posture the app takes when the feature is
+        // switched off. A vector is an enrichment, so tests that do not care about similarity
+        // should not have to arrange one.
+        _mockEmbeddingService.Setup(x => x.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
 
         // Default: the content screen allows. Tests that care about the screen override this.
         _mockContentSafetyScreener
@@ -76,6 +84,10 @@ public class ComicGenerationServiceTests
             _mockModerationGate.Object,
             _mockLogger.Object,
             _telemetryClient,
+            // The real gate: it is a ConcurrentDictionary, and standing in a fake for it would
+            // remove the only thing the type does.
+            new ComicGenerationLock(),
+            _mockEmbeddingService.Object,
             Options.Create(options ?? new ComicOptions())
         );
     }
@@ -93,6 +105,9 @@ public class ComicGenerationServiceTests
             ImageUrl = "https://example.com/comic.png",
             Narrative = "Test narrative",
             StrangenessScore = 85,
+            // The cache key includes the prompt version, so a hand-built "valid" cached comic has
+            // to carry the version the service is configured with or it is a cache miss by design.
+            PromptVersion = new ComicOptions().PromptVersion,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(12) // Still valid
         };
 
@@ -166,6 +181,7 @@ public class ComicGenerationServiceTests
         var cachedComic = new Comic
         {
             PlaceId = PlaceId.From(placeId),
+            PromptVersion = new ComicOptions().PromptVersion,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(12) // Still valid
         };
 

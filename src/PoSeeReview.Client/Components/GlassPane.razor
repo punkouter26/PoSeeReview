@@ -1,0 +1,66 @@
+@* Real refractive glass for the card this sits inside.
+
+   Drop it as the FIRST child of any element carrying `.glass`. The JS side takes the canvas's
+   parent as the pane it is standing in for, so there is no second ElementReference to keep in
+   sync and no id plumbing — the card is simply whatever this is inside of.
+
+   What it adds over `.glass` (which is `backdrop-filter: blur()`): the backdrop is actually
+   BENT at the pane's edges, the colour splits across the bend the way it does through real
+   glass, and a highlight travels the face with the same clock as the backdrop's own lights. A
+   blur radius cannot express any of those.
+
+   It degrades to nothing. Below the `full` tier, without WebGL2, or under reduced motion, the
+   handle comes back 0, `data-glass-pane` is never set, and the CSS material underneath is what
+   shows — which is exactly what shipped before this component existed.
+*@
+@implements IAsyncDisposable
+@using PoSeeReview.Client.Services
+@inject FxService Fx
+
+<canvas @ref="_canvas" class="fx-overlay fx-glass-canvas" aria-hidden="true"></canvas>
+
+@code {
+    /// <summary>
+    /// How hard the edges bend, 0..1. Higher reads as a thicker slab. The default is tuned for a
+    /// card-sized pane; a small control wants less, because the same bend across fewer pixels
+    /// reads as a smear rather than as a curve.
+    /// </summary>
+    [Parameter]
+    public double Thickness { get; set; } = 0.55;
+
+    /// <summary>
+    /// How far the transmitted light is pulled toward the surface token, 0..1.
+    /// <para>
+    /// Do not lower this much. The card underneath is what actually guarantees the contrast
+    /// ratio for the text on top — these values are measured by ColorContrastTests against the
+    /// real tokens — and a pane that transmits too much of the backdrop starts competing with a
+    /// background the test believes is solid.
+    /// </para>
+    /// </summary>
+    [Parameter]
+    public double Tint { get; set; } = 0.62;
+
+    /// <summary>Strength of the travelling highlight, 0..1. Zero is a matte slab.</summary>
+    [Parameter]
+    public double Sheen { get; set; } = 0.7;
+
+    private ElementReference _canvas;
+    private int _handle;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _handle = await Fx.StartGlassAsync(_canvas, Thickness, Tint, Sheen);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        // Unconditional, and it matters: the JS side flags the parent with `data-glass-pane`,
+        // and app.css reads that flag to stand the CSS blur down. A pane torn down without
+        // clearing it would leave the card with no material at all — worse than either alone.
+        await Fx.StopGlassAsync(_handle);
+        _handle = 0;
+    }
+}

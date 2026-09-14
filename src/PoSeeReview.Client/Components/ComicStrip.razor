@@ -36,10 +36,21 @@
 
     <canvas @ref="_canvas" class="fx-overlay fx-comic-canvas" aria-hidden="true"></canvas>
 
+    @* The wet-ink reveal (WebGPU). Covers the comic in paper colour and eats the cover away as
+       the simulated front soaks down the page. Above the post-process so it hides BOTH layers
+       while developing — covering only one would develop the shader over an already-visible copy
+       of the finished comic, the same trap the CSS mask avoids by living on the container. *@
+    <canvas @ref="_fieldCanvas" class="fx-overlay fx-ink-field-canvas" aria-hidden="true"></canvas>
+
     @* Where the ink from the burst lands and pools. Separate from the burst canvas in the score
        ring above: that one is sized to the ring, and ink has to fall the height of the strip to
        read as falling at all. *@
     <canvas @ref="_inkCanvas" class="fx-overlay fx-ink-canvas" aria-hidden="true"></canvas>
+
+    @* The reaction pile. A third canvas rather than sharing the ink one, because the two have
+       opposite lifetimes: ink is a one-shot that seeds itself and tears itself down in about
+       three seconds, and this accumulates for as long as the comic is open. *@
+    <canvas @ref="_reactionCanvas" class="fx-overlay fx-reaction-canvas" aria-hidden="true"></canvas>
 </div>
 
 @code {
@@ -57,14 +68,65 @@
     [Parameter]
     public int PanelCount { get; set; } = 2;
 
+    /// <summary>
+    /// Place id, used to seed the per-panel notes so scrolling the strip replays this comic's own
+    /// motif. Empty disables the scrub rather than seeding it with something wrong — a motif from
+    /// a blank seed is the same tune for every restaurant, which is worse than silence.
+    /// </summary>
+    [Parameter]
+    public string PlaceId { get; set; } = string.Empty;
+
+    /// <summary>Strangeness, which picks the scale the panel notes are drawn from.</summary>
+    [Parameter]
+    public int StrangenessScore { get; set; }
+
     private ElementReference _container;
     private ElementReference _image;
     private ElementReference _canvas;
     private ElementReference _inkCanvas;
+    private ElementReference _fieldCanvas;
+    private ElementReference _reactionCanvas;
     private int _fxHandle;
     private int _revealHandle;
     private int _inkHandle;
+    private int _pileHandle;
+    private int _scrubHandle;
     private string? _attachedUrl;
+
+    /// <summary>
+    /// Opens the reaction pile once, on the first render.
+    /// <para>
+    /// Not tied to the image load the way the post-process is: the pile does not read the
+    /// artwork, it only needs a canvas with a size. Tying it to the load would mean a reaction
+    /// tapped before the image finished decoding had nowhere to land.
+    /// </para>
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _pileHandle = await Fx.StartReactionPileAsync(_reactionCanvas);
+
+            if (!string.IsNullOrEmpty(PlaceId))
+            {
+                _scrubHandle = await Fx.StartPanelScrubAsync(
+                    _container, PanelCount, PlaceId, StrangenessScore);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Throws a reaction onto the comic. Launched from the bottom edge, arcing up into the panel
+    /// and falling back — a body that simply dropped in would read as something falling off the
+    /// page rather than as something the user threw onto it.
+    /// <para>
+    /// Called by the page rather than by the reaction bar directly: the bar is a sibling
+    /// component and has no reference to this canvas, and giving it one would couple the two for
+    /// the sake of one call.
+    /// </para>
+    /// </summary>
+    public Task ThrowReactionAsync(string glyph, double clientX) =>
+        Fx.ThrowReactionAsync(_pileHandle, glyph, 0.5, 0.92, clientX);
 
     /// <summary>
     /// Attaching is driven by the image's own load event rather than OnAfterRender: WebGL cannot
@@ -87,8 +149,11 @@
         _fxHandle = await Fx.AttachComicFxAsync(_canvas, _image);
 
         // Passed the post-process handle so the shader can add its ragged wet-ink boundary on
-        // top of the CSS mask. Zero is the ordinary case and the CSS mask runs alone.
-        _revealHandle = await Fx.StartComicRevealAsync(_container, PanelCount, _fxHandle);
+        // top of whichever reveal runs. The field is preferred where WebGPU exists; everywhere
+        // else this resolves to exactly the CSS mask that shipped before it, which is what
+        // nearly everyone sees.
+        _revealHandle = await Fx.StartComicRevealFieldAsync(
+            _container, _fieldCanvas, PanelCount, _fxHandle);
 
         _attachedUrl = ImageUrl;
     }
@@ -147,5 +212,26 @@
         _attachedUrl = null;
     }
 
-    public async ValueTask DisposeAsync() => await DetachAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await DetachAsync();
+
+        // The pile is deliberately outside DetachAsync. Detach also runs when the comic is
+        // REGENERATED — same component, new artwork — and the reactions on it belong to the
+        // place, not to that particular drawing of it.
+        if (_pileHandle != 0)
+        {
+            await Fx.StopInkAsync(_pileHandle);
+            _pileHandle = 0;
+        }
+
+        // The scrub owns an IntersectionObserver AND the sentinel elements it appended to the
+        // container. Both have to go: an observer on detached nodes is a leak, and the sentinels
+        // would survive a re-render of this component and be observed twice on the next mount.
+        if (_scrubHandle != 0)
+        {
+            await Fx.StopPanelScrubAsync(_scrubHandle);
+            _scrubHandle = 0;
+        }
+    }
 }

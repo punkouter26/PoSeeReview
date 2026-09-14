@@ -83,7 +83,12 @@ public class ComicGenerationIntegrationTests
         var openAiClient = new Azure.AI.OpenAI.AzureOpenAIClient(
             new Uri(openAiOptions.Endpoint!),
             new Azure.AzureKeyCredential(openAiOptions.ApiKey!));
-        var chatService = new AzureOpenAIChatService(openAiClient, configuration, logger.Object, telemetryClient);
+        var chatService = new AzureOpenAIChatService(
+            openAiClient,
+            Microsoft.Extensions.Options.Options.Create(openAiOptions),
+            logger.Object,
+            telemetryClient,
+            new AiCostTracker(Microsoft.Extensions.Options.Options.Create(new AiPricingOptions()), telemetryClient));
 
         _output.WriteLine("📝 Input Reviews:");
         foreach (var review in reviews)

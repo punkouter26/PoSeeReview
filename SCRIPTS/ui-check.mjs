@@ -98,27 +98,38 @@ const OVERFLOW_ROUTES = [
     ['/my-comics', '.my-comics-container'],
 ];
 
-for (const width of [320, 390]) {
+async function checkOverflow(route, ready, width) {
     await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
+    await page.locator(ready).waitFor({ timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(900);
+    const overflow = await page.evaluate(() => {
+        const de = document.documentElement;
+        const worst = [...document.querySelectorAll('body *')]
+            .map(el => ({ el, w: el.getBoundingClientRect().width }))
+            .filter(x => x.w > de.clientWidth + 1)
+            .sort((a, b) => b.w - a.w)[0];
+        return {
+            scroll: de.scrollWidth, client: de.clientWidth,
+            worst: worst ? `${worst.el.tagName.toLowerCase()}.${String(worst.el.className || '').split(' ')[0]} ${Math.round(worst.w)}px` : null,
+        };
+    });
+    record(`no horizontal overflow on ${route} at ${width}px`,
+        overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+}
+
+for (const width of [320, 390]) {
     for (const [route, ready] of OVERFLOW_ROUTES) {
-        await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' });
-        await page.locator(ready).waitFor({ timeout: 30000 }).catch(() => {});
-        await page.waitForTimeout(900);
-        const overflow = await page.evaluate(() => {
-            const de = document.documentElement;
-            const worst = [...document.querySelectorAll('body *')]
-                .map(el => ({ el, w: el.getBoundingClientRect().width }))
-                .filter(x => x.w > de.clientWidth + 1)
-                .sort((a, b) => b.w - a.w)[0];
-            return {
-                scroll: de.scrollWidth, client: de.clientWidth,
-                worst: worst ? `${worst.el.tagName.toLowerCase()}.${String(worst.el.className || '').split(' ')[0]} ${Math.round(worst.w)}px` : null,
-            };
-        });
-        record(`no horizontal overflow on ${route} at ${width}px`,
-            overflow.scroll <= overflow.client + 1, JSON.stringify(overflow));
+        await checkOverflow(route, ready, width);
     }
 }
+
+// 7b and 7c are landing-page, desktop assertions. The overflow walk above leaves the page on
+// /my-comics at 390px, where .prompt-card does not exist and the My Comics link has legitimately
+// collapsed to its 30px phone form — both checks failed on that page, not on the one they name.
+await page.setViewportSize({ width: 1366, height: 768 });
+await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+await page.locator('.index-container').waitFor({ timeout: 30000 });
 
 // 7b. Scoped CSS must reach CHILD-COMPONENT roots.
 // This bug class is invisible in a stylesheet diff: a parent sheet writing `.prompt-card {
@@ -151,6 +162,9 @@ const smallTargets = await page.evaluate(() => {
     for (const el of document.querySelectorAll('a[href], button, [role="button"], input, select')) {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
+        // Parked off-screen until focused (the skip link at left: -9999px). Its resting 1x1 box
+        // is not a tap target; nobody can reach it by touch.
+        if (r.right < 0 || r.bottom < 0) continue;
         // An expanded ::after hit box does not change getBoundingClientRect, and the design
         // system uses that trick deliberately — so only flag a control that is also not covered
         // by one of the shared primitives that supplies the bigger target.
@@ -234,6 +248,13 @@ if (gen.placeId) {
     record('comic page fits one desktop screen',
         comicFit.screens <= 1.15 && comicFit.imgBottom !== null && comicFit.imgBottom <= comicFit.vh,
         JSON.stringify(comicFit));
+
+    // 8c. Portrait overflow on the comic route itself. Check 7 walked every route EXCEPT this
+    // one — the page carrying the strip, the score ring, four overlay canvases, the action bar
+    // and the reaction bar — because it needs a comic to exist first. Now one does.
+    for (const width of [320, 390]) {
+        await checkOverflow(`/comic/${gen.placeId}`, '.comic-strip-image', width);
+    }
     await page.setViewportSize({ width: 1366, height: 768 });
 }
 

@@ -32,25 +32,20 @@ public sealed class InsightsAndModerationUiTests(PlaywrightFixture fixture)
         return page;
     }
 
+    /// <summary>
+    /// The heading and the never-an-error-banner rule, on one page load. A fresh environment has
+    /// no scored restaurants, so the honest render is the page-level empty state; what must never
+    /// appear is the error banner, because "no data yet" and "the read broke" are different things.
+    /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Insights_RendersItsHeading(string viewport)
+    public async Task Insights_RendersItsHeadingAndNeverAnErrorBanner(string viewport)
     {
         var page = await SignedInAsync(viewport, "/insights");
 
         await Assertions.Expect(page.Locator("h1.page-hero-title, h1.page-shell-title"))
             .ToHaveTextAsync("Insights");
-    }
 
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Insights_ResolvesToChartsOrAnEmptyState_NeverAnErrorBanner(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/insights");
-
-        // A fresh environment has no scored restaurants, so the honest render is the page-level
-        // empty state. What must never appear is the error banner: that would mean the endpoint
-        // failed, and "no data yet" and "the read broke" are different things.
         await page.Locator(".insights-panel, .state-card").First
             .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
 
@@ -91,9 +86,14 @@ public sealed class InsightsAndModerationUiTests(PlaywrightFixture fixture)
         Assert.True(overflow <= 1, $"/insights overflowed by {overflow}px at a 320px viewport.");
     }
 
+    /// <summary>
+    /// The refusal rather than an empty queue, plus the absence of a primary-nav entry. Same
+    /// route and same render as the former pair: operator tooling is reachable by URL and stays
+    /// out of a consumer app's navigation.
+    /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Moderation_WithoutTheRole_ShowsTheRefusalRatherThanTheQueue(string viewport)
+    public async Task Moderation_ShowsTheRefusalAndHasNoPrimaryNavEntry(string viewport)
     {
         var page = await SignedInAsync(viewport, "/moderation");
 
@@ -102,16 +102,7 @@ public sealed class InsightsAndModerationUiTests(PlaywrightFixture fixture)
         // an empty queue that looks like there is nothing to moderate.
         await Assertions.Expect(page.Locator(".state-card-title")).ToHaveTextAsync("Moderators only");
         await Assertions.Expect(page.Locator(".moderation-list")).ToHaveCountAsync(0);
-    }
 
-    [Theory]
-    [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Moderation_HasNoPrimaryNavEntry(string viewport)
-    {
-        var page = await SignedInAsync(viewport, "/moderation");
-
-        // Same posture as /diagnostics: operator tooling is reachable by URL and stays out of a
-        // consumer app's navigation.
         await Assertions.Expect(page.Locator("nav.nav-links a[href*='moderation']")).ToHaveCountAsync(0);
     }
 }

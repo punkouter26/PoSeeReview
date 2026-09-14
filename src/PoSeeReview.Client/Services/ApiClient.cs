@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Components.WebAssembly.Http;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Enums;
 
@@ -91,6 +92,12 @@ public class ApiClient
         }
 
         using var request = await CreateRequestAsync(HttpMethod.Post, url);
+
+        // Without this the browser HttpClient buffers the entire body before ReadAsStreamAsync
+        // yields a byte, so every phase arrived in one burst after `complete` and the stepper
+        // never moved. ResponseHeadersRead alone is not enough on WASM.
+        request.SetBrowserResponseStreamingEnabled(true);
+
         using var response = await _httpClient.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
@@ -174,6 +181,38 @@ public class ApiClient
         await EnsureSuccessAsync(response, "Comic lookup failed", cancellationToken);
 
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
+    }
+
+    /// <summary>
+    /// Comics about the same kind of strangeness as this one, or <c>null</c> when there are none
+    /// to offer.
+    /// <para>
+    /// Never throws. A related-comics list is an enrichment of a comic the user already has, so
+    /// a dropped connection here should cost a row of suggestions and nothing else — which is
+    /// also why the server answers an empty list rather than an error when it has nothing to say.
+    /// </para>
+    /// </summary>
+    public async Task<SimilarComicsResponse?> GetSimilarComicsAsync(
+        string placeId,
+        int limit = 4,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}/similar?limit={limit}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.SimilarComicsResponse, cancellationToken);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

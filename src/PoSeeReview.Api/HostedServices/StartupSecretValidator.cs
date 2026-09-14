@@ -1,6 +1,8 @@
+using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
@@ -55,6 +57,15 @@ public sealed class StartupSecretValidator(
             "This will fail in Production. Check both kv-poshared secrets: 'AzureOpenAI--DeploymentName' " +
             "(shared) and 'PoSeeReview--AzureOpenAI--DeploymentName' (app-prefixed, wins).");
 
+    private static readonly Action<ILogger, string, Exception?> CapNotAppliedWarn =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning,
+            new EventId(9004, "TokenCapNotApplied"),
+            "AzureOpenAI:MaxCompletionTokens is set ({Cap}) but will NOT be applied. The analysis " +
+            "call will run uncapped. Clear the setting, or set AzureOpenAI:IsReasoningModel=false " +
+            "when the deployment is an instruct model, which is the only case where the cap " +
+            "reaches the wire.");
+
     /// <summary>
     /// Known-good deployment names in <c>po-aiservices-shared</c> (PoShared RG, East US).
     /// Update this set when a new deployment is provisioned. The validator warns (Dev/Test)
@@ -86,14 +97,35 @@ public sealed class StartupSecretValidator(
         }
 
         // AI secrets: warn in Dev/Test, throw in Production (PoFunQuiz pattern).
-        var prodRequired = new[]
+        //
+        // The list follows the providers actually selected. When chat and image were one switch
+        // this could not be expressed — pointing the app at a local chat model still demanded
+        // Azure credentials that would never be used, which turned "try the cheap tier" into a
+        // deploy that refused to start.
+        var chatProviderSetting = configuration[InfrastructureServiceCollectionExtensions.AiChatProviderConfigurationKey];
+        var imageProviderSetting = configuration[InfrastructureServiceCollectionExtensions.AiProviderConfigurationKey];
+
+        var usesAzureChat = string.IsNullOrWhiteSpace(chatProviderSetting)
+            ? !string.Equals(imageProviderSetting, "HuggingFace", StringComparison.OrdinalIgnoreCase)
+            : string.Equals(chatProviderSetting, nameof(AiChatProvider.AzureOpenAI), StringComparison.OrdinalIgnoreCase);
+
+        var usesGeminiImages = !string.Equals(imageProviderSetting, "HuggingFace", StringComparison.OrdinalIgnoreCase);
+
+        var prodRequired = new List<string>(capacity: 4);
+
+        if (usesAzureChat)
         {
-            "AzureOpenAI:Endpoint",
-            "AzureOpenAI:ApiKey",
-            "AzureOpenAI:DeploymentName",
-            "Google:GeminiApiKey"
-        };
-        var missing = new List<string>(capacity: prodRequired.Length);
+            prodRequired.Add("AzureOpenAI:Endpoint");
+            prodRequired.Add("AzureOpenAI:ApiKey");
+            prodRequired.Add("AzureOpenAI:DeploymentName");
+        }
+
+        if (usesGeminiImages)
+        {
+            prodRequired.Add("Google:GeminiApiKey");
+        }
+
+        var missing = new List<string>(capacity: prodRequired.Count);
         foreach (var key in prodRequired)
         {
             var value = configuration[key];
@@ -134,8 +166,14 @@ public sealed class StartupSecretValidator(
         // (a model that does not exist in po-aiservices-shared). The previous drift guard
         // only ran in non-Dev and only checked a hard-coded constant, so the bug was silent
         // for ~6 weeks. The new set-based check is strict enough to catch that case.
+        //
+        // Only meaningful when Azure is the chat provider. A leftover AzureOpenAI:DeploymentName
+        // from a previous configuration must not be able to stop a deployment that is running the
+        // local tier — the setting is not read on that path, so validating it would be refusing to
+        // start over a value nothing consults.
         var configuredDeployment = configuration["AzureOpenAI:DeploymentName"];
-        if (!string.IsNullOrWhiteSpace(configuredDeployment)
+        if (usesAzureChat
+            && !string.IsNullOrWhiteSpace(configuredDeployment)
             && !KnownGoodDeployments.Contains(configuredDeployment))
         {
             var knownGood = "{" + string.Join(", ", KnownGoodDeployments) + "}";
@@ -153,6 +191,24 @@ public sealed class StartupSecretValidator(
                     "If the value is correct, add it to KnownGoodDeployments in StartupSecretValidator.cs " +
                     "and update the comment with the verification command output.");
             }
+        }
+
+        // A completion cap that cannot reach the wire. This is the same class of problem as the
+        // drift guard above — configuration that reads as active and is not — and it is a warning
+        // rather than a throw because the app works perfectly without it; the cost is a missing
+        // ceiling, not a broken comic. Silently ignoring it is what must not happen: the setting
+        // exists to bound spend, and a spend bound that does nothing is worse than none at all.
+        //
+        // Only a cap that is actually CONFIGURED can fail to be applied. An unset cap is the
+        // normal, supported state — the first version of this check warned on every single startup
+        // with "( configured against a reasoning deployment)" and no number in it, because it
+        // tested "would the cap apply" rather than "was a cap asked for".
+        var configuredCap = configuration.GetValue<int?>("AzureOpenAI:MaxCompletionTokens");
+        var isReasoningModel = configuration.GetValue("AzureOpenAI:IsReasoningModel", true);
+
+        if (usesAzureChat && configuredCap is > 0 && !ChatTokenBudget.CanApplyCap(configuredCap, isReasoningModel))
+        {
+            CapNotAppliedWarn(logger, configuredCap.Value.ToString(CultureInfo.InvariantCulture), null);
         }
 
         return Task.CompletedTask;

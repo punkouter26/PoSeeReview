@@ -1,9 +1,16 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Service for analyzing restaurant reviews using Azure OpenAI <c>gpt-5.4-nano</c>
-/// (the sole deployment in the shared AI Foundry resource, verified 2026-06-14).
-/// Calculates strangeness scores and generates narrative summaries.
+/// Scores restaurant reviews for strangeness, and writes the narrative and the panel captions
+/// that follow from that score. Implemented per provider (Azure OpenAI, HuggingFace, Ollama);
+/// the prompt contract they share lives in <see cref="ChatPrompts"/>.
+/// <para>
+/// <b>One method, on purpose.</b> There used to be a second — <c>GeneratePanelDialogueAsync</c> —
+/// for panel captions, called by the overlay step after the image had been drawn. It has been
+/// folded into this call and deleted rather than kept as a convenience: a caption and a
+/// narrative are the same story told at two lengths, and computing them from one response is
+/// the only way to guarantee they agree. A second entry point would invite the drift back.
+/// </para>
 /// </summary>
 public interface IChatCompletionService
 {
@@ -12,17 +19,7 @@ public interface IChatCompletionService
     /// </summary>
     /// <param name="reviews">List of review texts to analyze</param>
     /// <param name="cancellationToken">Cancels the (potentially slow) model call when the caller abandons the request</param>
-    /// <returns>Score, panel count, narrative, and the review fragments that drove the score.</returns>
+    /// <returns>Score, panel count, narrative, and one caption per panel.</returns>
     /// <exception cref="ArgumentException">If reviews list is empty</exception>
     Task<StrangenessAnalysis> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Generates concise English captions for each panel of a comic strip.
-    /// Falls back to sentence-splitting if the GPT call fails.
-    /// </summary>
-    /// <param name="narrative">Narrative paragraph from <see cref="AnalyzeStrangenessAsync"/></param>
-    /// <param name="panelCount">Number of panels (1-4)</param>
-    /// <param name="cancellationToken">Cancels the model call when the caller abandons the request</param>
-    /// <returns>List of exactly <paramref name="panelCount"/> short captions</returns>
-    Task<List<string>> GeneratePanelDialogueAsync(string narrative, int panelCount, CancellationToken cancellationToken = default);
 }
