@@ -77,6 +77,17 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+::deep .stepper-progress-bar {
+    background: var(--brand-a12) !important;
+    overflow: hidden;
+}
+
+::deep .stepper-progress-bar .rz-progressbar-value {
+    background: var(--color-brand) !important;
+    border-radius: 999px;
+    transition: width 0.3s ease-out;
+}
+
 .stepper-dots {
     display: flex;
     gap: 0.4rem;

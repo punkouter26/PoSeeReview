@@ -20,6 +20,9 @@
                 <span class="stepper-ring-icon" aria-hidden="true">@Steps[_stepIndex % Steps.Length].Icon</span>
             </div>
             <p class="loading-message stepper-message">@Steps[_stepIndex % Steps.Length].Label</p>
+            <RadzenProgressBar Value="@((((_stepIndex % Steps.Length) + 1.0) / Steps.Length) * 100)"
+                               Mode="ProgressBarMode.Determinate" ShowValue="false"
+                               Class="stepper-progress-bar" Style="width: 180px; height: 6px; border-radius: 999px;" />
             <div class="stepper-dots" aria-hidden="true">
                 @for (var i = 0; i < Steps.Length; i++)
                 {
