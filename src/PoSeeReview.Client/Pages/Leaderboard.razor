@@ -78,55 +78,69 @@
         <div class="shelf-stage">
             <canvas @ref="_shelfCanvas" class="shelf-canvas" aria-hidden="true"></canvas>
 
-        <div class="leaderboard-list cq-list">
-            @foreach (var entry in leaderboardEntries ?? [])
-            {
-                @* data-move drives the row's arrival animation. An attribute rather than a class
-                   because it carries three states and CSS wants to key different treatments off
-                   each — see "BOARD MOVEMENT" in app.css. *@
-                <div class="leaderboard-card glass scroll-enter @GetRankClass(entry.Rank)"
-                     data-move="@MoveStateFor(entry.PlaceId)"
-                     @onmouseenter="() => PreviewSignatureAsync(entry)"
-                     @onfocusin="() => PreviewSignatureAsync(entry)">
-                    <div class="rank-badge">
-                        <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
-                        @* Rendered only for rows that actually moved since this browser last
-                           looked. A board that churns daily previously gave a returning visitor
-                           no way to tell a complete reshuffle from no change at all. *@
-                        @if (DeltaFor(entry.PlaceId) is { } delta && delta != 0)
-                        {
-                            <span class="rank-delta" data-direction="@(delta > 0 ? "up" : "down")"
-                                  title="@(delta > 0 ? $"Up {delta} since your last visit" : $"Down {-delta} since your last visit")">
-                                <span aria-hidden="true">@(delta > 0 ? "▲" : "▼")</span>
-                                <span class="visually-hidden">@(delta > 0 ? $"Up {delta} places since your last visit" : $"Down {-delta} places since your last visit")</span>
-                                @Math.Abs(delta)
-                            </span>
-                        }
-                    </div>
+            <RadzenDataGrid Data="@leaderboardEntries" TItem="LeaderboardEntryDto"
+                            AllowPaging="true" PageSize="TopTen" AllowSorting="true"
+                            Responsive="true" Class="leaderboard-grid rz-shadow-2"
+                            RowRender="@OnRowRender">
+                <Columns>
+                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.Rank)" Title="Rank" Width="80px" Sortable="true">
+                        <Template Context="entry">
+                            <div class="rank-badge"
+                                 @onfocusin="() => PreviewSignatureAsync(entry)">
+                                <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
+                                @if (DeltaFor(entry.PlaceId) is { } delta && delta != 0)
+                                {
+                                    <span class="rank-delta" data-direction="@(delta > 0 ? "up" : "down")"
+                                          title="@(delta > 0 ? $"Up {delta} since your last visit" : $"Down {-delta} since your last visit")">
+                                        <span aria-hidden="true">@(delta > 0 ? "▲" : "▼")</span>
+                                        <span class="visually-hidden">@(delta > 0 ? $"Up {delta} places since your last visit" : $"Down {-delta} places since your last visit")</span>
+                                        @Math.Abs(delta)
+                                    </span>
+                                }
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                    <div class="comic-thumbnail">
-                        <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="Comic for @entry.RestaurantName" loading="lazy" />
-                    </div>
+                    <RadzenDataGridColumn Title="Comic" Width="100px" Sortable="false">
+                        <Template Context="entry">
+                            <div class="comic-thumbnail">
+                                <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="Comic for @entry.RestaurantName" loading="lazy" />
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                    <div class="entry-details">
-                        <h3 class="restaurant-name">@entry.RestaurantName</h3>
-                        <p class="address">@entry.Address</p>
-                        <div class="score-badge">
-                            <span class="score-label">Weird score</span>
-                            <span class="score-value">@entry.StrangenessScore.ToString("F0")</span>
-                        </div>
-                        <p class="entry-recorded">Recorded @entry.LastUpdated.ToLocalTime().ToString("MMM d, yyyy")</p>
-                    </div>
+                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.RestaurantName)" Title="Restaurant" Sortable="true">
+                        <Template Context="entry">
+                            <div class="entry-details">
+                                <h3 class="restaurant-name">@entry.RestaurantName</h3>
+                                <p class="address">@entry.Address</p>
+                                <p class="entry-recorded">Recorded @entry.LastUpdated.ToLocalTime().ToString("MMM d, yyyy")</p>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
 
-                    <div class="entry-actions">
-                        <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary">Open Comic</a>
-                        <button class="btn btn-share-small" @onclick="() => ShareComicAsync(entry)" title="Share this comic">
-                            &#128228;
-                        </button>
-                    </div>
-                </div>
-            }
-        </div>
+                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.StrangenessScore)" Title="Strangeness" Width="150px" Sortable="true">
+                        <Template Context="entry">
+                            <div class="score-badge">
+                                <RadzenBadge BadgeStyle="@GetScoreBadgeStyle(entry.StrangenessScore)"
+                                             Text="@($"{entry.StrangenessScore:F0}/100")" IsPill="true" />
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+
+                    <RadzenDataGridColumn Title="Actions" Width="150px" Sortable="false">
+                        <Template Context="entry">
+                            <div class="entry-actions">
+                                <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary btn-sm">Open Comic</a>
+                                <RadzenButton ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" Size="ButtonSize.Small"
+                                              Click="@(_ => ShareComicAsync(entry))" title="Share this comic" aria-label="Share this comic">
+                                    &#128228;
+                                </RadzenButton>
+                            </div>
+                        </Template>
+                    </RadzenDataGridColumn>
+                </Columns>
+            </RadzenDataGrid>
         </div>
     }
 
@@ -368,6 +382,23 @@
     private static string GetMedalClass(int rank) => rank switch { 1 => "medal-gold", 2 => "medal-silver", 3 => "medal-bronze", _ => "medal-default" };
 
     private static string GetRankClass(int rank) => rank switch { 1 => "rank-gold", 2 => "rank-silver", 3 => "rank-bronze", _ => "" };
+
+    private void OnRowRender(RowRenderEventArgs<LeaderboardEntryDto> args)
+    {
+        if (args.Data != null)
+        {
+            args.Attributes["class"] = $"leaderboard-card glass scroll-enter {GetRankClass(args.Data.Rank)}";
+            args.Attributes["data-move"] = MoveStateFor(args.Data.PlaceId);
+        }
+    }
+
+    private static BadgeStyle GetScoreBadgeStyle(double score) => score switch
+    {
+        >= 85 => BadgeStyle.Danger,
+        >= 70 => BadgeStyle.Warning,
+        >= 50 => BadgeStyle.Info,
+        _ => BadgeStyle.Secondary
+    };
 
     private async Task ShareComicAsync(LeaderboardEntryDto entry)
     {
