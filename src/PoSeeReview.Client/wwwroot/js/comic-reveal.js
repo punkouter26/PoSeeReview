@@ -29,7 +29,6 @@
 // That is the one failure mode here that the user would actually notice.
 
 import { gfx } from './gfx-core.js';
-import { setReveal as setShaderReveal } from './comic-fx.js';
 
 const PROPERTY = '--comic-reveal';
 const ATTRIBUTE = 'comicReveal';   // dataset key for data-comic-reveal

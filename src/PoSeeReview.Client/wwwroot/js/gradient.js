@@ -21,10 +21,131 @@
 //   * 'full' tier only. At 'lite' the CSS gradient underneath is what shows.
 
 import { gfx, createSurface, compileProgram, FULLSCREEN_VERTEX_SHADER } from './gfx-core.js';
-// The scene itself lives in a shared chunk because glass.js has to compute the IDENTICAL field
-// to refract into it. See the header of glsl-backdrop.js — a pane showing a slightly different
-// backdrop from the one it sits on does not read as glass, it reads as a broken texture.
-import { BACKDROP_UNIFORMS, BACKDROP_GLSL } from './glsl-backdrop.js';
+
+const BACKDROP_UNIFORMS = `
+uniform float uTime;
+uniform vec2  uResolution;
+uniform float uStrange;    // 0..1
+uniform vec3  uColorA;
+uniform vec3  uColorB;
+uniform vec3  uColorC;
+uniform vec3  uKeyLight;   // rgb tint of the shadow-casting light
+uniform float uAudio;      // 0..1 overall level
+uniform float uAudioBass;  // 0..1 low band
+uniform float uAmbient;
+`;
+
+const BACKDROP_GLSL = `
+float posee_hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+}
+
+float posee_valueNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+
+    float a = posee_hash(i);
+    float b = posee_hash(i + vec2(1.0, 0.0));
+    float c = posee_hash(i + vec2(0.0, 1.0));
+    float d = posee_hash(i + vec2(1.0, 1.0));
+
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float posee_fbm(vec2 p) {
+    float total = 0.0;
+    float amplitude = 0.5;
+    for (int i = 0; i < 3; i++) {
+        total += posee_valueNoise(p) * amplitude;
+        p *= 2.0;
+        amplitude *= 0.5;
+    }
+    return total;
+}
+
+float posee_field(vec2 p, vec2 warp, float warpAmount, float t) {
+    return posee_fbm(p * 2.1 + warp * warpAmount + t * 0.35);
+}
+
+struct PoseeScene {
+    float energy;
+    float t;
+    float warpAmount;
+    float aspect;
+    vec2  centre;
+};
+
+PoseeScene posee_scene() {
+    PoseeScene s;
+    s.energy = uStrange + uAudio * 0.35;
+    s.t = uTime * (0.02 + s.energy * 0.10);
+    s.warpAmount = 0.15 + s.energy * 0.85;
+    s.aspect = uResolution.x / max(uResolution.y, 1.0);
+    s.centre = vec2(s.aspect, 1.0) * 0.5;
+    return s;
+}
+
+vec2 posee_warp(vec2 p, PoseeScene s) {
+    return vec2(
+        posee_fbm(p * 1.4 + vec2(s.t, s.t * 0.7)),
+        posee_fbm(p * 1.4 + vec2(-s.t * 0.8, s.t * 1.1) + 5.2)
+    );
+}
+
+vec3 posee_backdrop(vec2 p, PoseeScene s) {
+    vec2 warp = posee_warp(p, s);
+    float n = posee_field(p, warp, s.warpAmount, s.t);
+    float eps = 0.012;
+    float hX = posee_field(p + vec2(eps, 0.0), warp, s.warpAmount, s.t);
+    float hY = posee_field(p + vec2(0.0, eps), warp, s.warpAmount, s.t);
+    vec3 normal = normalize(vec3((n - hX) / eps, (n - hY) / eps, 0.55));
+
+    vec3 keyPos  = vec3(s.centre + vec2(cos(uTime * 0.13), sin(uTime * 0.17)) * 0.42, 0.55);
+    vec3 fillPos = vec3(s.centre + vec2(cos(-uTime * 0.09 + 2.1), sin(-uTime * 0.11 + 2.1)) * 0.55, 0.40);
+    vec3 rimPos  = vec3(s.centre + vec2(cos(uTime * 0.21 + 4.2), sin(uTime * 0.19 + 4.2)) * 0.68, 0.28);
+
+    vec3 surface = vec3(p, n * 0.35);
+
+    vec3 keyDir  = normalize(keyPos  - surface);
+    vec3 fillDir = normalize(fillPos - surface);
+    vec3 rimDir  = normalize(rimPos  - surface);
+
+    float keyFall  = 1.0 / (1.0 + dot(keyPos.xy  - p, keyPos.xy  - p) * 2.2);
+    float fillFall = 1.0 / (1.0 + dot(fillPos.xy - p, fillPos.xy - p) * 2.6);
+    float rimFall  = 1.0 / (1.0 + dot(rimPos.xy  - p, rimPos.xy  - p) * 3.4);
+
+    float shadow = 1.0;
+    vec2 stepDir = normalize(keyPos.xy - p) * 0.05;
+    for (int i = 1; i <= 3; i++) {
+        vec2 samplePoint = p + stepDir * float(i);
+        float height = posee_field(samplePoint, warp, s.warpAmount, s.t);
+        float rayHeight = n + (keyPos.z - n * 0.35) * (float(i) / 4.0);
+        shadow -= max(0.0, height - rayHeight) * 0.55;
+    }
+    shadow = clamp(shadow, 0.35, 1.0);
+
+    float keyDiffuse  = max(0.0, dot(normal, keyDir))  * keyFall  * shadow;
+    float fillDiffuse = max(0.0, dot(normal, fillDir)) * fillFall;
+    float rimDiffuse  = max(0.0, dot(normal, rimDir))  * rimFall;
+
+    vec3 albedo = mix(uColorA, uColorB, smoothstep(0.25, 0.75, n));
+    albedo = mix(albedo, uColorC, smoothstep(0.55, 1.0, n) * (0.25 + uStrange * 0.55));
+
+    vec3 color = albedo * uAmbient;
+    color += albedo * uKeyLight * keyDiffuse * (1.30 + uAudioBass * 0.7);
+    color += albedo * uColorC   * fillDiffuse * 0.55;
+    color += uColorC * rimDiffuse * 0.22;
+
+    return color;
+}
+
+float posee_height(vec2 p, PoseeScene s) {
+    return posee_field(p, posee_warp(p, s), s.warpAmount, s.t);
+}
+`;
 
 const FRAGMENT_SHADER = `#version 300 es
 precision mediump float;
