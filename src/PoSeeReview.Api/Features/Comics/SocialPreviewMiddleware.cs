@@ -41,8 +41,8 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
             // comic-generation graph (restaurant service, chat, image and blob clients) for every
             // request this middleware sees — including every static asset, since it is registered
             // ahead of UseStaticFiles.
-            var cachedComics = context.RequestServices.GetRequiredService<GetCachedComicQueryHandler>();
-            comic = await cachedComics.ExecuteAsync(PlaceId.From(placeId), context.RequestAborted);
+            var comicRepository = context.RequestServices.GetRequiredService<IComicRepository>();
+            comic = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
         }
         catch (Exception ex)
         {

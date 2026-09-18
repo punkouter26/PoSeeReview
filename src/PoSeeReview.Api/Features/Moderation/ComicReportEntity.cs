@@ -3,7 +3,7 @@ using Azure.Data.Tables;
 using PoSeeReview.Shared.Enums;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Api.Features.Reports;
+namespace PoSeeReview.Api.Features.Moderation;
 
 /// <summary>
 /// A viewer's report of a comic.

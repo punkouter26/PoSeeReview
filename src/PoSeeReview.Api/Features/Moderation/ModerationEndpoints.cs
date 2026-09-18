@@ -45,6 +45,9 @@ internal static class ModerationEndpoints
         // callers rather than the Moderator role above.
         app.MapTakedownEndpoints();
 
+        // Viewer reports route
+        app.MapReportEndpoints();
+
         return app;
     }
 
@@ -151,7 +154,6 @@ internal static class ModerationEndpoints
         IBlobStorageService blobStorageService,
         ILeaderboardRepository leaderboardRepository,
         IHallOfFameArchive hallOfFameArchive,
-        IKeptComicArchive keptComicArchive,
         ICurrentRequestIdentityAccessor identityAccessor,
         TelemetryClient telemetryClient,
         ILogger<ModerationRepository> logger,
@@ -189,7 +191,6 @@ internal static class ModerationEndpoints
         }
 
         await hallOfFameArchive.DeleteAllForPlaceAsync(id, http.RequestAborted);
-        await keptComicArchive.DeleteAllForPlaceAsync(id, http.RequestAborted);
 
         logger.LogWarning("Moderator {Actor} removed all content for {PlaceId}", actor, id);
 

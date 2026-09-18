@@ -14,32 +14,19 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(LeaderboardResponse))]
 [JsonSerializable(typeof(HealthStatusDto))]
 [JsonSerializable(typeof(DiagnosticsSnapshotDto))]
-[JsonSerializable(typeof(DevSessionDto))]
 [JsonSerializable(typeof(MockStatusDto))]
 [JsonSerializable(typeof(AuthStateDto))]
 [JsonSerializable(typeof(ComicStatsDto))]
 [JsonSerializable(typeof(GenerationBudgetDto))]
-[JsonSerializable(typeof(ReactionCountsDto))]
-[JsonSerializable(typeof(ReactionRequestDto))]
 [JsonSerializable(typeof(ComicReportRequestDto))]
 [JsonSerializable(typeof(ComicReportResponseDto))]
-[JsonSerializable(typeof(HallOfFameResponse))]
-[JsonSerializable(typeof(FunnelEventDto))]
-[JsonSerializable(typeof(FunnelSnapshotDto))]
 [JsonSerializable(typeof(InsightsDto))]
 [JsonSerializable(typeof(ShareLinkDto))]
-[JsonSerializable(typeof(KeptComicsResponse))]
-[JsonSerializable(typeof(KeptComicDto))]
 [JsonSerializable(typeof(ModerationQueueDto))]
 [JsonSerializable(typeof(ModerationActionDto))]
 [JsonSerializable(typeof(CachedComicsResponse))]
-[JsonSerializable(typeof(SimilarComicsResponse))]
 // The comic's invented conversation, fetched on demand by the comic page's play button.
 [JsonSerializable(typeof(ComicAudioSkit))]
-// Not a wire DTO: the locally-stored comic history. It lives here for the same reason the rest
-// do — the client is trim-analyzed, so every type it serializes needs generated metadata.
-[JsonSerializable(typeof(List<ComicHistoryEntry>))]
-// Also not a wire DTO: the remembered leaderboard ranks (BoardMemoryService). Same reason —
-// the client is trim-analyzed, so reflection-based serialization fails the build.
+// Not a wire DTO: the remembered leaderboard ranks (BoardMemoryService).
 [JsonSerializable(typeof(Dictionary<string, int>))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

@@ -111,4 +111,29 @@ public class RestaurantsEndpointTests : IClassFixture<CustomWebApplicationFactor
         // Empty placeId routes to NotFound (404) as the route doesn't match
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Theory]
+    [InlineData(-1)]   // Limit < 1
+    [InlineData(0)]    // Limit = 0
+    [InlineData(51)]   // Limit > 50
+    [InlineData(100)]  // Limit way over 50
+    public async Task GetNearbyRestaurants_InvalidLimit_ShouldReturn400(int limit)
+    {
+        // Arrange
+        var latitude = 47.6062;
+        var longitude = -122.3321;
+
+        // Act
+        var response = await _client.GetAsync(
+            $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
+
+        // Assert
+        _output.WriteLine($"Limit {limit}: Status {response.StatusCode}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problemDetails = await response.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ProblemDetails>();
+        Assert.NotNull(problemDetails);
+        Assert.Contains("limit", problemDetails.Detail ?? "", StringComparison.OrdinalIgnoreCase);
+    }
 }

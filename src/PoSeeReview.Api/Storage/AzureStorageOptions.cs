@@ -38,11 +38,6 @@ public class AzureStorageOptions
     public string ReportsTableName { get; set; } = "PoSeeReviewReports";
 
     /// <summary>
-    /// Name of the table holding per-comic reaction tallies and per-user reaction rows.
-    /// </summary>
-    public string ReactionsTableName { get; set; } = "PoSeeReviewReactions";
-
-    /// <summary>
     /// Name of the table holding the permanent weekly archive promoted out of the live
     /// leaderboard before expiry cleanup runs.
     /// </summary>
@@ -56,11 +51,6 @@ public class AzureStorageOptions
     public string BudgetTableName { get; set; } = "PoSeeReviewBudget";
 
     /// <summary>
-    /// Name of the table holding daily funnel counters reported by the client.
-    /// </summary>
-    public string AnalyticsTableName { get; set; } = "PoSeeReviewAnalytics";
-
-    /// <summary>
     /// Name of the table holding short share codes in both directions (code to place, place to
     /// code). Not co-located with comics: a short link has to keep resolving after the comic it
     /// points at has expired and been cleaned up.
@@ -68,25 +58,9 @@ public class AzureStorageOptions
     public string ShareLinksTableName { get; set; } = "PoSeeReviewShareLinks";
 
     /// <summary>
-    /// Name of the table holding kept comics, in both directions (per user, and per place for
-    /// takedown).
-    /// </summary>
-    public string CollectionsTableName { get; set; } = "PoSeeReviewCollections";
-
-    /// <summary>
     /// Name of the table holding per-place moderation state (hidden, suppressed, report count).
     /// A row exists only once something has happened, so the table stays proportional to the
     /// problem rather than to the catalogue.
     /// </summary>
     public string ModerationTableName { get; set; } = "PoSeeReviewModeration";
-
-    /// <summary>
-    /// Name of the blob container holding kept copies of comics.
-    /// <para>
-    /// Deliberately not the comics container: everything in there is on a 24-hour clock that
-    /// <c>ExpiredComicCleanupService</c> enforces by deleting blobs, and surviving exactly that
-    /// is what keeping means.
-    /// </para>
-    /// </summary>
-    public string KeptComicsContainerName { get; set; } = "comics-kept";
 }

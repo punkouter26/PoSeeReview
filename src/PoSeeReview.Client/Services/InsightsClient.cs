@@ -12,14 +12,11 @@ namespace PoSeeReview.Client.Services;
 /// as "no data yet" and quietly misreport an outage as an empty database.
 /// </para>
 /// </summary>
-public sealed class InsightsClient(HttpClient httpClient, DevSessionClient devSessionClient)
+public sealed class InsightsClient(HttpClient httpClient)
 {
     public async Task<InsightsDto> GetInsightsAsync(CancellationToken cancellationToken = default)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/insights");
-        await devSessionClient.AttachStoredHeaderAsync(request);
-
-        using var response = await httpClient.SendAsync(request, cancellationToken);
+        using var response = await httpClient.GetAsync("/api/insights", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.InsightsDto, cancellationToken)

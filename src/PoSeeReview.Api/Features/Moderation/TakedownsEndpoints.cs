@@ -45,7 +45,6 @@ internal static class TakedownsEndpoints
         IBlobStorageService blobStorageService,
         ILeaderboardRepository leaderboardRepository,
         IHallOfFameArchive hallOfFameArchive,
-        IKeptComicArchive keptComicArchive,
         IContentModerationGate moderationGate,
         ILogger<TakedownRequestDto> logger,
         TelemetryClient telemetryClient,
@@ -99,12 +98,6 @@ internal static class TakedownsEndpoints
         // already expired — and leaving it would mean a completed takedown that still shows the
         // restaurant's name and score on a page designed never to expire.
         await hallOfFameArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
-
-        // Kept copies are the other thing built to outlive the comic — a private copy in a
-        // container the cleanup service never visits. A takedown that removed the live comic,
-        // the leaderboard row and the archive but left those behind would be a takedown that
-        // did not take the content down.
-        await keptComicArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
 
         return Results.Accepted(value: new
         {

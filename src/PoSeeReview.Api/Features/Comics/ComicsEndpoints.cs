@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Shared.Dtos;
@@ -38,7 +39,6 @@ internal static class ComicsEndpoints
         group.MapGet("/cached", GetCachedPlaceIds);
         group.MapGet("/{placeId}/stats", GetComicStats);
         group.MapGet("/{placeId}/image", DownloadComicImage);
-        group.MapGet("/{placeId}/similar", GetSimilarComics);
         group.MapGet("/{placeId}", GetCachedComic);
 
         // The link-preview card. Deliberately NOT under /api: UserAgentValidationMiddleware only
@@ -66,10 +66,10 @@ internal static class ComicsEndpoints
     /// </summary>
     private static async Task<IResult> GetShareCard(
         string placeId,
-        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IComicGenerationService comicGenerationService,
         IShareCardService shareCardService,
         IContentModerationGate moderationGate,
-        ILogger<GetCachedComicQueryHandler> logger,
+        ILogger<IShareCardService> logger,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(placeId))
@@ -88,7 +88,7 @@ internal static class ComicsEndpoints
 
         try
         {
-            var comic = await getCachedComicQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
+            var comic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
             if (comic is null)
             {
                 return Results.NotFound();
@@ -289,7 +289,7 @@ internal static class ComicsEndpoints
     /// </summary>
     private static async Task<IResult> GetCachedPlaceIds(
         string? placeIds,
-        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IComicGenerationService comicGenerationService,
         IContentModerationGate moderationGate,
         HttpContext http)
     {
@@ -314,7 +314,7 @@ internal static class ComicsEndpoints
                 continue;
             }
 
-            var comic = await getCachedComicQueryHandler.ExecuteAsync(placeId, http.RequestAborted);
+            var comic = await comicGenerationService.GetCachedComicAsync(placeId, http.RequestAborted);
             if (comic is not null && comic.ExpiresAt > now)
             {
                 cached.Add(id);
@@ -356,10 +356,12 @@ internal static class ComicsEndpoints
 
     private static async Task<IResult> GenerateComic(
         string placeId,
-        GenerateComicCommandHandler generateComicCommandHandler,
+        IComicGenerationService comicGenerationService,
+        IComicRepository comicRepository,
+        ICurrentRequestIdentityAccessor identityAccessor,
         GenerationBudgetService budgetService,
         IContentModerationGate moderationGate,
-        ILogger<GenerateComicCommandHandler> logger,
+        ILogger<ComicGenerationService> logger,
         HttpContext http,
         bool forceRegenerate = false)
     {
@@ -402,7 +404,13 @@ internal static class ComicsEndpoints
 
         try
         {
-            var comic = await generateComicCommandHandler.ExecuteAsync(PlaceId.From(placeId), forceRegenerate, http.RequestAborted);
+            var comic = await comicGenerationService.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate, null, http.RequestAborted);
+            var currentUserId = identityAccessor.GetCurrentUserId();
+            if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)
+            {
+                comic.RequestedByUserId = currentUserId;
+                await comicRepository.UpsertAsync(comic);
+            }
 
             if (comic.CacheState == ComicCacheState.Cached)
             {
@@ -441,10 +449,12 @@ internal static class ComicsEndpoints
     /// </summary>
     private static async Task GenerateComicStream(
         string placeId,
-        GenerateComicCommandHandler generateComicCommandHandler,
+        IComicGenerationService comicGenerationService,
+        IComicRepository comicRepository,
+        ICurrentRequestIdentityAccessor identityAccessor,
         GenerationBudgetService budgetService,
         IContentModerationGate moderationGate,
-        ILogger<GenerateComicCommandHandler> logger,
+        ILogger<ComicGenerationService> logger,
         HttpContext http,
         bool forceRegenerate = false)
     {
@@ -539,8 +549,14 @@ internal static class ComicsEndpoints
             try
             {
                 var progress = new ChannelProgress(events.Writer);
-                var comic = await generateComicCommandHandler.ExecuteAsync(
-                    PlaceId.From(placeId), forceRegenerate, http.RequestAborted, progress);
+                var comic = await comicGenerationService.GenerateComicAsync(
+                    PlaceId.From(placeId), forceRegenerate, progress, http.RequestAborted);
+                var currentUserId = identityAccessor.GetCurrentUserId();
+                if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)
+                {
+                    comic.RequestedByUserId = currentUserId;
+                    await comicRepository.UpsertAsync(comic);
+                }
 
                 if (comic.CacheState == ComicCacheState.Cached)
                 {
@@ -619,78 +635,6 @@ internal static class ComicsEndpoints
     }
 
     /// <summary>
-    /// Comics about the same kind of strangeness as this one.
-    /// <para>
-    /// The first surface here that can answer "and what else?": until now a comic page was a dead
-    /// end, and the only way to reach another comic was to go back and search again. It costs
-    /// nothing to serve — no model call, no Maps call, just a read of rows this app already wrote.
-    /// </para>
-    /// <para>
-    /// Returns an empty list rather than an error whenever it has nothing to say: embeddings
-    /// switched off, no vector on either side, no candidates. A related list is a suggestion, and
-    /// a suggestion that cannot be made is not a failure.
-    /// </para>
-    /// </summary>
-    private static async Task<IResult> GetSimilarComics(
-        string placeId,
-        IComicRepository comicRepository,
-        IEmbeddingService embeddingService,
-        IContentModerationGate moderationGate,
-        IOptions<EmbeddingOptions> embeddingOptions,
-        TimeProvider timeProvider,
-        HttpContext http,
-        int limit = 5)
-    {
-        if (string.IsNullOrWhiteSpace(placeId) || !embeddingService.IsEnabled)
-        {
-            return Results.Ok(new SimilarComicsResponse([]));
-        }
-
-        var source = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
-
-        // A comic drawn before embeddings were switched on has no vector, and no backfill job is
-        // run to invent one: the rows expire within a day, so the feature fills itself in. The
-        // alternative — embedding the narrative on this read — would put a model call behind a GET.
-        if (source is null || source.Embedding.Length == 0)
-        {
-            return Results.Ok(new SimilarComicsResponse([]));
-        }
-
-        var candidates = await comicRepository.GetLiveComicsAsync(
-            timeProvider.GetUtcNow(), embeddingOptions.Value.MaxCandidates, http.RequestAborted);
-
-        var ranked = new List<SimilarComicDto>(candidates.Count);
-
-        foreach (var candidate in candidates)
-        {
-            if (candidate.PlaceId == source.PlaceId || candidate.Embedding.Length == 0)
-            {
-                continue;
-            }
-
-            // A withheld comic must not be recommended: the row would promise something to read
-            // and the tap would land on a 451.
-            var verdict = await moderationGate.EvaluateAsync(candidate.PlaceId, http.RequestAborted);
-            if (!verdict.IsServable)
-            {
-                continue;
-            }
-
-            ranked.Add(new SimilarComicDto(
-                candidate.PlaceId.Value,
-                candidate.RestaurantName,
-                candidate.StrangenessScore,
-                Math.Round(VectorMath.CosineSimilarity(source.Embedding, candidate.Embedding), 4)));
-        }
-
-        return Results.Ok(new SimilarComicsResponse(
-            [.. ranked.OrderByDescending(c => c.Similarity).Take(Math.Clamp(limit, 1, MaxSimilarComics))]));
-    }
-
-    /// <summary>Suggestion list length cap. Related comics are a row under a strip, not a page.</summary>
-    private const int MaxSimilarComics = 10;
-
-    /// <summary>
     /// Re-serves a comic image from this origin so the browser will actually save it.
     /// <para>
     /// The comic lives in Blob Storage on a different host, and a <c>download</c> attribute is
@@ -706,10 +650,10 @@ internal static class ComicsEndpoints
     /// </summary>
     private static async Task<IResult> DownloadComicImage(
         string placeId,
-        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IComicGenerationService comicGenerationService,
         IBlobStorageService blobStorageService,
         IContentModerationGate moderationGate,
-        ILogger<GetCachedComicQueryHandler> logger,
+        ILogger<ComicGenerationService> logger,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(placeId))
@@ -730,7 +674,7 @@ internal static class ComicsEndpoints
 
         try
         {
-            var comic = await getCachedComicQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
+            var comic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
 
             if (comic is null || string.IsNullOrWhiteSpace(comic.ImageUrl))
             {
@@ -768,26 +712,26 @@ internal static class ComicsEndpoints
     /// </summary>
     private static string BuildDownloadFileName(string restaurantName)
     {
-        var cleaned = new string((restaurantName ?? string.Empty)
-            .Where(c => char.IsLetterOrDigit(c) || c is ' ' or '-' or '_')
-            .ToArray())
+        var cleaned = string.Join("_", restaurantName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries))
             .Trim();
 
-        if (cleaned.Length > 60)
+        if (string.IsNullOrWhiteSpace(cleaned))
         {
-            cleaned = cleaned[..60].Trim();
+            cleaned = "restaurant";
         }
 
-        return string.IsNullOrWhiteSpace(cleaned)
-            ? "poseereview-comic.png"
-            : $"{cleaned.Replace(' ', '-')}-comic.png";
+        return $"poseereview_{cleaned}.png";
     }
 
+    /// <summary>
+    /// Serves a comic from the local table cache. Free read — no Maps call, no AI generation.
+    /// Returns 404 when expired, triggering a fresh generation on the client if desired.
+    /// </summary>
     private static async Task<IResult> GetCachedComic(
         string placeId,
-        GetCachedComicQueryHandler getCachedComicQueryHandler,
+        IComicGenerationService comicGenerationService,
         IContentModerationGate moderationGate,
-        ILogger<GetCachedComicQueryHandler> logger,
+        ILogger<ComicGenerationService> logger,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(placeId))
@@ -808,7 +752,7 @@ internal static class ComicsEndpoints
 
         try
         {
-            var cachedComic = await getCachedComicQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
+            var cachedComic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
 
             if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
             {
@@ -869,7 +813,7 @@ internal static class ComicsEndpoints
         IComicRepository comicRepository,
         IChatCompletionService chatService,
         IContentModerationGate moderationGate,
-        ILogger<GenerateComicCommandHandler> logger,
+        ILogger<ComicGenerationService> logger,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(placeId))

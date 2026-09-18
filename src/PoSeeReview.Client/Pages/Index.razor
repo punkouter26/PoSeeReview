@@ -10,7 +10,6 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 @inject AnalyticsService Analytics
-@inject MapService Map
 @implements IDisposable
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
@@ -56,18 +55,7 @@
                          or LocationFlowState.Error or LocationFlowState.Loading)
     {
         <div class="location-prompt">
-            @* The searching state is a class on the card rather than a spinner beside the button.
-               A request whose answer is a browser permission dialog can sit unanswered for as
-               long as the user likes, and a spinner spinning next to a disabled button reads as
-               the app being stuck. A sonar ring leaving the card reads as a request in flight,
-               which is what is actually true. *@
             <RadzenCard class="@($"prompt-card glass {(_flowState == LocationFlowState.Loading ? "prompt-card--searching" : "")}")">
-                @* The landing card is the app's first impression and the one surface guaranteed
-                   to have the full backdrop behind it, so it is where real glass earns the most.
-                   Slightly thinner than the comic card: this one is smaller, and the same bend
-                   across fewer pixels reads as a smear rather than a curve. *@
-                <GlassPane Thickness="0.42" />
-
                 <div class="prompt-eyebrow">Start here</div>
                 <h2>Find Nearby Restaurants</h2>
                 <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
@@ -106,8 +94,6 @@
     {
         <div class="restaurants-grid">
             <p class="results-info">@_loadingMessage</p>
-            @* Six, not three. The grid is three columns on a desktop, so three placeholders drew
-               a 2 + 1 row that read as a broken layout before any content had arrived. *@
             @for (var i = 0; i < 6; i++)
             {
                 <div class="skeleton-card">
@@ -126,44 +112,20 @@
         </div>
     }
 
-
     @if (_restaurants.Count > 0)
     {
         <div class="results-layout">
-            @* The chip that sat here carried the search label ("📍 Nearby") as well as the reset,
-               so dropping the label alone would have taken the only way back to the prompt with
-               it. What is left is the reset, said out loud. *@
             <div class="results-header">
                 <button type="button" class="btn btn-secondary new-search-btn" @onclick="ClearSearch"
                         title="Search a different area">
                     <span aria-hidden="true">&#215;</span> New search
                 </button>
-                @* Not "comic-ready" any more: the client no longer pre-filters by review
-                   count, so this is simply what the search returned. *@
                 <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
-            </div>
-
-            @* Always on, and beside the list rather than above it. The toggle is gone because a
-               map nobody opens tells nobody anything, and because the button that opened it
-               cost the results a whole row of height to be permanently unopened.
-               aria-hidden because everything it shows is in the list next to it, and a screen
-               reader has no use for a pile of unlabelled pins. *@
-            <div class="map-panel" aria-hidden="true">
-                <div id="discovery-map" class="map-canvas"></div>
-                @if (_mapFailed)
-                {
-                    <p class="map-fallback">
-                        The map could not load. The list below has everything it would have shown.
-                    </p>
-                }
             </div>
 
             <div class="restaurants-grid">
                 @foreach (var restaurant in _restaurants)
                 {
-                    @* cq-card makes each slot a query container so the card inside can size itself
-                       from the room it actually has (see @container card in app.css). A container
-                       cannot query itself, hence the wrapper. *@
                     <div class="cq-card">
                         <RestaurantCard
                             Restaurant="restaurant"
@@ -194,85 +156,13 @@
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
 
-    private bool _mapFailed;
-    private double _centreLat;
-    private double _centreLng;
     private HashSet<string> _cachedPlaceIds = [];
-    private DotNetObjectReference<Index>? _selfRef;
-
-    /// <summary>
-    /// Draws the results on the map.
-    /// <para>
-    /// The map is always on, so this runs for every result set rather than behind a toggle. A
-    /// failure to load is still not an error state — the list is already on screen — so it
-    /// degrades to a line of text.
-    /// </para>
-    /// </summary>
-    private async Task RenderMapAsync()
-    {
-        if (_restaurants.Count == 0)
-        {
-            return;
-        }
-
-        // Rendered first so the container exists and has a height: MapLibre measures its
-        // container on construction, and a zero-height mount stays blank.
-        StateHasChanged();
-        await Task.Yield();
-
-        _selfRef ??= DotNetObjectReference.Create(this);
-
-        var styles = new MapStyles();
-        try
-        {
-            // Pin colours come from the real tokens for the same reason the charts do: an SVG or
-            // inline colour cannot resolve var(), and a hardcoded hex renders wrong in the other
-            // theme.
-            var values = await JS.InvokeAsync<string[]>(
-                "poseeTheme.readTokens", new[] { "--color-success", "--color-brand" });
-            styles.Ready = values.ElementAtOrDefault(0) ?? string.Empty;
-            styles.Pending = values.ElementAtOrDefault(1) ?? string.Empty;
-        }
-        catch (JSException)
-        {
-            // map.js falls back to its own defaults when a colour is empty.
-        }
-
-        var payload = new MapPayload
-        {
-            Centre = new MapCentre { Lat = _centreLat, Lng = _centreLng },
-            Places = [.. _restaurants.Select(r => new MapPlace
-            {
-                PlaceId = r.PlaceId,
-                Name = r.Name,
-                Lat = r.Latitude,
-                Lng = r.Longitude,
-                HasComic = _cachedPlaceIds.Contains(r.PlaceId)
-            })]
-        };
-
-        _mapFailed = !await Map.ShowAsync("discovery-map", payload, styles, _selfRef);
-        StateHasChanged();
-    }
-
-    /// <summary>Tapping a pin does exactly what tapping a card does.</summary>
-    [JSInvokable]
-    public async Task OnPlaceSelected(string placeId)
-    {
-        var match = _restaurants.FirstOrDefault(r => r.PlaceId == placeId);
-        if (match is not null)
-        {
-            await HandleRestaurantClick(match);
-        }
-    }
 
     /// <summary>
     /// Asks which of the current results are already drawn.
     /// <para>
-    /// This is the map's whole reason for existing: a cached comic opens instantly and costs
-    /// nothing, a fresh one spends a paid generation and about ten seconds, and the grid had no
-    /// way to say which was which. Best-effort — an empty answer just means no pin claims to be
-    /// ready.
+    /// A cached comic opens instantly and costs nothing, a fresh one spends a paid generation and
+    /// about ten seconds.
     /// </para>
     /// </summary>
     private async Task RefreshCachedPlacesAsync()
@@ -284,8 +174,6 @@
 
     public void Dispose()
     {
-        _ = Map.HideAsync();
-        _selfRef?.Dispose();
     }
 
     private const string LastSearchKey = "posee_last_search";
@@ -418,8 +306,6 @@
             await RememberDiscoveryModeAsync(GeoMode);
 
             _loadingMessage = "Finding nearby restaurants...";
-            _centreLat = result.Latitude;
-            _centreLng = result.Longitude;
             StateHasChanged();
 
             await LoadNearbyRestaurantsAsync(result.Latitude, result.Longitude);
@@ -518,9 +404,6 @@
 
             SetRestaurantResults(response.Restaurants);
             _flowState = LocationFlowState.Ready;
-            // A text search has no GPS fix, so the map centres on the results themselves.
-            _centreLat = _restaurants.Average(r => r.Latitude);
-            _centreLng = _restaurants.Average(r => r.Longitude);
             await AfterResultsAsync();
             await JS.InvokeVoidAsync("localStorage.setItem", LastSearchKey, searchTerm);
             await RememberDiscoveryModeAsync(ZipMode);
@@ -539,21 +422,10 @@
         }
     }
 
-    /// <summary>
-    /// Runs after either discovery path lands results: works out which are already drawn, and
-    /// redraws the map if it happens to be open.
-    /// </summary>
     private async Task AfterResultsAsync()
     {
         await RefreshCachedPlacesAsync();
-
-        // Deliberately after the cache lookup, not before: the grid is about to render with the
-        // cards' cached/uncached material on them, and the arrival figure is the sound of that
-        // whole state landing rather than of the HTTP response returning.
         await Fx.PlayArrivalAsync(_restaurants.Count);
-
-        // Always, not conditionally: there is no toggle to ask about any more.
-        await RenderMapAsync();
     }
 
     /// <summary>
@@ -642,10 +514,6 @@
 
     private void ClearSearch()
     {
-        // Fire-and-forget: the map goes with the results it was showing, and the teardown must
-        // not hold up the re-render that takes the panel off the page.
-        _ = Map.HideAsync();
-
         _cachedPlaceIds = [];
         _restaurants = new();
         _lastSearch = string.Empty;

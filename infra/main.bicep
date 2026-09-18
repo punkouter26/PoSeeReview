@@ -31,8 +31,8 @@ param budgetContactEmails array = []
 param apiServiceName string = 'api'
 
 // App Service Plan SKU
-@description('App Service Plan SKU (B1 Basic recommended for production)')
-param appServicePlanSku string = 'B1'
+@description('App Service Plan SKU (F1 Free tier per NET_RULES 5.2, B1 Basic for production)')
+param appServicePlanSku string = 'F1'
 
 // Resource names
 var resourceToken = toLower('poseereview-${environmentName}-${regionCode}')

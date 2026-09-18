@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Api.Features.Reports;
+namespace PoSeeReview.Api.Features.Moderation;
 
 /// <summary>
 /// Persistence for viewer reports. Owned by the Reports slice — no other slice reads them

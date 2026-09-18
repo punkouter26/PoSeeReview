@@ -72,8 +72,6 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(OllamaOptions.SectionName));
         services.Configure<AiPricingOptions>(
             configuration.GetSection(AiPricingOptions.SectionName));
-        services.Configure<EmbeddingOptions>(
-            configuration.GetSection(EmbeddingOptions.SectionName));
 
         // Chat and image are chosen separately. They were one switch, which meant an image-model
         // experiment could not be run without also changing the scorer underneath it — so every
@@ -245,6 +243,9 @@ public static class InfrastructureServiceCollectionExtensions
         // twice. Singleton because the gates must be shared across requests, not per request.
         services.AddSingleton<ComicGenerationLock>();
 
+        // Embeddings. Off unless configured, and never able to fail a comic — see IEmbeddingService.
+        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
+
 
         // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
         // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.
@@ -275,7 +276,6 @@ public static class InfrastructureServiceCollectionExtensions
                     sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
                     sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
-        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<IShareCardService, ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();

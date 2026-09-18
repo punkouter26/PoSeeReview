@@ -107,37 +107,4 @@ public class SliceContractTests(CustomWebApplicationFactory<Program> factory)
             response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.Unauthorized,
             $"Expected 503 or 401, got {(int)response.StatusCode}");
     }
-
-    // ── Dev sessions ────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task GetDevSession_IsAnonymous_AndReturnsSession()
-    {
-        var response = await factory.CreateClient().GetAsync("/api/devsession");
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var session = await response.Content.ReadFromJsonAsync<DevSessionDto>();
-        Assert.NotNull(session);
-    }
-
-    [Fact]
-    public async Task PostAnonDevSession_MintsDistinctIdentities()
-    {
-        var client = factory.CreateClient();
-
-        // Ids are drawn from a 900k-wide range, so a single pair could collide by chance.
-        // Sampling five and requiring more than one distinct value makes the assertion
-        // deterministic in practice without weakening what it checks.
-        var ids = new List<string>();
-        for (var i = 0; i < 5; i++)
-        {
-            var session = await (await client.PostAsync("/api/devsession/anon", null))
-                .Content.ReadFromJsonAsync<DevSessionDto>();
-            Assert.NotNull(session);
-            Assert.False(string.IsNullOrWhiteSpace(session.UserId));
-            ids.Add(session.UserId);
-        }
-
-        Assert.True(ids.Distinct().Count() > 1, $"every minted id was identical: {ids[0]}");
-    }
 }

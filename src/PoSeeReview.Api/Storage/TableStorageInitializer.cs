@@ -29,12 +29,9 @@ internal sealed class TableStorageInitializer(
             storageOptions.LeaderboardTableName,
             storageOptions.RestaurantsTableName,
             storageOptions.ReportsTableName,
-            storageOptions.ReactionsTableName,
             storageOptions.HallOfFameTableName,
             storageOptions.BudgetTableName,
-            storageOptions.AnalyticsTableName,
             storageOptions.ShareLinksTableName,
-            storageOptions.CollectionsTableName,
             storageOptions.ModerationTableName
         ];
 
@@ -48,10 +45,7 @@ internal sealed class TableStorageInitializer(
             logger.LogInformation("Verified table storage table {TableName}", tableName);
         }));
 
-        // Two containers: the expiring one the pipeline writes to, and the kept one that the
-        // cleanup service never touches. Created together and concurrently for the same reason
-        // the tables are — both are on the startup critical path.
-        string[] containerNames = [storageOptions.ComicsContainerName, storageOptions.KeptComicsContainerName];
+        string[] containerNames = [storageOptions.ComicsContainerName];
 
         await Task.WhenAll(containerNames.Select(async containerName =>
         {

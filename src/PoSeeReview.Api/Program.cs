@@ -81,7 +81,6 @@ try
     builder.Services.AddProblemDetails();
     builder.Services.AddScoped<ICurrentRequestIdentityAccessor, HttpContextRequestIdentityAccessor>();
     builder.Services.AddValidatorsFromAssemblyContaining<PoSeeReview.Shared.Validation.TakedownRequestValidator>();
-    builder.Services.AddApplication();
 
     builder.Services.AddConfiguredTelemetry(builder.Configuration, builder.Environment);
     builder.Services.AddConfiguredRateLimiting(builder.Configuration);

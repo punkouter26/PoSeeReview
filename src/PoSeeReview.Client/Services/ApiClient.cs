@@ -12,12 +12,10 @@ namespace PoSeeReview.Client.Services;
 public class ApiClient
 {
     private readonly HttpClient _httpClient;
-    private readonly DevSessionClient _devSessionClient;
 
-    public ApiClient(HttpClient httpClient, DevSessionClient devSessionClient)
+    public ApiClient(HttpClient httpClient)
     {
         _httpClient = httpClient;
-        _devSessionClient = devSessionClient;
     }
 
     /// <summary>
@@ -184,36 +182,6 @@ public class ApiClient
     }
 
     /// <summary>
-    /// Comics about the same kind of strangeness as this one, or <c>null</c> when there are none
-    /// to offer.
-    /// <para>
-    /// Never throws. A related-comics list is an enrichment of a comic the user already has, so
-    /// a dropped connection here should cost a row of suggestions and nothing else — which is
-    /// also why the server answers an empty list rather than an error when it has nothing to say.
-    /// </para>
-    /// </summary>
-    public async Task<SimilarComicsResponse?> GetSimilarComicsAsync(
-        string placeId,
-        int limit = 4,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}/similar?limit={limit}");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return null;
-            }
-
-            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.SimilarComicsResponse, cancellationToken);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// Searches for restaurants by location query (city name or ZIP code).
@@ -338,31 +306,6 @@ public class ApiClient
     }
 
     /// <summary>
-    /// Reads the permanent weekly archive. Separate from the live board because these entries
-    /// outlive the comics they came from.
-    /// </summary>
-    public async Task<HallOfFameResponse?> GetWeeklyHallOfFameAsync(
-        string region = "US",
-        int weeks = 4,
-        int limit = 10,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(
-                HttpMethod.Get,
-                $"/api/leaderboard/weekly?region={region}&weeks={weeks}&limit={limit}");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            await EnsureSuccessAsync(response, "Weekly archive request failed", cancellationToken);
-            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HallOfFameResponse, cancellationToken);
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
     /// Regional context for a comic's score. Returns <c>null</c> when the comic has no stats
     /// yet — the score still renders, just without the comparison.
     /// </summary>
@@ -472,53 +415,6 @@ public class ApiClient
         }
     }
 
-    /// <summary>Reads reaction tallies for a comic, plus the caller's own reaction.</summary>
-    public async Task<ReactionCountsDto?> GetReactionsAsync(
-        string placeId,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/reactions/{placeId}");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ReactionCountsDto, cancellationToken)
-                : null;
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Sets, changes or withdraws the caller's reaction. Passing <c>null</c> — or the reaction
-    /// they already hold — withdraws it.
-    /// </summary>
-    public async Task<ReactionCountsDto?> SetReactionAsync(
-        string placeId,
-        ReactionKind? reaction,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/reactions/{placeId}");
-            request.Content = JsonContent.Create(
-                new ReactionRequestDto { Reaction = reaction }, AppJsonContext.Default.ReactionRequestDto);
-
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ReactionCountsDto, cancellationToken)
-                : null;
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
     /// <summary>
     /// Submits a viewer report. Unlike most calls here this one surfaces its failure: someone
     /// reporting content needs to know whether it was actually received.
@@ -537,50 +433,6 @@ public class ApiClient
         return payload ?? throw new InvalidOperationException("Report response was null");
     }
 
-    /// <summary>
-    /// Reports one funnel step. Fire-and-forget by contract: it never throws and never blocks
-    /// anything a user is waiting on.
-    /// </summary>
-    public async Task RecordFunnelEventAsync(
-        string step,
-        int? durationMs = null,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Post, "/api/analytics/events");
-            request.Content = JsonContent.Create(
-                new FunnelEventDto { Step = step, DurationMs = durationMs }, AppJsonContext.Default.FunnelEventDto);
-
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            _ = response.IsSuccessStatusCode;
-        }
-        catch (Exception)
-        {
-            // Telemetry must never be able to break the thing it is measuring.
-        }
-    }
-
-    /// <summary>Reads a day of funnel counters for the Diagnostics page.</summary>
-    public async Task<FunnelSnapshotDto?> GetFunnelSnapshotAsync(
-        int daysAgo = 0,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/analytics/funnel?daysAgo={daysAgo}");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.FunnelSnapshotDto, cancellationToken)
-                : null;
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-    }
-
     public async Task<HealthStatusDto?> GetHealthStatusAsync(CancellationToken cancellationToken = default)
     {
         using var request = await CreateRequestAsync(HttpMethod.Get, "/health");
@@ -597,10 +449,8 @@ public class ApiClient
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DiagnosticsSnapshotDto, cancellationToken);
     }
 
-    private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)
+    private static Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)
     {
-        var request = new HttpRequestMessage(method, url);
-        await _devSessionClient.AttachStoredHeaderAsync(request);
-        return request;
+        return Task.FromResult(new HttpRequestMessage(method, url));
     }
 }

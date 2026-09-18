@@ -33,11 +33,6 @@ internal static class DiagnosticsEndpoints
             return Results.Ok(new MockStatusDto { IsMockActive = isMock, ActiveMocks = activeMocks });
         });
 
-        // The funnel lives in this slice but not under /diag: the client posts events to
-        // /api/analytics as it moves through the app, and a telemetry beacon is not a diagnostic
-        // route — it is written on the happy path by every visitor.
-        app.MapFunnelEndpoints();
-
         return app;
     }
 }

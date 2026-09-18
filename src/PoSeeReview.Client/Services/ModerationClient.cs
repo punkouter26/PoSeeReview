@@ -11,12 +11,11 @@ namespace PoSeeReview.Client.Services;
 /// "done" when nothing was written would leave content up believing they had taken it down.
 /// </para>
 /// </summary>
-public sealed class ModerationClient(HttpClient httpClient, DevSessionClient devSessionClient)
+public sealed class ModerationClient(HttpClient httpClient)
 {
     public async Task<ModerationQueueDto> GetQueueAsync(CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, "/api/moderation/queue");
-        using var response = await httpClient.SendAsync(request, cancellationToken);
+        using var response = await httpClient.GetAsync("/api/moderation/queue", cancellationToken);
         response.EnsureSuccessStatusCode();
 
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ModerationQueueDto, cancellationToken)
@@ -38,18 +37,11 @@ public sealed class ModerationClient(HttpClient httpClient, DevSessionClient dev
 
     private async Task ActAsync(HttpMethod method, string url, string reason, CancellationToken cancellationToken)
     {
-        using var request = await CreateRequestAsync(method, url);
+        using var request = new HttpRequestMessage(method, url);
         request.Content = JsonContent.Create(
             new ModerationActionDto { Reason = reason }, AppJsonContext.Default.ModerationActionDto);
 
         using var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-    }
-
-    private async Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)
-    {
-        var request = new HttpRequestMessage(method, url);
-        await devSessionClient.AttachStoredHeaderAsync(request);
-        return request;
     }
 }

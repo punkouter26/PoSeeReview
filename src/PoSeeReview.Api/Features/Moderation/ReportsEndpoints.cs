@@ -6,7 +6,7 @@ using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Api.Features.Reports;
+namespace PoSeeReview.Api.Features.Moderation;
 
 /// <summary>
 /// Public content-reporting slice. Maps <c>/api/reports</c> (NET_RULES 3.3).

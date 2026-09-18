@@ -54,9 +54,6 @@
     <!-- Resolves design tokens for anything that needs a real colour string rather than a
          var() — SVG presentation attributes (Radzen charts) do not resolve custom properties. -->
     <script src="js/theme-tokens.js"></script>
-    <!-- Discovery map shim. A few KB; MapLibre itself is dynamically imported the first time
-         someone opens the map panel and never on load. -->
-    <script src="js/map.js"></script>
     <!-- Must load before Blazor: `beforeinstallprompt` fires early and is only capturable if
          its default is prevented the moment it arrives. -->
     <script src="js/pwa.js"></script>

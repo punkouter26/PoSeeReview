@@ -3,11 +3,8 @@
 @using Microsoft.AspNetCore.Components.WebAssembly.Hosting
 @using PoSeeReview.Shared
 @using PoSeeReview.Shared.Dtos
-@implements IDisposable
 @inject IWebAssemblyHostEnvironment HostEnvironment
 @inject HttpClient Http
-@inject DevSessionClient DevSessionClient
-@inject DevSessionStateService SessionState
 @inject NavigationManager Navigation
 
 <div class="top-row">
@@ -42,72 +39,31 @@
             </div>
         </nav>
 
-        @* Right zone of the header contract (NET_RULES 4.1): Left branding | Center actions |
-           Right session. This renders in EVERY environment — it was previously Development-only,
-           which left Production with no identity and no way to sign out. The dev-session badge
-           inside it stays Dev/Test-only; Production falls back to the authenticated principal. *@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-user-zone">
-                    @* Deliberately in the right-hand session zone, NOT in nav.nav-links: the
-                       primary nav is contractually two items (HeaderContractUiTests asserts
-                       exactly that) and a third would both break the test and dilute a
-                       two-destination app.
-
-                       There is no sound switch here any more, and none is needed. Sound,
-                       haptics and the ambient bed all default to on, so there is nothing to
-                       unlock, and the only switches for them live on /diagnostics. What that
-                       buys is width: `.nav-links` is `flex: 1; min-width: 0` against a session
-                       zone that cannot shrink, so every control parked here is taken straight
-                       out of the primary nav. *@
                     <NavLink class="nav-insights" href="insights" title="Insights">
                         <span aria-hidden="true">📊</span>
                         <span class="nav-insights-label">Insights</span>
                     </NavLink>
-                    @if (_devSession != null)
-                    {
-                        <div class="nav-user-badge @(_devSession.IsAnonymous ? "nav-user-badge--anon" : "nav-user-badge--user")">
-                            <span class="nav-user-dot" aria-hidden="true"></span>
-                            @if (_devSession.IsAnonymous)
-                            {
-                                <span class="nav-user-label">Anon</span>
-                            }
-                            else if (!string.IsNullOrWhiteSpace(_devSession.Email))
-                            {
-                                <span class="nav-user-email nav-user-label" title="@_devSession.Email">@_devSession.Email</span>
-                            }
-                            else
-                            {
-                                <span class="nav-user-label">@_devSession.UserId</span>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="nav-user-badge nav-user-badge--user">
-                            <span class="nav-user-dot" aria-hidden="true"></span>
-                            <span class="nav-user-email nav-user-label" title="@auth.User.Identity?.Name">
-                                @auth.User.Identity?.Name
-                            </span>
-                        </div>
-                    }
-                    <button class="nav-logout-btn" @onclick="LogoutAsync" title="Sign out">Sign out</button>
+                    <div class="nav-user-badge nav-user-badge--user">
+                        <span class="nav-user-dot" aria-hidden="true"></span>
+                        <span class="nav-user-email nav-user-label" title="@auth.User.Identity?.Name">
+                            @(auth.User.Identity?.Name ?? "User")
+                        </span>
+                    </div>
+                    <button class="nav-logout-btn" @onclick="Logout" title="Sign out">Sign out</button>
                 </div>
             </Authorized>
-            @* No unauthenticated session zone. An anonymous visitor is always on /login, which
-               already presents the sign-in choice front and centre — a second "Not signed in /
-               Sign in" pair in the header restated it and competed with the real CTA. *@
         </AuthorizeView>
     </div>
 </div>
 
 @code {
-    private DevSessionDto? _devSession;
     private bool _isMockData;
 
     protected override async Task OnInitializedAsync()
     {
-        // Banner is driven by the server's IMockable registrations (NET_RULES 6.5).
         try
         {
             var mockStatus = await Http.GetFromJsonAsync("diag/mock-status", AppJsonContext.Default.MockStatusDto);
@@ -117,49 +73,11 @@
         {
             _isMockData = false;
         }
-
-        if (IsDevOrTest)
-        {
-            _devSession = await DevSessionClient.GetCurrentSessionAsync();
-            SessionState.Set(_devSession);
-            SessionState.OnChanged += OnSessionChanged;
-        }
     }
 
-    // The dev-session badge is a local-tooling affordance; Production shows the real principal.
-    private bool IsDevOrTest =>
-        HostEnvironment.IsDevelopment() || HostEnvironment.IsEnvironment(HostEnvironments.Test);
-
-    private void OnSessionChanged()
+    private void Logout()
     {
-        _devSession = SessionState.Current;
-        InvokeAsync(StateHasChanged);
-    }
-
-    public void Dispose()
-    {
-        SessionState.OnChanged -= OnSessionChanged;
-    }
-
-    /// <summary>
-    /// Turning sound on from a click handler is the only way it can work: a browser only lets an
-    /// AudioContext leave 'suspended' from a trusted event, so a toggle wired to anything else —
-    /// a timer, an await continuation, a stored preference applied at startup — leaves the app
-    /// permanently silent while reporting that sound is on.
-    /// <para>
-    /// That switch is no longer in this header. Sound now defaults on, and the unlock happens on
-    /// the first real gesture the user makes anyway — the discovery button, a card, the comic
-    /// action bar — which is why removing the control cost nothing and freed the width.
-    /// </para>
-    /// </summary>
-    private async Task LogoutAsync()
-    {
-        if (IsDevOrTest)
-        {
-            await DevSessionClient.LogoutAsync();
-        }
-
-        // Full-page navigation so the server clears the BFF auth cookie (NET_RULES 4.4).
+        // Full-page navigation so the server clears the BFF auth cookie.
         Navigation.NavigateTo("auth/logout?returnUrl=%2Flogin", forceLoad: true);
     }
 }

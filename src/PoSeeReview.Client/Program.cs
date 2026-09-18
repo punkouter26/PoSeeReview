@@ -22,20 +22,15 @@ builder.Services.AddScoped<AuthenticationStateProvider, BffAuthenticationStatePr
 
 // Register application services
 builder.Services.AddScoped<GeolocationService>();
-builder.Services.AddScoped<DevSessionClient>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<ShareService>();
 builder.Services.AddScoped<FxService>();
 builder.Services.AddScoped<PwaService>();
-builder.Services.AddScoped<ComicHistoryService>();
 builder.Services.AddScoped<BoardMemoryService>();
 builder.Services.AddScoped<InsightsClient>();
-builder.Services.AddScoped<CollectionsClient>();
 builder.Services.AddScoped<ModerationClient>();
-builder.Services.AddScoped<MapService>();
 // Scoped, not singleton: it holds the in-flight generation timestamp, which belongs to the
 // user's session rather than the process.
 builder.Services.AddScoped<AnalyticsService>();
-builder.Services.AddSingleton<DevSessionStateService>();
 
 await builder.Build().RunAsync();

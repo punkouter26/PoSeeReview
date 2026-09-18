@@ -9,7 +9,7 @@ using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Enums;
 using PoSeeReview.Shared.Ids;
 
-namespace PoSeeReview.Unit.Application;
+namespace PoSeeReview.Unit.Features.Diagnostics;
 
 public class DiagnosticsSnapshotQueryHandlerTests
 {

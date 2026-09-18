@@ -15,23 +15,11 @@
 import { gfx } from './gfx-core.js';
 import { audio } from './audio.js';
 import { haptics } from './haptics.js';
-import * as ambient from './ambient.js';
 import * as gradient from './gradient.js';
-import * as comicTint from './comic-tint.js';
-import * as glass from './glass.js';
-import * as paper from './paper.js';
 import * as panelScrub from './panel-scrub.js';
-import * as comicFx from './comic-fx.js';
 import * as comicReveal from './comic-reveal.js';
 import * as particles from './particles.js';
-import * as loadingRing from './loading-ring.js';
 import * as viewTransitions from './view-transitions.js';
-import * as audioReactive from './audio-reactive.js';
-import { initPerfHud, toggle as togglePerfHud, isVisible as perfHudVisible } from './perf-hud.js';
-// Only the capability probe is imported eagerly — a few lines that read navigator.gpu. The
-// pipelines and WGSL that actually use it stay behind the lazy import below, so a device without
-// WebGPU never fetches a byte of it.
-import { isSupported as webGpuSupported } from './webgpu-pool.js';
 
 // Three modules are NOT imported statically. Each would otherwise put code on the first-load
 // path of every route that never uses it:
@@ -45,66 +33,6 @@ import { isSupported as webGpuSupported } from './webgpu-pool.js';
 let shelfModule = null;
 let physicsModule = null;
 let particlesGpuModule = null;
-
-async function loadShelf() {
-    if (!shelfModule) {
-        shelfModule = await import('./shelf.js');
-    }
-    return shelfModule;
-}
-
-async function loadPhysics() {
-    if (!physicsModule) {
-        physicsModule = await import('./physics.js');
-    }
-    return physicsModule;
-}
-
-/**
- * Resolves to the WebGPU particle backend, or null on a device without WebGPU. Probed BEFORE the
- * import so a browser that cannot use the module never fetches it.
- */
-/**
- * Resolves to the wet-ink compute module, or null without WebGPU. Probed before the import for
- * the same reason particles-gpu is: a device that cannot run WGSL never fetches any.
- */
-let inkFieldModule = null;
-
-async function loadInkField() {
-    if (inkFieldModule !== null) {
-        return inkFieldModule;
-    }
-    try {
-        const { isSupported } = await import('./webgpu-pool.js');
-        if (!isSupported()) {
-            inkFieldModule = false;
-            return false;
-        }
-        inkFieldModule = await import('./ink-field.js');
-        return inkFieldModule;
-    } catch {
-        inkFieldModule = false;
-        return false;
-    }
-}
-
-async function loadParticlesGpu() {
-    if (particlesGpuModule !== null) {
-        return particlesGpuModule;
-    }
-    try {
-        const { isSupported } = await import('./webgpu-pool.js');
-        if (!isSupported()) {
-            particlesGpuModule = false;
-            return false;
-        }
-        particlesGpuModule = await import('./particles-gpu.js');
-        return particlesGpuModule;
-    } catch {
-        particlesGpuModule = false;
-        return false;
-    }
-}
 
 function guard(fn, fallback = null) {
     try {
@@ -127,40 +55,18 @@ async function guardAsync(fn, fallback = null) {
 const info = gfx.init();
 const audioInfo = audio.init();
 haptics.init(audioInfo.enabled);
-ambient.init();
-// The navigation cue is composed here, not inside view-transitions.js: that module must not
-// learn that the app makes noise, on the same terms gradient.js must not learn about the
-// analyser. A page turn that sweeps in the direction of travel is a product decision.
+
 viewTransitions.init({
     onNavigate: (direction, clientX) => guard(() => audio.navigate(direction, clientX))
 });
-guard(() => initPerfHud());
-// One small texture, built once and handed to CSS as a custom property. Not an effect: nothing
-// is registered with the scheduler, and after this the paper ageing on /my-comics is ordinary
-// painting. Installed here rather than lazily on that route so the first render of the grid
-// already has it — a grain that fades in after the cards reads as a loading glitch.
-guard(() => paper.install());
 
-// Audio may already be enabled from a previous session's stored preference. The reactive driver
-// has to follow that, or a returning user gets sound with a backdrop that ignores it.
-guard(() => audioReactive.sync(audioInfo.enabled));
-
-/**
- * Everything that has to move when the audio preference changes. Three modules inherit from it —
- * the visual driver, haptics and the ambient bed — and each of them would be wrong on its own:
- * a muted app with a pulsing backdrop, a muted app that still buzzes, a muted app with a drone.
- */
 function propagateAudioState(enabled) {
-    guard(() => audioReactive.sync(enabled));
     guard(() => haptics.syncAudio(enabled));
-    guard(() => ambient.syncAudio(enabled));
     if (!enabled) {
         guard(() => haptics.cancel());
     }
 }
 
-// Reflected onto <html> so CSS can respond to the tier — this is how the glass material knows
-// whether it is allowed to spend GPU time on a backdrop blur.
 function reflectTier(tier) {
     guard(() => {
         document.documentElement.dataset.fxTier = tier;
@@ -169,34 +75,14 @@ function reflectTier(tier) {
 reflectTier(info.tier);
 gfx.onTierChanged(reflectTier);
 
-// The other half of the pane/backdrop pairing enforced in startGlass below. A gradient can stop
-// for reasons that have nothing to do with the tier — a lost context is the realistic one — and
-// a pane that kept running would then be refracting a scene the page is no longer showing.
-// Composed here because gradient.js must not know panes exist and glass.js must not know the
-// backdrop has a CSS fallback.
-gradient.onActiveChanged((count) => {
-    if (count === 0) {
-        guard(() => glass.stopAll());
-    }
-});
-
-// Reduced motion turns audio off inside audio.js, and the three dependants have to follow it
-// there too — otherwise the bed keeps playing under a muted app.
 gfx.onTierChanged(() => {
     if (!audio.isEnabled()) {
         propagateAudioState(false);
     }
 });
 
-// Tracks the physics/GPU-particle handles by the canvas they were started on, so a caller only
-// ever holds the one opaque integer the .NET side already models.
 const backendHandles = new Map();
 let nextCompositeHandle = 1;
-
-// The current scene, mirrored here because glass panes are started and stopped independently of
-// the backdrop and have to be able to catch up. A pane mounted after the score landed would
-// otherwise refract a default-coloured scene while the page behind it shows the comic's own —
-// the one failure mode that makes glass look like a bug rather than a material.
 let lastScore = 40;
 let lastPalette = null;
 
@@ -565,135 +451,6 @@ export const fx = {
     }), 0),
 
     stopPanelScrub: (id) => guard(() => panelScrub.stop(id)),
-
-    // ── Particle burst ───────────────────────────────────────────────────────────────────
-
-    /**
-     * Fires the ink burst, preferring the WebGPU compute backend.
-     *
-     * The two backends are not the same effect. The WebGL2 one simulates in the vertex shader
-     * from immutable seeds, so it is stateless and fades out mid-air; the compute one writes
-     * state back and the ink lands. Where WebGPU exists the second is strictly better, and where
-     * it does not the first is what has always shipped.
-     */
-    burstParticles: (canvas, score) => guardAsync(async () => {
-        const gpu = await loadParticlesGpu();
-        if (gpu) {
-            const gpuHandle = await gpu.burst(canvas, { score });
-            if (gpuHandle) {
-                const handle = nextCompositeHandle++;
-                backendHandles.set(handle, { kind: 'particles-gpu', id: gpuHandle });
-                return handle;
-            }
-        }
-
-        const glHandle = particles.burst(canvas, score);
-        if (!glHandle) return 0;
-        const handle = nextCompositeHandle++;
-        backendHandles.set(handle, { kind: 'particles', id: glHandle });
-        return handle;
-    }, 0),
-
-    stopParticles: (handle) => guardAsync(async () => {
-        const entry = backendHandles.get(handle);
-        if (!entry) return;
-        backendHandles.delete(handle);
-        if (entry.kind === 'particles-gpu') {
-            const gpu = await loadParticlesGpu();
-            gpu?.stop(entry.id);
-        } else {
-            particles.dispose(entry.id);
-        }
-    }),
-
-    // ── Physics ──────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Ink that lands. Runs after the burst and is where it ends up: a Verlet pile at the bottom
-     * of the panel that the stateless shader sim cannot express. `mode` is 'ink' or 'shatter'.
-     */
-    /**
-     * Opens a persistent pile on a canvas — empty until `throwReaction` feeds it.
-     *
-     * Deliberately a separate entry point from settleInk. That one is a one-shot that seeds
-     * itself, runs for about three seconds and tears itself down; this is a surface that stays
-     * for the life of the page and accumulates. Folding them into one call would mean a `mode`
-     * that silently changes the lifetime of the handle it returns.
-     */
-    startPile: (canvas) => guardAsync(async () => {
-        const physics = await loadPhysics();
-        const id = physics.start(canvas, { mode: 'pile' });
-        if (!id) return 0;
-        const handle = nextCompositeHandle++;
-        backendHandles.set(handle, { kind: 'physics', id });
-        return handle;
-    }, 0),
-
-    /**
-     * Throws a reaction onto the pile, with the sound and the buzz that go with it.
-     *
-     * Composed here rather than in ReactionBar because it is three modules agreeing: the body is
-     * physics, the click is audio panned to the tap, and the buzz is haptics. That pairing is a
-     * product decision and this file is where those are made.
-     */
-    throwReaction: (handle, glyph, originX, originY, clientX) => guardAsync(async () => {
-        const entry = backendHandles.get(handle);
-        if (!entry || entry.kind !== 'physics') return false;
-        const physics = await loadPhysics();
-        const thrown = physics.emit(entry.id, {
-            glyph,
-            originX: originX ?? 0.5,
-            originY: originY ?? 0.1
-        });
-        if (thrown) {
-            audio.tapAt(clientX ?? window.innerWidth / 2);
-            haptics.tap();
-        }
-        return thrown;
-    }, false),
-
-    settleInk: (canvas, score, mode, originX, originY) => guardAsync(async () => {
-        const physics = await loadPhysics();
-        const id = physics.start(canvas, {
-            mode: mode === 'shatter' ? 'shatter' : 'ink',
-            score: score ?? 50,
-            originX: originX ?? 0.5,
-            originY: originY ?? 0.5
-        });
-        if (!id) return 0;
-        const handle = nextCompositeHandle++;
-        backendHandles.set(handle, { kind: 'physics', id });
-        return handle;
-    }, 0),
-
-    stopInk: (handle) => guardAsync(async () => {
-        const entry = backendHandles.get(handle);
-        if (!entry || entry.kind !== 'physics') return;
-        backendHandles.delete(handle);
-        const physics = await loadPhysics();
-        physics.stop(entry.id);
-    }),
-
-    // ── Loading ring ─────────────────────────────────────────────────────────────────────
-    startLoadingRing: (canvas, progress) => guard(() => loadingRing.start(canvas, { progress }), 0),
-    setLoadingRingProgress: (id, progress) => guard(() => loadingRing.setProgress(id, progress)),
-    stopLoadingRing: (id) => guard(() => loadingRing.stop(id)),
-
-    // ── Hall of Fame shelf (lazy) ────────────────────────────────────────────────────────
-    /**
-     * `entries` is an array of { rank, score }. Async because the module is fetched on demand;
-     * a 0 handle means it did not start, which every caller already treats as "no effect".
-     * The DOM list must stay in place underneath — see the header comment in shelf.js.
-     */
-    startShelf: (canvas, entries) => guardAsync(async () => {
-        const module = await loadShelf();
-        return module.start(canvas, entries ?? []);
-    }, 0),
-
-    stopShelf: (id) => guardAsync(async () => {
-        if (!id || !shelfModule) return;
-        shelfModule.stop(id);
-    }),
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
     /** Called after the destination route renders, to close the open transition. */

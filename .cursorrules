@@ -15,3 +15,4 @@ Lazy, not negligent:
 - Trust-boundary validation, data-loss handling, security, and accessibility are NEVER cut.
 - Write only what the task needs.
 - Never write custom JS/CSS when Radzen controls or native HTML5 provide the functionality out of the box.
+

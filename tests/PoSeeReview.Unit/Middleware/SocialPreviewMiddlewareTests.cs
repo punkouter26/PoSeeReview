@@ -37,28 +37,26 @@ public class SocialPreviewMiddlewareTests
         return (context, body);
     }
 
-    private static (SocialPreviewMiddleware Middleware, GetCachedComicQueryHandler Handler) Build(
+    private static (SocialPreviewMiddleware Middleware, IComicRepository Repo) Build(
         Comic? comic, Action onNext)
     {
-        var generation = new Mock<IComicGenerationService>();
-        generation
-            .Setup(x => x.GetCachedComicAsync(It.IsAny<PlaceId>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(comic);
+        var repo = new Mock<IComicRepository>();
+        repo.Setup(x => x.GetByPlaceIdAsync(It.IsAny<PlaceId>())).ReturnsAsync(comic);
 
         var middleware = new SocialPreviewMiddleware(
             _ => { onNext(); return Task.CompletedTask; },
             NullLogger<SocialPreviewMiddleware>.Instance);
 
-        return (middleware, new GetCachedComicQueryHandler(generation.Object));
+        return (middleware, repo.Object);
     }
 
     private static Task RunAsync(Comic? comic, DefaultHttpContext context, Action onNext)
     {
-        var (middleware, handler) = Build(comic, onNext);
-        // The middleware resolves the handler from RequestServices rather than taking it as an
+        var (middleware, repo) = Build(comic, onNext);
+        // The middleware resolves the repository from RequestServices rather than taking it as an
         // InvokeAsync parameter, so the crawler guard can short-circuit before that graph is built.
         context.RequestServices = new ServiceCollection()
-            .AddSingleton(handler)
+            .AddSingleton(repo)
             .BuildServiceProvider();
         return middleware.InvokeAsync(context);
     }

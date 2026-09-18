@@ -51,6 +51,8 @@ jobs:
       # three-minute publish. `dotnet publish` cannot catch this — it never reads tests/.
       - name: Check test tier quotas
         run: node SCRIPTS/check-test-quota.mjs
+      - name: Run unit tests
+        run: dotnet test tests/PoSeeReview.Unit -c Release
       - run: dotnet publish ${{ env.API_PROJECT_PATH }} -c Release -o publish
       - uses: actions/upload-artifact@v4
         with:
