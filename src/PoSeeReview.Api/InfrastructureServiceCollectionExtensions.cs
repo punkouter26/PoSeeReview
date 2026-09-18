@@ -9,11 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Api.Features.Diagnostics;
-using PoSeeReview.Api.Features.Reactions;
-using PoSeeReview.Api.Features.Reports;
-using PoSeeReview.Api.Features.Collections;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Insights;
 using PoSeeReview.Api.Features.Leaderboard;
@@ -21,7 +17,7 @@ using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Api.Storage;
 using Polly.Retry;
-using Polly;
+using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
 using PoSeeReview.Shared.Enums;
@@ -70,16 +66,14 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(HuggingFaceOptions.SectionName));
         services.Configure<InsightsOptions>(
             configuration.GetSection(InsightsOptions.SectionName));
-        services.Configure<CollectionsOptions>(
-            configuration.GetSection(CollectionsOptions.SectionName));
         services.Configure<ModerationOptions>(
             configuration.GetSection(ModerationOptions.SectionName));
         services.Configure<OllamaOptions>(
             configuration.GetSection(OllamaOptions.SectionName));
-        services.Configure<EmbeddingOptions>(
-            configuration.GetSection(EmbeddingOptions.SectionName));
         services.Configure<AiPricingOptions>(
             configuration.GetSection(AiPricingOptions.SectionName));
+        services.Configure<EmbeddingOptions>(
+            configuration.GetSection(EmbeddingOptions.SectionName));
 
         // Chat and image are chosen separately. They were one switch, which meant an image-model
         // experiment could not be run without also changing the scorer underneath it — so every
@@ -185,8 +179,6 @@ public static class InfrastructureServiceCollectionExtensions
         // erases through the Shared contract.
         services.AddScoped<IHallOfFameArchive>(sp => sp.GetRequiredService<HallOfFameRepository>());
         services.AddScoped<ComicReportRepository>();
-        services.AddScoped<ReactionRepository>();
-        services.AddScoped<FunnelRepository>();
         services.AddScoped<InsightsRepository>();
         services.AddScoped<ShareLinkRepository>();
         services.AddScoped<ModerationRepository>();
@@ -196,13 +188,9 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<ModerationQueueReader>();
         services.AddScoped<IContentSafetyScreener, LexicalContentSafetyScreener>();
         services.AddModerationAuthorization(configuration);
-
-        services.AddScoped<KeptComicBlobStore>();
-        services.AddScoped<KeptComicRepository>();
-        // Same instance behind both, mirroring HallOfFameRepository: the slice reads through the
-        // concrete type, Takedowns erases through the Shared contract.
-        services.AddScoped<IKeptComicArchive>(sp => sp.GetRequiredService<KeptComicRepository>());
         services.AddScoped<GenerationBudgetService>();
+        services.AddScoped<ComicStatsQueryHandler>();
+        services.AddScoped<DiagnosticsSnapshotQueryHandler>();
 
         // Register services
         services.AddHttpClient<GoogleMapsService>()
@@ -257,8 +245,6 @@ public static class InfrastructureServiceCollectionExtensions
         // twice. Singleton because the gates must be shared across requests, not per request.
         services.AddSingleton<ComicGenerationLock>();
 
-        // Embeddings. Off unless configured, and never able to fail a comic — see IEmbeddingService.
-        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
 
         // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
         // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.
@@ -289,6 +275,7 @@ public static class InfrastructureServiceCollectionExtensions
                     sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
                     sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
+        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<IShareCardService, ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
