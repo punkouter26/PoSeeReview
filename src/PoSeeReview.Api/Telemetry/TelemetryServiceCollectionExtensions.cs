@@ -62,14 +62,25 @@ internal static class TelemetryServiceCollectionExtensions
                     .AddAspNetCoreInstrumentation()
                     .AddHttpClientInstrumentation()
                     .AddSource("PoSeeReview.*"))
-                .WithMetrics(metrics => metrics
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddMeter("PoSeeReview.*")
-                    .AddAzureMonitorMetricExporter(options =>
+                .WithMetrics(metrics =>
+                {
+                    metrics
+                        .AddAspNetCoreInstrumentation()
+                        .AddHttpClientInstrumentation()
+                        .AddMeter("PoSeeReview.*")
+                        .AddAzureMonitorMetricExporter(options =>
+                        {
+                            options.ConnectionString = appInsightsConnectionString;
+                        });
+
+                    // Cost cap: drop the noisy ASP.NET HTTP client/hosting pre-aggregated meters
+                    // (~70–80% of this app's Log Analytics ingestion). Reversible via config.
+                    if (!configuration.GetValue("ApplicationInsights:EnableAspNetCoreMeters", false))
                     {
-                        options.ConnectionString = appInsightsConnectionString;
-                    }));
+                        metrics.RemoveMeter("Microsoft.AspNetCore.Hosting");
+                        metrics.RemoveMeter("Microsoft.AspNetCore.HttpClient");
+                    }
+                });
         }
 
         return services;
