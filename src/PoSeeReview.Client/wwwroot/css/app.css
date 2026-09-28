@@ -548,7 +548,7 @@
         max-width: 68rem;
         margin-inline: auto;
         padding-inline: var(--space-md);
-        padding-block: var(--space-lg) var(--space-2xl);
+        padding-block: var(--space-md) var(--space-2xl);
     }
 
     .page-shell--narrow {
@@ -559,9 +559,14 @@
         max-width: 84rem;
     }
 
+    /* One row: title left, the page's own controls right, wrapping under it on a phone. */
     .page-shell-header {
-        margin-bottom: var(--space-lg);
-        text-align: center;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-sm);
+        margin-bottom: var(--space-md);
     }
 
     .page-shell-title {
@@ -570,55 +575,6 @@
         line-height: var(--leading-tight);
         letter-spacing: 0.02em;
         color: var(--color-text-primary);
-    }
-
-    .page-shell-subtitle {
-        margin-top: var(--space-2xs);
-        font-size: var(--text-lg);
-        color: var(--color-text-secondary);
-    }
-
-    /* ── Page hero ────────────────────────────────────────────────────────────────────────────
-       The brand gradient banner. Index and Leaderboard each carried their own copy of this —
-       same gradient, same radius, subtly different padding and type sizes. */
-    .page-hero {
-        position: relative;
-        overflow: hidden;
-        margin-bottom: var(--space-xl);
-        padding: clamp(2rem, 6vw, 3.5rem) var(--space-lg);
-        text-align: center;
-        border-radius: var(--radius-lg);
-        background: var(--gradient-hero);
-        color: var(--color-on-dark);
-    }
-
-    /* Scrim, so white type stays legible over the brightest part of the gradient. */
-    .page-hero::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: var(--hero-scrim);
-        pointer-events: none;
-    }
-
-    .page-hero > * {
-        position: relative;
-        z-index: 1;
-    }
-
-    .page-hero-title {
-        font-family: var(--font-display);
-        font-size: var(--text-3xl);
-        line-height: var(--leading-tight);
-        letter-spacing: 0.03em;
-        color: var(--color-on-dark);
-        text-shadow: var(--text-shadow-on-dark);
-    }
-
-    .page-hero-subtitle {
-        margin-top: var(--space-sm);
-        font-size: var(--text-lg);
-        color: var(--color-on-dark-secondary);
     }
 
     /* ── Buttons ─────────────────────────────────────────────────────────────────────────── */
@@ -832,7 +788,9 @@
         flex-direction: column;
         align-items: center;
         gap: var(--space-sm);
-        max-width: 34rem;
+        /* A width with the gutter built in: the 404 and error-boundary cards render outside any
+           page shell, and a bare max-width left them flush against a phone's edges. */
+        width: min(34rem, 100% - 2 * var(--space-md));
         margin: var(--space-xl) auto;
         padding: var(--space-xl);
         text-align: center;
@@ -864,6 +822,159 @@
         gap: var(--space-sm);
         justify-content: center;
         margin-top: var(--space-xs);
+    }
+
+    /* A button that reads as a link. Real <button> for semantics — this triggers a dialog, it does
+       not navigate, and an <a href="#"> here would be a lie to a screen reader.
+
+       Shared: the comic disclosure and the landing page's denied-location line both use it.
+
+       Measured 95x19 before this. WCAG 2.5.8 exempts a link sitting inline in a sentence from the
+       44px rule, but 19px was under its 24px floor as well, and the negative inline margin keeps the
+       larger target from reflowing the sentence it lives in. */
+    .link-button {
+        display: inline-flex;
+        align-items: center;
+        min-height: 1.5rem;
+        padding: 0 var(--space-3xs);
+        margin: 0 calc(var(--space-3xs) * -1);
+        border: none;
+        background: none;
+        color: var(--color-brand-ink);
+        font: inherit;
+        text-decoration: underline;
+        cursor: pointer;
+    }
+
+    .link-button:hover {
+        color: var(--color-brand);
+    }
+
+    /* ── Comic rows ───────────────────────────────────────────────────────────────────────────
+       The ComicRow component: the live board, the weekly archive and /my-comics. One line per
+       comic — the whole row is the link (the name's ::after stretches over it) and only
+       secondary actions sit above that layer. Two columns from 64rem, where one line of text
+       leaves most of a desktop row empty. */
+    /* minmax(0, 1fr), not the implicit auto track: an auto track sizes to the nowrap meta line
+       and pushed a phone's document to 640px wide. */
+    .comic-rows {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-xs);
+        list-style: none;
+        padding: 0;
+    }
+
+    @media (min-width: 64rem) {
+        .comic-rows {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    .comic-rows-heading {
+        margin-block: var(--space-md) var(--space-xs);
+        font-family: var(--font-display);
+        font-size: var(--text-lg);
+        letter-spacing: 0.02em;
+    }
+
+    .comic-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-sm);
+        padding: var(--space-xs) var(--space-sm);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-card);
+    }
+
+    .comic-row:has(.comic-row-name:focus-visible) {
+        outline: 2px solid var(--color-brand);
+        outline-offset: 2px;
+    }
+
+    .comic-row .comic-thumbnail {
+        flex-shrink: 0;
+        width: 4.5rem;
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
+        border-radius: var(--radius-sm);
+        background: var(--color-surface-alt);
+    }
+
+    @media (max-width: 40rem) {
+        .comic-row .comic-thumbnail {
+            width: 3.5rem;
+        }
+    }
+
+    .comic-row .comic-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    /* The comic is gone but the record is not, so the score takes the thumbnail's place. */
+    .comic-thumbnail-gone {
+        display: grid;
+        place-content: center;
+        height: 100%;
+        background: var(--color-brand-surface);
+        font-family: var(--font-display);
+        font-size: var(--text-lg);
+        color: var(--color-brand-ink);
+    }
+
+    .comic-row-body {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    /* Two lines, then ellipsis: on a phone one line left "La'Caj Seaf…" beside the medal. */
+    .comic-row-name {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.25;
+        font-weight: 700;
+        color: var(--color-text-primary);
+        text-decoration: none;
+    }
+
+    .comic-row-name::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        border-radius: inherit;
+    }
+
+    .comic-row-name:focus-visible {
+        outline: none;
+    }
+
+    .comic-row-meta {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+    }
+
+    .comic-row-meta strong {
+        color: var(--color-accent-ink);
+    }
+
+    /* Above the stretched link, so a share or forget tap is not also an open. */
+    .comic-row-action {
+        position: relative;
+        z-index: 2;
+        flex-shrink: 0;
+        color: var(--color-text-muted);
     }
 
     /* ── Glass material ───────────────────────────────────────────────────────────────────────
@@ -946,17 +1057,6 @@
         --rz-input-color: var(--color-text-primary);
         --rz-body-font-family: var(--font-body);
         --rz-body-font-size: var(--text-md);
-    }
-
-    /* ── Location CTA ────────────────────────────────────────────────────────────────────────
-       Shared rather than scoped so the primary CTA cannot be forked per page. Radzen renders a
-       real <button>, so one rule now does what previously took a host rule plus a ::part()
-       rule to reach through Fluent's shadow DOM. */
-    .location-btn {
-        width: 100%;
-        min-height: var(--tap-target);
-        justify-content: center;
-        font-weight: 700;
     }
 
     /* ── Blazor framework UI ─────────────────────────────────────────────────────────────── */
@@ -1196,22 +1296,53 @@
         animation: posee-morph-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    /* ── Halftone ─────────────────────────────────────────────────────────────────────────
+       The incoming page is printed onto the old one in Ben-Day dots: a dot grid masks it in,
+       every dot growing from nothing until the cells touch. It is a comic app, and a route
+       change is the one moment the whole screen is replaced — the right place to say so.
+
+       The old snapshot holds still underneath (no fade) because the dots ARE the blend; fading
+       it as well would show the page behind through the gaps. 14px on an 18px cell is past the
+       half-diagonal (12.7px), so the last frame is fully covered and nothing pops at the end.
+       Ease-in-out, not the page's usual ease-out: an ease-out has the dots 90% grown by half
+       time, so the pattern — the whole point — is gone before anyone sees it. */
+    ::view-transition-old(root) {
+        animation: none;
+    }
+
+    ::view-transition-new(root) {
+        -webkit-mask-image: radial-gradient(circle, black var(--halftone-dot), transparent calc(var(--halftone-dot) + 1px));
+        mask-image: radial-gradient(circle, black var(--halftone-dot), transparent calc(var(--halftone-dot) + 1px));
+        -webkit-mask-size: 18px 18px;
+        mask-size: 18px 18px;
+        animation: posee-halftone-in 480ms cubic-bezier(0.45, 0, 0.55, 1) both;
+    }
+
     /* ── Direction of travel ──────────────────────────────────────────────────────────────
        A transition that always moves the same way is a cross-fade with extra steps. Depth is
        stamped on <html> as data-nav-direction before the snapshot: going deeper (a list to a
        comic) slides in from the right, coming back slides in from the left, and the pair reads
-       as one stack rather than as unrelated pages.
+       as one stack rather than as unrelated pages. The slide rides alongside the dots.
 
        Small offsets — 3% — because this runs on every internal navigation. Anything larger
        becomes the app's dominant motion by repetition, and the reduced-motion block below
        removes it entirely for anyone who asked. */
     :root[data-nav-direction="forward"]::view-transition-new(root) {
-        animation: posee-slide-from-right 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation:
+            posee-halftone-in 480ms cubic-bezier(0.45, 0, 0.55, 1) both,
+            posee-slide-from-right 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
     :root[data-nav-direction="back"]::view-transition-new(root) {
-        animation: posee-slide-from-left 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation:
+            posee-halftone-in 480ms cubic-bezier(0.45, 0, 0.55, 1) both,
+            posee-slide-from-left 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
+}
+
+@keyframes posee-halftone-in {
+    from { --halftone-dot: 0px; }
+    to   { --halftone-dot: 14px; }
 }
 
 @keyframes posee-morph-out {
@@ -1283,52 +1414,6 @@
             transform: translateY(-2px);
         }
     }
-
-    /* Narrow slot: stack the card's header so the name is not squeezed against the rating. */
-    @container card (max-width: 20rem) {
-        .restaurant-card .card-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: var(--space-2xs);
-        }
-
-        .restaurant-card .card-footer {
-            flex-direction: column;
-            align-items: stretch;
-            gap: var(--space-xs);
-        }
-
-        .restaurant-card .cta-btn {
-            width: 100%;
-        }
-    }
-
-    /* Roomy slot: let the CTA sit inline with the metadata instead of on its own row. */
-    @container card (min-width: 30rem) {
-        .restaurant-card .card-footer {
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .restaurant-card .cta-btn {
-            width: auto;
-        }
-    }
-
-    /* Leaderboard rows collapse to a stacked layout when their column is narrow — which happens
-       on a phone AND on a desktop where the list shares space with something else. */
-    @container list (max-width: 34rem) {
-        .leaderboard-card {
-            flex-direction: column;
-            align-items: stretch;
-            text-align: center;
-        }
-
-        .leaderboard-card .comic-thumbnail {
-            margin-inline: auto;
-        }
-    }
 }
 
 /* ============================================================================================
@@ -1353,6 +1438,34 @@
 }
 
 @property --sweep-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+/* Halftone route transition: the dot radius. Typed, or the keyframes would snap 0 -> 14px. */
+@property --halftone-dot {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+}
+
+/* Where the light sits on the foil, written by js/comic-surface.js. 50% is the resting glint,
+   so foil that never receives a pointer still looks like foil. Inherited so the .holo-foil child
+   reads what the container was given. Typed so the return to rest after pointerleave eases. */
+@property --foil-x {
+    syntax: "<percentage>";
+    inherits: true;
+    initial-value: 50%;
+}
+
+@property --foil-y {
+    syntax: "<percentage>";
+    inherits: true;
+    initial-value: 50%;
+}
+
+@property --foil-angle {
     syntax: "<angle>";
     inherits: false;
     initial-value: 0deg;
@@ -1559,7 +1672,7 @@
 @layer utilities {
     /* Fading: past the halfway mark of its 24 hours. Desaturated and a little transparent —
        legible, obviously still usable, visibly on its way out. */
-    [data-freshness="fading"] .history-thumb img {
+    [data-freshness="fading"] .comic-thumbnail img {
         filter: saturate(0.55) contrast(0.94);
         opacity: 0.82;
         transition: filter var(--duration-slow) var(--ease-out),
@@ -1569,7 +1682,7 @@
     @media (hover: hover) {
         /* Hovering restores it. The decay is a status indicator, not a punishment, and not being
            able to see the thing you are deciding about would be the wrong trade. */
-        [data-freshness="fading"]:hover .history-thumb img {
+        [data-freshness="fading"]:hover .comic-thumbnail img {
             filter: none;
             opacity: 1;
         }
@@ -1577,11 +1690,11 @@
 
     /* Expired: the blob is gone, so there is no image — this is the placeholder tile. Muted to
        the point of reading as inert, because the only useful action left on it is Redraw. */
-    [data-freshness="expired"] .history-thumb-expired {
+    [data-freshness="expired"] .comic-thumbnail-gone {
         opacity: 0.7;
     }
 
-    [data-freshness="expired"] .history-name {
+    [data-freshness="expired"] .comic-row-name {
         color: var(--color-text-muted);
     }
 
@@ -1598,8 +1711,8 @@
 
        Every rule resolves `var(--paper-grain, none)`, so a browser where the texture could not be
        built simply keeps the desaturation. Nothing here is load-bearing. */
-    [data-freshness="fading"] .history-thumb::after,
-    [data-freshness="expired"] .history-thumb::after {
+    [data-freshness="fading"] .comic-thumbnail::after,
+    [data-freshness="expired"] .comic-thumbnail::after {
         content: "";
         position: absolute;
         inset: 0;
@@ -1613,21 +1726,21 @@
         opacity: 0.55;
     }
 
-    [data-freshness="expired"] .history-thumb::after {
+    [data-freshness="expired"] .comic-thumbnail::after {
         opacity: 0.85;
     }
 
     /* The thumb has to be a containing block for the overlay above, and the anchor is not
        positioned by default. */
-    [data-freshness="fading"] .history-thumb,
-    [data-freshness="expired"] .history-thumb {
+    [data-freshness="fading"] .comic-thumbnail,
+    [data-freshness="expired"] .comic-thumbnail {
         position: relative;
     }
 
     /* The curl. A corner lifting off the page, drawn as a gradient rather than a transform,
        because transforming the thumbnail would move the link's hit area away from the pixels the
        user is aiming at. */
-    [data-freshness="expired"] .history-thumb::before {
+    [data-freshness="expired"] .comic-thumbnail::before {
         content: "";
         position: absolute;
         inset: auto 0 0 auto;
@@ -1647,7 +1760,7 @@
            not a punishment, and not being able to see the thing you are deciding about would be
            the wrong trade — the same reasoning as the filter rule above, and they have to agree
            or hovering half-restores a card. */
-        [data-freshness="fading"]:hover .history-thumb::after {
+        [data-freshness="fading"]:hover .comic-thumbnail::after {
             opacity: 0;
             transition: opacity var(--duration-slow) var(--ease-out);
         }
@@ -1783,42 +1896,6 @@
    ============================================================================================ */
 
 @layer shared {
-    .cache-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: var(--space-2xs);
-        margin-left: auto;
-        padding: 0.2rem 0.5rem;
-        border-radius: 999px;
-        font-size: var(--text-2xs);
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        white-space: nowrap;
-        border: 1px solid var(--color-border);
-        color: var(--color-text-muted);
-    }
-
-    .cache-dot {
-        width: 0.45rem;
-        height: 0.45rem;
-        border-radius: 50%;
-        background: currentColor;
-        flex: none;
-    }
-
-    /* --color-success-ink, not --color-success: the token pair split exists because the bright
-       one is a background and the ink one is the readable text version. Using the surface colour
-       as text here is exactly the mistake the split was introduced to stop. */
-    [data-cached="ready"] .cache-pill {
-        color: var(--color-success-ink);
-        border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-        background: color-mix(in srgb, var(--color-success) 10%, transparent);
-    }
-
-    [data-cached="ready"] .cache-dot {
-        background: var(--color-success);
-    }
-
     /* The sheen. A pseudo-element translated across a clipped card — transform only, so it is a
        compositor animation. A background-position sweep would be the obvious way to write this
        and would repaint the whole card every frame, for every card in the grid at once. */
@@ -1849,10 +1926,6 @@
                seconds a card catches the light about once while you are reading the one above it. */
             animation: posee-sheen 11s var(--ease-in-out) infinite;
         }
-    }
-
-    [data-cached="new"] .cache-pill {
-        border-style: dashed;
     }
 }
 
@@ -2072,4 +2145,398 @@
 @keyframes posee-reading-light {
     from { transform: translateY(-100%); }
     to   { transform: translateY(100%); }
+}
+
+/* ============================================================================================
+   THE COMIC AS AN OBJECT — foil, loupe, ripple, scroll tilt, speech bubbles, stamps, weirdness
+
+   All of it is CSS drawing; js/comic-surface.js and js/overlays.js only write custom properties
+   and attributes. That is not an aesthetic preference. The comic blob is cross-origin with no
+   CORS headers, so no shader can sample it — but a background-image, a mask and an SVG filter
+   all draw it without ever handing its pixels to script.
+
+   Stacking inside .comic-strip-container: image, panel-scrub light (3), foil (2, blended into
+   the art below the light), loupe (4), speech bubbles (5), the loupe button (6).
+   ============================================================================================ */
+
+@layer shared {
+    /* ── Scroll tilt ──────────────────────────────────────────────────────────────────────
+       The strip leans back as it rises into view and forward as it leaves, and is flat the
+       whole time it is fully on screen — named ranges (entry/exit) rather than percentages of
+       `cover`, so "flat while readable" holds whatever the strip's height or position. On the
+       wrapper, because the container's entrance animation already owns its `transform`. */
+    .comic-strip-tilt {
+        perspective: 1100px;
+    }
+
+    @supports (animation-timeline: view()) {
+        @media (prefers-reduced-motion: no-preference) {
+            :root:not([data-fx-tier="off"]) .comic-strip-tilt {
+                animation: posee-strip-tilt linear both;
+                animation-timeline: view();
+            }
+        }
+    }
+
+    /* ── Holographic foil ─────────────────────────────────────────────────────────────────
+       A spectrum band plus a hotspot, both centred on where the light is, dodged into the art.
+       The spectrum is built from the palette tokens, so it follows the theme like every other
+       colour here. The card tilts away from the light on the individual `rotate` property,
+       which composes with — rather than fights — the entrance animation's `transform`. */
+    .holo-foil {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        pointer-events: none;
+        border-radius: inherit;
+        background:
+            radial-gradient(circle at var(--foil-x) var(--foil-y),
+                color-mix(in srgb, var(--color-on-dark) 80%, transparent) 0%,
+                transparent 40%),
+            repeating-linear-gradient(115deg,
+                color-mix(in srgb, var(--color-danger) 55%, transparent) 0%,
+                color-mix(in srgb, var(--color-accent) 55%, transparent) 5%,
+                color-mix(in srgb, var(--color-success) 55%, transparent) 10%,
+                color-mix(in srgb, var(--color-brand-alt) 55%, transparent) 15%,
+                color-mix(in srgb, var(--color-brand) 55%, transparent) 20%,
+                color-mix(in srgb, var(--color-danger) 55%, transparent) 25%);
+        background-size: 100% 100%, 300% 300%;
+        background-position: center, var(--foil-x) var(--foil-y);
+        mix-blend-mode: color-dodge;
+        opacity: 0.6;
+        transition: --foil-x 140ms linear, --foil-y 140ms linear;
+    }
+
+    .comic-strip-container[data-foil="on"] .holo-foil {
+        display: block;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .comic-strip-container[data-foil="on"] {
+            rotate: var(--foil-ax, 1) var(--foil-ay, 0) 0 var(--foil-angle);
+            transition: rotate var(--duration-fast) var(--ease-out);
+        }
+    }
+
+    /* Rare cards on the board glint too, so what glints in the list glints when opened. A
+       transform sweep on a pseudo-element, not a background-position one — ten thumbnails
+       repainting every frame is the cost the cached-card sheen already refused. */
+    .comic-thumbnail[data-rarity="holo"] {
+        position: relative;
+        overflow: clip;
+    }
+
+    .comic-thumbnail[data-rarity="holo"]::after {
+        content: "";
+        position: absolute;
+        inset: 0 -100%;
+        pointer-events: none;
+        background: linear-gradient(105deg,
+            transparent 30%,
+            color-mix(in srgb, var(--color-accent) 50%, transparent) 42%,
+            color-mix(in srgb, var(--color-brand-alt) 50%, transparent) 50%,
+            color-mix(in srgb, var(--color-success) 45%, transparent) 58%,
+            transparent 70%);
+        mix-blend-mode: color-dodge;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        :root:not([data-fx-tier="off"]) .comic-thumbnail[data-rarity="holo"]::after {
+            animation: posee-foil-sweep 5.5s var(--ease-in-out) infinite;
+        }
+    }
+
+    /* ── Loupe ────────────────────────────────────────────────────────────────────────────
+       The comic's own URL as a background, scaled and offset under a lens, with a halftone
+       screen over it — at magnification the strip should look like print, not like pixels. */
+    .comic-loupe {
+        display: none;
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 4;
+        width: 9rem;
+        height: 9rem;
+        border-radius: 50%;
+        pointer-events: none;
+        transform: translate(var(--loupe-x, 0), var(--loupe-y, 0));
+        background-color: var(--color-card);
+        background-image: var(--loupe-src, none);
+        background-position: var(--loupe-bx, 0) var(--loupe-by, 0);
+        background-size: var(--loupe-bw, 100%) var(--loupe-bh, 100%);
+        background-repeat: no-repeat;
+        border: 3px solid var(--color-comic-ink);
+        box-shadow: var(--elevation-3-shadow);
+    }
+
+    .comic-loupe::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: radial-gradient(circle,
+            color-mix(in srgb, var(--color-comic-ink) 22%, transparent) 30%,
+            transparent 34%) 0 0 / 5px 5px;
+        mix-blend-mode: multiply;
+    }
+
+    .comic-strip-container[data-loupe="on"] {
+        cursor: crosshair;
+        /* The lens follows a finger instead of the page scrolling under it. Only while the loupe
+           is on — the button is the way out, so the page is never trapped. */
+        touch-action: none;
+    }
+
+    .comic-strip-container[data-loupe="on"] .comic-loupe {
+        display: block;
+    }
+
+    /* Bottom corner: the captions are lettered along the top of each panel. */
+    .loupe-toggle {
+        position: absolute;
+        bottom: var(--space-xs);
+        right: var(--space-xs);
+        z-index: 6;
+        display: grid;
+        place-items: center;
+        width: var(--tap-target);
+        height: var(--tap-target);
+        border-radius: 50%;
+        border: 2px solid var(--color-comic-ink);
+        background: color-mix(in srgb, var(--color-card) 88%, transparent);
+        font-size: var(--text-md);
+        cursor: pointer;
+        opacity: 0.8;
+        transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+    }
+
+    .loupe-toggle:hover,
+    .loupe-toggle:focus-visible,
+    .loupe-toggle[aria-pressed="true"] {
+        opacity: 1;
+    }
+
+    .loupe-toggle[aria-pressed="true"] {
+        background: var(--color-accent);
+        transform: scale(1.06);
+    }
+
+    /* ── Score ripple ─────────────────────────────────────────────────────────────────────
+       Attached only for the second it runs: an idle displacement filter would still be
+       re-evaluated on every paint of the heaviest element on the page. */
+    .comic-strip-container[data-wobble="on"] .comic-strip-image {
+        filter: url(#posee-wobble);
+    }
+
+    .fx-defs {
+        position: absolute;
+        width: 0;
+        height: 0;
+        overflow: hidden;
+    }
+
+    /* ── Speech bubbles ───────────────────────────────────────────────────────────────────
+       One per skit line, on its speaker's side, over the panel the line falls in. Measured
+       tokens only: text-primary and brand-ink on the card surface. */
+    .skit-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        pointer-events: none;
+    }
+
+    .skit-bubble {
+        position: absolute;
+        top: var(--bubble-top, 8%);
+        max-width: min(72%, 22rem);
+        padding: var(--space-xs) var(--space-sm);
+        background: var(--color-card);
+        color: var(--color-text-primary);
+        border: 3px solid var(--color-comic-ink);
+        border-radius: 1.25rem;
+        box-shadow: var(--elevation-3-shadow);
+        font-size: var(--text-sm);
+        line-height: 1.35;
+        animation: posee-bubble-in var(--duration-base) var(--ease-spring) both;
+    }
+
+    .skit-bubble[data-side="left"] {
+        left: 4%;
+        transform-origin: 1.5rem 100%;
+    }
+
+    .skit-bubble[data-side="right"] {
+        right: 4%;
+        transform-origin: calc(100% - 1.5rem) 100%;
+    }
+
+    /* The tail: a square turned 45deg, showing only the two edges that face down. */
+    .skit-bubble::after {
+        content: "";
+        position: absolute;
+        bottom: -0.6rem;
+        left: 1.4rem;
+        width: 1rem;
+        height: 1rem;
+        background: var(--color-card);
+        border-right: 3px solid var(--color-comic-ink);
+        border-bottom: 3px solid var(--color-comic-ink);
+        transform: rotate(45deg);
+    }
+
+    .skit-bubble[data-side="right"]::after {
+        left: auto;
+        right: 1.4rem;
+    }
+
+    .skit-bubble strong {
+        display: block;
+        font-family: var(--font-display);
+        font-size: var(--text-xs);
+        letter-spacing: 0.04em;
+        color: var(--color-brand-ink);
+    }
+
+    .skit-bubble[data-leaving] {
+        animation: posee-bubble-out var(--duration-fast) var(--ease-in) forwards;
+    }
+
+    /* ── Sound-word stamps ────────────────────────────────────────────────────────────────
+       A fixed layer on <body>. Word on accent is the measured on-accent pair (7.64:1). */
+    .fx-stamp-layer {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .fx-stamp {
+        position: absolute;
+        left: var(--stamp-x);
+        top: var(--stamp-y);
+        width: 8.5rem;
+        height: 8.5rem;
+        margin: -4.25rem 0 0 -4.25rem;
+        display: grid;
+        place-items: center;
+        animation:
+            posee-stamp-in 380ms var(--ease-spring) both,
+            posee-stamp-out 280ms var(--ease-in) 950ms forwards;
+    }
+
+    .fx-stamp-burst {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+
+    .fx-stamp-burst polygon {
+        fill: var(--color-accent);
+        stroke: var(--color-comic-ink);
+        stroke-width: 3;
+        stroke-linejoin: round;
+    }
+
+    .fx-stamp-word {
+        position: relative;
+        font-family: var(--font-display);
+        font-size: var(--text-xl);
+        letter-spacing: 0.02em;
+        color: var(--color-on-accent);
+    }
+
+    /* ── Weirdness ────────────────────────────────────────────────────────────────────────
+       Only above a score of 85, stamped on <html> as data-weird. Brief twitches on long
+       periods rather than a constant wobble: a page that is always moving reads as broken,
+       one that occasionally flinches reads as haunted. */
+    @media (prefers-reduced-motion: no-preference) {
+        :root[data-weird="on"] .nav-links {
+            animation: posee-twitch 3.7s steps(1, end) infinite;
+        }
+
+        :root[data-weird="on"] .comic-header h1 {
+            animation: posee-split 2.9s steps(1, end) infinite;
+        }
+    }
+
+    .ink-trail-layer {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    .ink-trail-drop {
+        position: absolute;
+        left: var(--drop-x);
+        top: var(--drop-y);
+        width: var(--drop-size);
+        height: var(--drop-size);
+        margin: calc(var(--drop-size) / -2) 0 0 calc(var(--drop-size) / -2);
+        border-radius: 50%;
+        background: var(--color-comic-ink);
+        opacity: 0.5;
+        animation: posee-ink-drop 900ms var(--ease-out) forwards;
+    }
+}
+
+@keyframes posee-strip-tilt {
+    entry 0%   { transform: rotateX(16deg) scale(0.95); }
+    entry 100% { transform: none; }
+    exit 0%    { transform: none; }
+    exit 100%  { transform: rotateX(-12deg) scale(0.96); }
+}
+
+@keyframes posee-foil-sweep {
+    0%, 55% { transform: translateX(-35%); }
+    100%    { transform: translateX(35%); }
+}
+
+@keyframes posee-bubble-in {
+    from { opacity: 0; transform: scale(0.4) translateY(0.5rem); }
+    to   { opacity: 1; transform: none; }
+}
+
+@keyframes posee-bubble-out {
+    to { opacity: 0; transform: scale(0.85) translateY(-0.4rem); }
+}
+
+@keyframes posee-stamp-in {
+    from { opacity: 0; transform: scale(0.1) rotate(calc(var(--stamp-rot) * -2)); }
+    60%  { opacity: 1; transform: scale(1.18) rotate(var(--stamp-rot)); }
+    to   { opacity: 1; transform: scale(1) rotate(var(--stamp-rot)); }
+}
+
+@keyframes posee-stamp-out {
+    to { opacity: 0; transform: scale(1.35) rotate(var(--stamp-rot)); }
+}
+
+@keyframes posee-twitch {
+    0%, 91%, 100% { transform: none; }
+    92% { transform: translate(2px, -1px) skewX(-3deg); }
+    94% { transform: translate(-3px, 1px); }
+    96% { transform: translate(1px, 0) skewX(2deg); }
+}
+
+@keyframes posee-split {
+    0%, 88%, 100% { text-shadow: none; }
+    89% {
+        text-shadow:
+            -3px 0 color-mix(in srgb, var(--color-danger) 70%, transparent),
+            3px 0 color-mix(in srgb, var(--color-brand) 70%, transparent);
+    }
+    93% {
+        text-shadow:
+            2px 1px color-mix(in srgb, var(--color-danger) 70%, transparent),
+            -2px -1px color-mix(in srgb, var(--color-brand) 70%, transparent);
+    }
+}
+
+@keyframes posee-ink-drop {
+    to { opacity: 0; transform: scale(0.2) translateY(14px); }
 }

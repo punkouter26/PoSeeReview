@@ -1,0 +1,105 @@
+.storyboard {
+    display: grid;
+    gap: var(--space-sm);
+    width: min(100%, 22rem);
+    margin: 0 auto var(--space-xl);
+}
+
+.storyboard-panel {
+    position: relative;
+    aspect-ratio: 100 / 60;
+    display: grid;
+    place-items: center;
+    padding: var(--space-md);
+    background: var(--color-card);
+    border-radius: var(--radius-sm);
+    opacity: 0.35;
+    transition: opacity var(--duration-slow) var(--ease-out);
+}
+
+.storyboard-panel[data-inked="true"] {
+    opacity: 1;
+}
+
+/* The frame draws itself: a pathLength of 100 makes the dash maths independent of panel size. */
+.storyboard-frame {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.storyboard-frame rect {
+    fill: none;
+    stroke: var(--color-comic-ink);
+    stroke-width: 0.9;
+    stroke-linecap: round;
+    stroke-dasharray: 101;
+    stroke-dashoffset: 101;
+}
+
+.storyboard-panel[data-inked="true"] .storyboard-frame rect {
+    animation: storyboard-ink var(--duration-deliberate) var(--ease-in-out) forwards;
+}
+
+@keyframes storyboard-ink {
+    to { stroke-dashoffset: 0; }
+}
+
+.storyboard-pencil {
+    font-size: var(--text-xl);
+    animation: storyboard-scribble 1.1s var(--ease-in-out) infinite alternate;
+}
+
+@keyframes storyboard-scribble {
+    0%   { transform: translate(-2.5rem, 0.4rem) rotate(-8deg); }
+    33%  { transform: translate(-0.5rem, -0.3rem) rotate(4deg); }
+    66%  { transform: translate(1.2rem, 0.5rem) rotate(-6deg); }
+    100% { transform: translate(2.5rem, -0.2rem) rotate(6deg); }
+}
+
+.storyboard-caption {
+    position: relative;
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    line-height: 1.25;
+    text-align: center;
+    color: var(--color-text-primary);
+}
+
+/* Lettered word by word. `both` keeps each word invisible until its own delay comes round.
+   The gap is a margin: a trailing space inside an inline-block collapses to nothing. */
+.storyboard-word {
+    display: inline-block;
+    margin-inline-end: 0.3em;
+    animation: storyboard-letter var(--duration-base) var(--ease-out) both;
+    animation-delay: calc(var(--i) * 90ms);
+}
+
+@keyframes storyboard-letter {
+    from { opacity: 0; transform: translateY(0.35em) scale(0.9); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* A strange score, known and not shown: the frames tremble. */
+.storyboard[data-uneasy="true"] .storyboard-panel[data-inked="true"] {
+    animation: storyboard-tremble 2.6s steps(2, jump-none) infinite;
+}
+
+@keyframes storyboard-tremble {
+    0%, 86%, 100% { transform: none; }
+    90% { transform: translate(1px, -1px) rotate(-0.4deg); }
+    94% { transform: translate(-1px, 1px) rotate(0.3deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .storyboard-frame rect { stroke-dashoffset: 0; }
+    .storyboard-pencil,
+    .storyboard-word,
+    .storyboard[data-uneasy="true"] .storyboard-panel[data-inked="true"],
+    .storyboard-panel[data-inked="true"] .storyboard-frame rect {
+        animation: none;
+    }
+}

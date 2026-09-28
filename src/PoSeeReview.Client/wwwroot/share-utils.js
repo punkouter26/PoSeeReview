@@ -15,20 +15,25 @@ window.shareUtils = {
      * @param {string} title - Title of the shared content
      * @param {string} text - Description text for the share
      * @param {string} url - URL to share
+     * @param {string} [placeId] - When given, the comic PNG itself is attached where the
+     *                             browser can share files; the link rides along in the text.
      * @returns {Promise<'shared'|'cancelled'|'unsupported'>}
      */
-    share: async function (title, text, url) {
+    share: async function (title, text, url, placeId) {
         if (!this.isSupported()) {
             console.warn('Web Share API is not supported in this browser');
             return 'unsupported';
         }
 
         try {
-            await navigator.share({
-                title: title,
-                text: text,
-                url: url
-            });
+            // The image is the thing people post; a link unfurls into a card at best. Many share
+            // targets drop `url` when files are present, so the link goes into the text instead.
+            const file = placeId ? await this.comicFile(placeId) : null;
+            const payload = file && navigator.canShare?.({ files: [file] })
+                ? { title: title, text: `${text} ${url}`.trim(), files: [file] }
+                : { title: title, text: text, url: url };
+
+            await navigator.share(payload);
             return 'shared';
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -37,6 +42,28 @@ window.shareUtils = {
             }
             console.error('Error sharing:', error);
             return 'unsupported';
+        }
+    },
+
+    /**
+     * The comic PNG as a File, fetched through the app's own origin for the same CORS reason
+     * saveComic is. Null on any failure (an expired comic 404s), so sharing falls back to the link.
+     * @param {string} placeId
+     * @returns {Promise<File|null>}
+     */
+    comicFile: async function (placeId) {
+        try {
+            const response = await fetch(`/api/comics/${encodeURIComponent(placeId)}/image`, {
+                credentials: 'same-origin'
+            });
+            if (!response.ok) {
+                return null;
+            }
+
+            const blob = await response.blob();
+            return new File([blob], 'poseereview-comic.png', { type: blob.type || 'image/png' });
+        } catch {
+            return null;
         }
     },
 

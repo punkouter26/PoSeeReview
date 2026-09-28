@@ -308,9 +308,10 @@ modes and blocked-cookie configurations, and a history list is never worth takin
 for. The type is registered in `AppJsonContext` like every wire DTO — the client is
 trim-analyzed, so reflection-based serialization fails the build.
 
-`/my-comics` has **no nav entry**: not in `nav.nav-links`, which `HeaderContractUiTests` pins at
-exactly two items, and no longer in the right-hand session zone either. It is reached by URL,
-the way `/diagnostics` and `/moderation` are.
+`/my-comics` is linked from the **account menu** — a native `popover` opened by the identity
+badge in the right-hand zone, holding the name, My comics and Sign out — never `nav.nav-links`,
+which `HeaderContractUiTests` pins at exactly two items. The menu is `@key`ed on the URI so
+navigating from inside it closes it (a new element is not in the top layer).
 
 `BoardMemoryService` is the same pattern for a different question — where each place sat on the
 leaderboard last visit, keyed per region under `posee_board_ranks_<region>`. Both are registered in
@@ -395,6 +396,14 @@ markup — `RadzenTextBox` renders its own `<input>`, so those rules need `::dee
 
 Bootstrap was deleted (31 KB gz for six classes app.css already redefined).
 
+**One component per repeated shape.** `ComicRow` is every list of comics (live board, weekly
+archive, `/my-comics`): one line, the name's `::after` stretches the link over the row, and
+`Actions` holds only secondary controls (share, forget) at `z-index: 2` above it. It replaced a
+`RadzenDataGrid` that paged ten rows and sorted a ranking by name. `StateCard` is every empty,
+error and 404 screen; inline notices above live content stay `.alert`. `PageShell`'s header is
+one row — title left, controls right — with no subtitle and no hero variant; only the landing
+page keeps a gradient hero. Add to these rather than hand-rolling a fourth list layout.
+
 ### Graphics and audio layer
 
 Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/), fronted by
@@ -415,10 +424,57 @@ Lives in [src/PoSeeReview.Client/wwwroot/js/](src/PoSeeReview.Client/wwwroot/js/
   `off` is forced by `prefers-reduced-motion` or missing WebGL2 and cannot be overridden;
   Save-Data, low `deviceMemory`, or few cores default to `lite`.
 
-Effect modules: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`, `comic-fx.js`,
-`particles.js`, `loading-ring.js`, `scroll-guard.js`, `shelf.js`, `physics.js`, `comic-reveal.js`,
-`haptics.js`, `ambient.js` (+ `posee-synth-processor.js`), `webgpu-pool.js`, `particles-gpu.js`,
-`glsl-backdrop.js`, `glass.js`, `comic-tint.js`, `ink-field.js`, `panel-scrub.js`, `paper.js`.
+Effect modules that exist today: `audio.js` (zero-asset Web Audio synthesis), `gradient.js`,
+`particles.js`, `comic-reveal.js`, `panel-scrub.js`, `haptics.js`, `view-transitions.js`,
+`scroll-guard.js`, `comic-surface.js`, `overlays.js` (+ `gl-pool.js`, `telemetry.js`, `modal.js`,
+`theme-tokens.js`, `pwa.js`).
+
+> **Much of this file below describes modules that were deleted in 2ceec58** — glass, ink-field,
+> physics, shelf, ambient (+ worklet), comic-tint, comic-fx, paper, perf-hud, webgpu-pool,
+> particles-gpu, loading-ring, map. Treat those sections as history. The prune left `fx.js`
+> calling every one of them; `guard()` swallowed the `ReferenceError`s, so nothing failed
+> visibly — `describe()` itself threw, which reported tier `off` to Blazor on every device.
+> After deleting a module, grep `fx.js` AND `FxService.cs` for its names: a silent guard is
+> exactly what lets a dangling reference ship.
+
+### View transitions: two traps that made every one a no-op
+
+- **Never await `requestAnimationFrame` inside the update callback.** Rendering is suppressed
+  while that callback is pending, so rAF never fires; every navigation stalled until Chrome's
+  DOM-update timeout aborted the transition and nothing animated. A `setTimeout(0)` does the job.
+- **The click is taken from Blazor.** `startViewTransition` captures the old state on the *next*
+  frame, but Blazor's link handler renders the new route synchronously in the click task — so the
+  "old" snapshot was already the new page. `view-transitions.js` now `preventDefault()`s in its
+  capture-phase listener (Blazor ignores default-prevented clicks) and calls `Blazor.navigateTo`
+  from inside the update callback. The arrival gate is created *after* navigating, so a stray
+  `settle()` from the outgoing page cannot release it early.
+
+The root transition is a **halftone** print-in (`--halftone-dot`, a registered length, grows a
+dot mask to 14px on an 18px cell — past the half-diagonal, so the last frame is fully covered).
+Ease-in-out on purpose: an ease-out has the dots 90% grown at half time and the pattern is never
+seen.
+
+### The comic as an object — CSS drawing, never pixels
+
+`comic-surface.js` (holo foil ≥80, loupe, score ripple, weirdness ≥85) and `overlays.js` (sound-
+word stamps, skit speech bubbles) only write custom properties and attributes; app.css draws.
+That is what lets them work on the cross-origin, CORS-less blob that stopped every shader: a
+`background-image`, a mask and an SVG `feDisplacementMap` all render the image without handing
+its bytes to script. The ripple's filter is attached only for the ~1.2s it runs (SMIL animates
+its scale), and the layers inside the strip (`.holo-foil`, `.comic-loupe`, `.skit-layer`) are
+rendered empty by Razor so Blazor never diffs a node it did not create.
+
+- **Strip placement lives on `.comic-strip-tilt`.** The container's entrance animation fills
+  `transform` for good, so the scroll-driven tilt (named `entry`/`exit` ranges — flat whenever
+  fully on screen) needs a wrapper, and the page grid places that wrapper. The foil tilts the
+  container with the individual `rotate` property, which composes with the fill.
+- **Sustained voices** (`sustain()` in audio.js: riser, loupe hum, weirdness drone) are tracked
+  and released on mute. Each has an owner that MUST stop it on teardown — `ComicView` stops the
+  riser and clears weirdness; `ComicStrip` stops the surface (and its hum).
+- **The storyboard** (`Storyboard.razor`) letters the captions during the image call. They ride
+  the `GeneratingArtwork` phase event (`ComicGenerationEventDto.Score/Captions`, reported via
+  `ComicGenerationProgress`), normalised once so the preview is the text the strip gets. The
+  score is used for unease and the backdrop, never shown — the count-up is the payoff.
 
 > **The backdrop was invisible, and that is worth knowing before touching it.** `.fx-backdrop` is
 > `position: fixed; z-index: -1`, and `.page` painted an opaque `--color-brand-surface` straight
@@ -724,7 +780,7 @@ card to produce the same fade.
   only moment the destination exists and is still before the "after" snapshot. With the name on
   only the source, as it was, the browser has nothing to pair and the "morph" was really the card
   fading out while the comic cross-faded in from nowhere. Sources are every list a comic opens
-  from: `[data-physics-card]`, `.leaderboard-card`, `.archive-entry`, `.history-card`.
+  from: `[data-physics-card]` (discovery) and `.comic-row` (every other list — see below).
   `data-nav-direction` (from a small route-depth table, not history length) decides which way the
   incoming page slides; a transition that always moves the same way is a cross-fade with extra
   steps.
@@ -887,7 +943,8 @@ plus a **second blob container**, `comics-kept`, created the same way.
 
 ### Insights
 
-`GET /api/insights` and `/insights`: four charts over every score the app has ever recorded —
+`GET /api/insights` and the Hall of Fame's **Stats** tab (`InsightsCharts`; `/insights` redirects
+to `/leaderboard?view=stats`): four charts over every score the app has ever recorded —
 strangeness against star rating, score distribution, region comparison, weekly trend. It spends
 nothing; every number comes from rows already written, so there is no Maps call and no AI call.
 
@@ -1075,9 +1132,8 @@ navigation and broke `HeaderContractUiTests`, which asserts exactly two nav item
 script no longer asserts on it.
 
 `/moderation` has no nav entry either, for the same reason, and is additionally gated on the
-`Moderator` role. `/insights` is linked from the **right-hand session zone**, never
-`nav.nav-links` — `HeaderContractUiTests` asserts the primary nav is exactly two items. `/my-comics`
-is linked from nowhere.
+`Moderator` role. Insights is a tab of the Hall of Fame and `/my-comics` is in the account menu —
+neither in `nav.nav-links`, which `HeaderContractUiTests` asserts is exactly two items.
 
 Public, unauthenticated, and outside `/api` on purpose: `/s/{code}` (short links) and
 `/share/{placeId}/card.png` (link-preview card). Both are fetched by clients that `/api` is built
@@ -1112,29 +1168,6 @@ to turn away.
 
 ## Working rules (NET_AGENTS)
 
-These govern how the agent operates in this repo, not how the code is written.
+They live in [AGENTS.md](AGENTS.md) so every agent reads the same list:
 
-- **`master` only.** Do all work on `master`. Use another branch only when explicitly asked to.
-- **Restart and verify after every code change.** Stop the app, start it again
-  (`dotnet run --project src/PoSeeReview.Api --launch-profile https`, or the
-  `start-api-clean` VS Code task), and confirm it actually came up before reporting done.
-  Config/appsettings/Key Vault changes need a full restart — `dotnet watch` will not pick them up.
-- **Look for a root `docs/` folder first, and fall back when it is not there.** If one exists, read
-  it for the overall project summary before exploring the code. It does not exist right now — the
-  generated reports were cleared out and are due to be rebuilt — so [README.md](README.md) (the PRD)
-  and this file are the authoritative overview, and `docs/index.html` is not worth hunting for.
-- **No `dotnet user-secrets`.** Non-secret config goes in `appsettings*.json`; real secrets go in
-  Key Vault `kv-poshared` under the `PoSeeReview--` prefix. The one existing exception is
-  `Takedowns:ApiKey` for local dev — it is a live credential, so it must never land in an
-  appsettings file that is committed.
-- **Never push to remote unless asked.** Committing locally is fine; `git push` is not, until the
-  user says so — or until they type "git sync".
-- **On "git sync": stage everything, commit, push.** Commit *all* outstanding changes first — a
-  sync leaves nothing dirty behind. Short American-slang message that reads like a human wrote it
-  ("fixed the busted nav", "cleaned up that css mess"), then push.
-- **Only run the tests that cover the change.** Pick the project and `--filter` that exercise what
-  was touched; for a change with no test surface — a copy tweak, a CSS value — run none at all.
-  Never reach for the full suite after a code change.
-- **Run the commands yourself.** Don't hand the user a command to paste when the agent can execute
-  it; only ask when it genuinely needs their machine, credentials, or a decision.
-- **TL;DR any answer over 100 words** with a ~20-word summary at the end.
+@AGENTS.md

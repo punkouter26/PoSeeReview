@@ -1,13 +1,12 @@
 @using PoSeeReview.Shared.Dtos
 @inject FxService Fx
 
-@* scroll-enter is a compositor-side, scroll-driven entrance — see app.css. It costs nothing in
-   the shared frame budget, which matters here more than anywhere else in the app: this component
-   is repeated across a whole results grid, and an IntersectionObserver-and-class-toggle would
-   pay an observer, a callback and a style recalculation per card to produce the same fade. *@
-@* data-cached is the hook for the card's material (see the "READY vs COSTS SOMETHING" block in
-   app.css). It is an attribute rather than a class because it is a fact about the place, not a
-   style the card chose, and because the CSS wants to key three different treatments off it. *@
+@* data-cached is the hook for the card's material (see "READY vs COSTS SOMETHING" in app.css).
+
+   The status and the button used to be two elements that could contradict each other: a
+   "Ready now" pill beside a "Generate Comic" button on a comic that was already drawn. The button
+   now says what the tap does — open a ready comic for free (primary), or spend ~10s and a
+   generation on a new one (secondary: the product working, not a hazard, but the costlier tap). Distance and review count share one line; the address gets one. *@
 <RadzenCard class="@($"restaurant-card scroll-enter {GetCardClass()}")"
             title="@GetTooltipText()"
             data-testid="restaurant-card"
@@ -15,58 +14,50 @@
             data-cached="@(IsCached ? "ready" : "new")"
             @onclick="OnClickIfEnabled">
     <div class="card-header">
-        <div>
-            <h3 class="restaurant-name">@Restaurant.Name</h3>
-            @if (Restaurant.Distance > 0)
-            {
-                <p class="card-meta">@FormatDistance(Restaurant.Distance)</p>
-            }
-        </div>
+        <h3 class="restaurant-name">@Restaurant.Name</h3>
         @if (Restaurant.AverageRating > 0)
         {
-            <div class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
-                <RadzenBadge BadgeStyle="BadgeStyle.Primary" IsPill="true" Class="rating-badge"
-                             Text="@($"★ {Restaurant.AverageRating:F1}")" />
+            <span class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
+                <span aria-hidden="true">★ @Restaurant.AverageRating.ToString("F1")</span>
                 <span class="visually-hidden">Rated @Restaurant.AverageRating.ToString("F1")</span>
-            </div>
-        }
-    </div>
-    
-    <p class="address">@Restaurant.Address</p>
-    
-    <div class="card-footer">
-        <span class="review-summary">
-            @($"{Restaurant.TotalReviews} review{(Restaurant.TotalReviews == 1 ? "" : "s")} to draw from")
-        </span>
-        @* The cost of the tap, said before the tap. A cached comic opens instantly and spends
-           nothing; a fresh one spends one of the day's generations and about ten seconds. The
-           map has drawn this distinction since it shipped and the grid — which is what almost
-           everyone actually uses — had no way to say it. *@
-        @if (IsEnabled)
-        {
-            <span class="cache-pill" title="@(IsCached ? "Already drawn — opens instantly and costs nothing" : "Not drawn yet — takes about 10 seconds and uses one of today's generations")">
-                <span class="cache-dot" aria-hidden="true"></span>
-                @(IsCached ? "Ready now" : "~10s to draw")
             </span>
         }
     </div>
-
-    <div class="card-cta">
-        @if (IsEnabled)
+    <p class="address">@Restaurant.Address</p>
+    <p class="card-meta">
+        @if (Restaurant.Distance > 0)
         {
-            @* The whole card is clickable too, so the button's click must not also bubble up
-               to it. stopPropagation is only valid on an HTML element, hence the wrapper. *@
-            <div class="cta-wrap" @onclick:stopPropagation="true">
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary cta-btn" Disabled="@IsLoading" Click="@(args => OnClickIfEnabled(args))" data-testid="comic-generate-btn">
-                    @(IsLoading ? "Opening Comic..." : "Generate Comic")
-                </RadzenButton>
-            </div>
+            @FormatDistance(Restaurant.Distance)<text> · </text>
         }
-        else
-        {
-            <p class="not-enough-hint">No reviews yet — nothing to draw from.</p>
-        }
-    </div>
+        @Restaurant.TotalReviews review@(Restaurant.TotalReviews == 1 ? "" : "s")
+    </p>
+    @if (IsEnabled)
+    {
+        @* The whole card is clickable too, so the button's click must not also bubble up to it.
+           stopPropagation is only valid on an HTML element, hence the wrapper. *@
+        <div class="cta-wrap" @onclick:stopPropagation="true">
+            <button type="button" class="btn @(IsCached ? "btn-primary" : "btn-secondary") cta-btn" disabled="@IsLoading"
+                    @onclick="OnClickIfEnabled" data-testid="comic-generate-btn"
+                    title="@(IsCached ? "Already drawn — opens instantly and costs nothing" : "Not drawn yet — takes about 10 seconds and uses one of today's generations")">
+                @if (IsLoading)
+                {
+                    <text>Opening comic...</text>
+                }
+                else if (IsCached)
+                {
+                    <span class="cache-dot" aria-hidden="true"></span><text> Open comic</text>
+                }
+                else
+                {
+                    <text>Draw comic · ~10s</text>
+                }
+            </button>
+        </div>
+    }
+    else
+    {
+        <p class="not-enough-hint">No reviews yet — nothing to draw from.</p>
+    }
 </RadzenCard>
 
 @code {

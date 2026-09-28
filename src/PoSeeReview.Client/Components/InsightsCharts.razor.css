@@ -39,12 +39,6 @@
     color: var(--color-text-primary);
 }
 
-.insights-panel-question {
-    margin: 0;
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-}
-
 /* The chart's sizing lives in the ::deep block further down, next to the note explaining why
    a scoped selector cannot reach a child component's root. */
 
@@ -121,25 +115,16 @@
     height: 100%;
 }
 
-/* The listen control sits in the panel header, which is a column. Turning it into a grid rather
-   than switching to a row keeps the title and the question stacked as they are while pulling the
-   button out to the right of both — a row would put it beside the title and above the question,
-   where it reads as belonging to the heading rather than to the chart. */
+/* The listen control sits on the title's row, at its right end. */
 .insights-panel-head {
     display: grid;
     grid-template-columns: 1fr auto;
-    grid-template-areas:
-        "title  listen"
-        "question listen";
+    grid-template-areas: "title listen";
     align-items: start;
 }
 
 .insights-panel-title {
     grid-area: title;
-}
-
-.insights-panel-question {
-    grid-area: question;
 }
 
 .insights-listen {

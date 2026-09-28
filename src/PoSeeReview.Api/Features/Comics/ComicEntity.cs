@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Azure;
 using Azure.Data.Tables;
 using PoSeeReview.Shared.Contracts;
@@ -67,6 +68,13 @@ public class ComicEntity : ITableEntity
     public string AudioSkitJson { get; set; } = string.Empty;
 
     /// <summary>
+    /// Panel captions as a JSON array. JSON rather than a joined string because a caption is
+    /// free model text and can contain any separator. Absent on older rows, which read back as
+    /// no captions.
+    /// </summary>
+    public string CaptionsJson { get; set; } = string.Empty;
+
+    /// <summary>
     /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
     public static ComicEntity FromDomain(Comic comic)
@@ -87,7 +95,8 @@ public class ComicEntity : ITableEntity
             PaletteHex = ComicPaletteExtractor.Join(comic.Palette),
             PromptVersion = comic.PromptVersion,
             EmbeddingBytes = VectorMath.ToBytes(comic.Embedding),
-            AudioSkitJson = comic.AudioSkitJson
+            AudioSkitJson = comic.AudioSkitJson,
+            CaptionsJson = comic.Captions.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Captions)
         };
     }
 
@@ -111,8 +120,27 @@ public class ComicEntity : ITableEntity
             PromptVersion = PromptVersion,
             Embedding = VectorMath.FromBytes(EmbeddingBytes),
             AudioSkitJson = AudioSkitJson,
+            Captions = ReadCaptions(CaptionsJson),
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated
         };
+    }
+
+    /// <summary>A corrupt column costs the alt text, never the comic.</summary>
+    private static string[] ReadCaptions(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 }

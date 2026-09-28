@@ -12,142 +12,148 @@
 
 <PageTitle>Hall of Fame - PoSeeReview</PageTitle>
 
-@* Class keeps `.leaderboard-container` on the element so the E2E UI suite's selector, and the
-   page's own scoped rules, both still resolve. *@
+@* Class keeps `.leaderboard-container` on the element so the E2E UI suite's selector still
+   resolves. No region picker: both views are worldwide (a regional live board is still reachable
+   by URL, ?region=US). The one control is WHEN — the live board churns with 24-hour comics, and
+   the weekly archive is the record that outlives them. *@
 <PageShell Title="Hall of Fame"
-           Subtitle="The strangest restaurant experiences from around the world"
-           Hero="true"
            Width="PageShell.ShellWidth.Wide"
            Class="leaderboard-container">
 
-    @* No controls. The page used to ask which scope and which country — that belongs to a
-       regional product, and every non-US visitor was otherwise looking at the wrong board. The
-       PRD subtitle already promises "from around the world", so the top 10 across all
-       regions is the obvious default. A regional board is still available by URL
-       (?region=US). *@
+    <Header>
+        <div class="board-scope" role="group" aria-label="Leaderboard scope">
+            <button type="button" class="chip-toggle @(_scope == BoardScope.Live ? "chip-toggle--active" : "")"
+                    aria-pressed="@(_scope == BoardScope.Live ? "true" : "false")"
+                    @onclick="() => SwitchScopeAsync(BoardScope.Live)">
+                Right now
+            </button>
+            <button type="button" class="chip-toggle @(_scope == BoardScope.Weekly ? "chip-toggle--active" : "")"
+                    aria-pressed="@(_scope == BoardScope.Weekly ? "true" : "false")"
+                    @onclick="() => SwitchScopeAsync(BoardScope.Weekly)">
+                By week
+            </button>
+            <button type="button" class="chip-toggle @(_scope == BoardScope.Stats ? "chip-toggle--active" : "")"
+                    aria-pressed="@(_scope == BoardScope.Stats ? "true" : "false")"
+                    @onclick="() => SwitchScopeAsync(BoardScope.Stats)">
+                Stats
+            </button>
+            @if (_scope == BoardScope.Live)
+            {
+                <button type="button" class="btn btn-icon" @onclick="LoadLeaderboardAsync" disabled="@isLoading"
+                        title="Refresh" aria-label="Refresh the board">
+                    <span aria-hidden="true">&#8635;</span>
+                </button>
+            }
+        </div>
+    </Header>
 
     <ChildContent>
-
-    <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
-
-    @if (isLoading && (leaderboardEntries == null || leaderboardEntries.Count == 0))
+    @if (_scope == BoardScope.Stats)
     {
-        @* One loading component for the whole app. It carries role="status" + aria-busy, which a
-           bare Radzen spinner does not — those pages asked screen readers to sit through an
-           unannounced indefinite wait. *@
+        <InsightsCharts />
+    }
+    else
+    {
+    <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
+    @if (isLoading && (_scope == BoardScope.Weekly
+                       ? _archive is null
+                       : leaderboardEntries == null || leaderboardEntries.Count == 0))
+    {
         <LoadingIndicator Message="Tallying the strangest reviews..." />
     }
     else if (errorMessage != null)
     {
-        <div class="alert alert-danger" role="alert">
-            @errorMessage
-        </div>
+        <StateCard Icon="⚠️" Title="Couldn't load the board" Alert="true">
+            <ChildContent>@errorMessage</ChildContent>
+            <Actions><button type="button" class="btn btn-secondary" @onclick="RetryAsync">Try again</button></Actions>
+        </StateCard>
+    }
+    else if (_scope == BoardScope.Weekly)
+    {
+        <h2 class="visually-hidden">Weekly hall of fame</h2>
+        @if (_archive is null || _archive.Weeks.Count == 0)
+        {
+            <StateCard Icon="📚" Title="The archive is still filling up">
+                Every comic that makes the board gets filed here by week, and stays after the
+                comic itself expires.
+            </StateCard>
+        }
+        else
+        {
+            @foreach (var week in _archive.Weeks)
+            {
+                <h3 class="comic-rows-heading">Week of @week.WeekStart.ToString("MMM d, yyyy")</h3>
+                <ol class="comic-rows">
+                    @foreach (var entry in week.Entries)
+                    {
+                        <ComicRow Href="@($"/comic/{entry.PlaceId}?from=leaderboard")"
+                                  Name="@entry.RestaurantName"
+                                  Score="@((int)Math.Round(entry.StrangenessScore))"
+                                  ImageUrl="@(entry.ImageExpired ? null : ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId))"
+                                  Meta="@entry.Region">
+                            <Leading><span class="rank-badge medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</span></Leading>
+                        </ComicRow>
+                    }
+                </ol>
+            }
+        }
     }
     else if (leaderboardEntries == null || leaderboardEntries.Count == 0)
     {
-        @* The "no results" state. Region-agnostic — there is no region on the page. *@
-        <div class="no-entries">
-            <div class="empty-panels">
-                <div class="empty-panel">&#128269;</div>
-                <div class="empty-panel">&#127869;&#65039;</div>
-                <div class="empty-panel">&#129300;</div>
-                <div class="empty-panel">&#10067;</div>
-            </div>
-            <h2 class="empty-title">No Weird Stories Yet!</h2>
-            <p class="empty-body">No strange restaurant tales on the board yet.<br />Go discover one — the weirder the better!</p>
-            <a href="/" class="empty-home-btn">&#127968; Find Restaurants Near Me</a>
-        </div>
+        <StateCard Icon="🤔" Title="No weird stories yet">
+            <ChildContent>Nothing strange on the board right now. Go find one — the weirder the better.</ChildContent>
+            <Actions><a href="/" class="btn btn-primary">Find restaurants</a></Actions>
+        </StateCard>
     }
     else
     {
         <h2 class="visually-hidden">Top 10 strangest restaurants</h2>
-
-        @* The server stamps LastUpdated with the request time, so it only ever said "now".
-           Report when THIS page last fetched, which is a fact we actually own. *@
-        <div class="last-updated">
-            <span>Loaded @lastLoadedLocal.ToString("t")</span>
-            <RadzenButton ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" class="btn btn-secondary" Click="@(_ => LoadLeaderboardAsync())" Disabled="@isLoading">
-                &#8635; Refresh
-            </RadzenButton>
-        </div>
-
-        @* Clean grid without 3D shelf canvas overhead *@
-        <div class="shelf-stage">
-            <RadzenDataGrid Data="@leaderboardEntries" TItem="LeaderboardEntryDto"
-                            AllowPaging="true" PageSize="TopTen" AllowSorting="true"
-                            Responsive="true" Class="leaderboard-grid rz-shadow-2"
-                            RowRender="@OnRowRender">
-                <Columns>
-                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.Rank)" Title="Rank" Width="80px" Sortable="true">
-                        <Template Context="entry">
-                            <div class="rank-badge"
-                                 @onfocusin="() => PreviewSignatureAsync(entry)">
-                                <div class="medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</div>
-                                @if (DeltaFor(entry.PlaceId) is { } delta && delta != 0)
-                                {
-                                    <span class="rank-delta" data-direction="@(delta > 0 ? "up" : "down")"
-                                          title="@(delta > 0 ? $"Up {delta} since your last visit" : $"Down {-delta} since your last visit")">
-                                        <span aria-hidden="true">@(delta > 0 ? "▲" : "▼")</span>
-                                        <span class="visually-hidden">@(delta > 0 ? $"Up {delta} places since your last visit" : $"Down {-delta} places since your last visit")</span>
-                                        @Math.Abs(delta)
-                                    </span>
-                                }
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn Title="Comic" Width="100px" Sortable="false">
-                        <Template Context="entry">
-                            <div class="comic-thumbnail">
-                                <img src="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)" alt="Comic for @entry.RestaurantName" loading="lazy" />
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.RestaurantName)" Title="Restaurant" Sortable="true">
-                        <Template Context="entry">
-                            <div class="entry-details">
-                                <h3 class="restaurant-name">@entry.RestaurantName</h3>
-                                <p class="address">@entry.Address</p>
-                                <p class="entry-recorded">Recorded @entry.LastUpdated.ToLocalTime().ToString("MMM d, yyyy")</p>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn Property="@nameof(LeaderboardEntryDto.StrangenessScore)" Title="Strangeness" Width="150px" Sortable="true">
-                        <Template Context="entry">
-                            <div class="score-badge">
-                                <RadzenBadge BadgeStyle="@GetScoreBadgeStyle(entry.StrangenessScore)"
-                                             Text="@($"{entry.StrangenessScore:F0}/100")" IsPill="true" />
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-
-                    <RadzenDataGridColumn Title="Actions" Width="150px" Sortable="false">
-                        <Template Context="entry">
-                            <div class="entry-actions">
-                                <a href="/comic/@entry.PlaceId?from=leaderboard" class="btn btn-primary btn-sm">Open Comic</a>
-                                <RadzenButton ButtonStyle="ButtonStyle.Light" Variant="Variant.Text" Size="ButtonSize.Small"
-                                              Click="@(_ => ShareComicAsync(entry))" title="Share this comic" aria-label="Share this comic">
-                                    &#128228;
-                                </RadzenButton>
-                            </div>
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
-        </div>
+        <ol class="comic-rows" @ref="_stage">
+            @foreach (var entry in leaderboardEntries)
+            {
+                var delta = DeltaFor(entry.PlaceId);
+                <ComicRow Class="@($"leaderboard-card {GetRankClass(entry.Rank)}")"
+                          Href="@($"/comic/{entry.PlaceId}?from=leaderboard")"
+                          Name="@entry.RestaurantName"
+                          Score="@((int)Math.Round(entry.StrangenessScore))"
+                          ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
+                          Meta="@entry.Address"
+                          Holo="@(entry.StrangenessScore >= HoloThreshold)"
+                          OnPreview="() => PreviewSignatureAsync(entry)"
+                          data-move="@MoveStateFor(entry.PlaceId)"
+                          data-delta="@delta">
+                    <Leading>
+                        <span class="rank-badge medal @GetMedalClass(entry.Rank)">
+                            @GetMedal(entry.Rank)
+                            @if (delta is { } d and not 0)
+                            {
+                                <span class="rank-delta" data-direction="@(d > 0 ? "up" : "down")"
+                                      title="@(d > 0 ? $"Up {d} since your last visit" : $"Down {-d} since your last visit")">
+                                    <span aria-hidden="true">@(d > 0 ? "▲" : "▼")</span>
+                                    <span class="visually-hidden">@(d > 0 ? $"Up {d} places since your last visit" : $"Down {-d} places since your last visit")</span>
+                                    @Math.Abs(d)
+                                </span>
+                            }
+                        </span>
+                    </Leading>
+                    <Actions>
+                        <button type="button" class="btn btn-icon comic-row-action" @onclick="() => ShareComicAsync(entry)"
+                                title="Share this comic" aria-label="@($"Share the comic for {entry.RestaurantName}")">
+                            <span aria-hidden="true">&#128228;</span>
+                        </button>
+                    </Actions>
+                </ComicRow>
+            }
+        </ol>
     }
-
     </div>
-
+    }
     @* Outside the results live region on purpose: this is already role="status", and nesting
        two live regions makes a share confirmation announce twice. *@
     @if (shareToast != null)
     {
         <div class="toast" role="status">@shareToast</div>
     }
-
     </ChildContent>
 </PageShell>
 
@@ -156,8 +162,21 @@
     private const string LeaderboardResultsId = "leaderboard-results";
     private const int TopTen = 10;
 
+    /// <summary>Which view is showing — the churning live board, the permanent archive, or the
+    /// charts over every score ever recorded.</summary>
+    private enum BoardScope { Live, Weekly, Stats }
+
+    /// <summary>`?view=stats` opens the Stats tab — it is where the old /insights route lands.</summary>
+    [SupplyParameterFromQuery(Name = "view")]
+    public string? View { get; set; }
+
+    /// <summary>Weeks of archive requested at once.</summary>
+    private const int ArchiveWeeks = 6;
+
+    private BoardScope _scope = BoardScope.Live;
+    private HallOfFameResponse? _archive;
+
     private List<LeaderboardEntryDto>? leaderboardEntries;
-    private DateTimeOffset lastLoadedLocal = DateTimeOffset.Now;
     private string? errorMessage;
     private bool isLoading = false;
     private string? shareToast;
@@ -172,6 +191,17 @@
     /// <summary>Guards the arrival chord so a re-render cannot replay it.</summary>
     private bool _chordPlayed;
 
+    /// <summary>Mirrors ComicView.HoloThreshold.</summary>
+    private const int HoloThreshold = 80;
+
+    private ElementReference _stage;
+
+    /// <summary>
+    /// Rows moved since last visit and have not been animated yet. Consumed after the render
+    /// that puts them in the DOM — the slide needs real rows to measure.
+    /// </summary>
+    private bool _movesPending;
+
     /// <summary>Last place whose motif was previewed, so a jittery pointer does not retrigger.</summary>
     private string? _previewedPlaceId;
 
@@ -183,8 +213,63 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (string.Equals(View, "stats", StringComparison.OrdinalIgnoreCase))
+        {
+            _scope = BoardScope.Stats;
+        }
+
         await LoadLeaderboardAsync();
 
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_movesPending && _scope == BoardScope.Live && leaderboardEntries is { Count: > 0 })
+        {
+            _movesPending = false;
+            await Fx.AnimateBoardMovesAsync(_stage);
+        }
+    }
+
+    /// <summary>Switches between the live board and the archive, loading the archive once.</summary>
+    private async Task SwitchScopeAsync(BoardScope scope)
+    {
+        if (_scope == scope)
+        {
+            return;
+        }
+
+        _scope = scope;
+        errorMessage = null;
+
+        if (scope == BoardScope.Weekly && _archive is null)
+        {
+            await LoadArchiveAsync();
+        }
+    }
+
+    private async Task LoadArchiveAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            _archive = await ApiClient.GetWeeklyHallOfFameAsync(ArchiveWeeks, TopTen);
+            if (_archive is null)
+            {
+                errorMessage = "Unable to load the weekly archive. Please try again later.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error loading the weekly archive");
+            errorMessage = "An unexpected error occurred.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private async Task LoadLeaderboardAsync()
@@ -205,7 +290,6 @@
                 leaderboardEntries = response.Entries
                     .Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl))
                     .ToList();
-                lastLoadedLocal = DateTimeOffset.Now;
                 Logger.LogInformation("Loaded {Count} leaderboard entries with comics", leaderboardEntries.Count);
 
                 // Best-effort and never allowed to fail the page: the board is the thing the user
@@ -284,6 +368,7 @@
         }
 
         await BoardMemory.SaveAsync("GLOBAL", entries.Select(e => (e.PlaceId, e.Rank)));
+        _movesPending = _deltas.Count > 0;
 
         // The chord is the board heard at once — each voice one restaurant's own motif, seeded
         // from its place id. It plays only if audio is already unlocked, which on this route means
@@ -326,22 +411,8 @@
 
     private static string GetRankClass(int rank) => rank switch { 1 => "rank-gold", 2 => "rank-silver", 3 => "rank-bronze", _ => "" };
 
-    private void OnRowRender(RowRenderEventArgs<LeaderboardEntryDto> args)
-    {
-        if (args.Data != null)
-        {
-            args.Attributes["class"] = $"leaderboard-card glass scroll-enter {GetRankClass(args.Data.Rank)}";
-            args.Attributes["data-move"] = MoveStateFor(args.Data.PlaceId);
-        }
-    }
-
-    private static BadgeStyle GetScoreBadgeStyle(double score) => score switch
-    {
-        >= 85 => BadgeStyle.Danger,
-        >= 70 => BadgeStyle.Warning,
-        >= 50 => BadgeStyle.Info,
-        _ => BadgeStyle.Secondary
-    };
+    private Task RetryAsync() =>
+        _scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync();
 
     private async Task ShareComicAsync(LeaderboardEntryDto entry)
     {
@@ -352,7 +423,7 @@
             var text = $"Check out this weird review comic! Strangeness: {entry.StrangenessScore:F0}/100 🎨 #PoSeeReview";
 
             var outcome = await ShareService.IsShareSupportedAsync()
-                ? await ShareService.ShareComicAsync(title, text, comicUrl)
+                ? await ShareService.ShareComicAsync(title, text, comicUrl, entry.PlaceId)
                 : ShareOutcome.Unsupported;
 
             // Every branch now reports back. Copying to the clipboard with no confirmation —

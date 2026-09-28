@@ -271,6 +271,74 @@ function noise({ duration = 0.12, peak = 0.5, filterHz = 1800, filterType = 'low
 }
 
 /**
+ * A voice with no scheduled end: the riser, the loupe hum and the weirdness drone. Every other
+ * sound here is a transient whose envelope reaches zero on its own; these are released by their
+ * owner, so every live one is tracked and muting the app releases them all — a drone left
+ * running under a muted, suspended context would resume the moment sound came back on.
+ */
+const sustained = new Set();
+
+function sustain({ type = 'sine', freq, detune = 0, peak = 0.05, attack = 0.4, pan = 0, send = 0.3 }) {
+    if (!canPlay()) return null;
+    const ctx = state.ctx;
+    const t0 = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    osc.detune.value = detune;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), t0 + attack);
+
+    const output = makeOutput(pan, send);
+    osc.connect(gain);
+    gain.connect(output.node);
+    osc.start(t0);
+
+    let released = false;
+    const handle = {
+        /** Glides pitch and position rather than jumping: a stepped hum reads as a glitch. */
+        glide(nextFreq, nextPan = null, seconds = 0.08) {
+            if (released) return;
+            const t = ctx.currentTime;
+            osc.frequency.setTargetAtTime(Math.max(20, nextFreq), t, seconds / 3);
+            if (nextPan !== null && output.node.pan) {
+                output.node.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, nextPan)), t, seconds / 3);
+            }
+        },
+        release(seconds = 0.3) {
+            if (released) return;
+            released = true;
+            sustained.delete(handle);
+            const t = ctx.currentTime;
+            gain.gain.cancelScheduledValues(t);
+            gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t);
+            gain.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
+            osc.stop(t + seconds + 0.02);
+            osc.onended = () => {
+                osc.disconnect();
+                gain.disconnect();
+                output.dispose();
+            };
+        }
+    };
+    sustained.add(handle);
+    return handle;
+}
+
+function releaseAllSustained() {
+    for (const handle of [...sustained]) handle.release(0.05);
+}
+
+/** The generation riser: one sustained voice per pipeline phase, stacked. */
+let riserVoices = [];
+
+/** The weirdness drone, a detuned pair. Empty when not running. */
+let droneVoices = [];
+
+/**
  * Maps a screen x coordinate to a stereo position. Clamped to ±0.85 rather than ±1: a sound
  * hard-panned to one channel disappears entirely on a phone held with one speaker covered, and
  * on headphones it sits outside the head rather than in the scene.
@@ -472,6 +540,9 @@ export const audio = {
             // Narration is a separate output that does not pass through the context, so
             // suspending the graph would leave a voice mid-sentence talking over a muted app.
             this.stopNarration();
+            releaseAllSustained();
+            riserVoices = [];
+            droneVoices = [];
 
             if (state.ctx && state.ctx.state === 'running') {
                 try {
@@ -986,6 +1057,101 @@ export const audio = {
         });
     },
 
+    // ── The generation wait ──────────────────────────────────────────────────────────────
+
+    /**
+     * One pipeline phase: the phase blip, plus one sustained voice stacked on the riser. Each
+     * phase adds a higher partial of the same root, so the wait audibly builds toward something
+     * rather than repeating itself. Once the analysis has a score, a strange one detunes the new
+     * voices against the old — the unease arrives before the number does.
+     */
+    riserStep(index, total, score = 0) {
+        this.phase(index, total);
+        if (!canPlay() || riserVoices.length >= 6) return;
+
+        const partials = [1, 1.5, 2, 3, 4, 6];
+        const step = Math.min(riserVoices.length, partials.length - 1);
+        const strange = Math.max(0, (score - 60) / 40);
+        const pan = total > 1 ? ((index / Math.max(1, total - 1)) * 2 - 1) * 0.5 : 0;
+
+        const voiceHandle = sustain({
+            type: step === 0 ? 'triangle' : 'sine',
+            freq: 110 * partials[step],
+            detune: (step % 2 ? 1 : -1) * strange * 18,
+            // Higher partials quieter, so the stack thickens rather than getting shrill.
+            peak: 0.045 / (1 + step * 0.35),
+            attack: 0.9,
+            pan,
+            send: 0.45
+        });
+        if (voiceHandle) riserVoices.push(voiceHandle);
+    },
+
+    /** The comic arrived: the stack rings out rather than cutting, so the reveal lands on it. */
+    riserResolve() {
+        for (const v of riserVoices) v.release(0.9);
+        riserVoices = [];
+    },
+
+    /** Failure or teardown: gone quickly, because nothing is being resolved. */
+    riserStop() {
+        for (const v of riserVoices) v.release(0.08);
+        riserVoices = [];
+    },
+
+    // ── The comic as an object ───────────────────────────────────────────────────────────
+
+    /**
+     * Foil catching the light. A high, short sparkle panned to where the light is, louder the
+     * faster the card is tilted — a card held still does not glint.
+     */
+    shimmer(intensity = 0.5, pan = 0) {
+        if (!canPlay() || throttled('shimmer', 70)) return;
+        const strength = Math.min(1, Math.max(0, intensity));
+        const note = PENTATONIC[Math.floor(Math.random() * PENTATONIC.length)] * 4;
+        voice({ type: 'sine', freq: note, attack: 0.002, decay: 0.12 + strength * 0.1, peak: 0.02 + strength * 0.05, pan, send: 0.6 });
+    },
+
+    /** Starts the loupe's hum. The caller glides it with the lens and releases it. */
+    hum() {
+        return sustain({ type: 'triangle', freq: 180, peak: 0.035, attack: 0.15, send: 0.35 });
+    },
+
+    /**
+     * A detuned pair a fifth apart, low and wide. Only for a score the app treats as absurd, so
+     * the page sounds wrong in the same breath as it starts to look wrong.
+     */
+    droneStart(score = 90) {
+        if (droneVoices.length > 0) return;
+        const beat = 4 + Math.max(0, score - 85) * 0.8;
+        droneVoices = [
+            sustain({ type: 'triangle', freq: 55, detune: -beat, peak: 0.03, attack: 2.5, pan: -0.35, send: 0.55 }),
+            sustain({ type: 'triangle', freq: 82.41, detune: beat, peak: 0.022, attack: 3.2, pan: 0.35, send: 0.55 })
+        ].filter(Boolean);
+    },
+
+    droneStop() {
+        for (const v of droneVoices) v.release(0.6);
+        droneVoices = [];
+    },
+
+    /**
+     * The comic-book sound word landing: a thwack (filtered noise), a body thump, and a short
+     * upward "boing" so it reads as cartoon impact rather than as an error or a drop.
+     */
+    stamp(pan = 0) {
+        if (!canPlay() || throttled('stamp', 150)) return;
+        noise({ duration: 0.09, peak: 0.32, filterHz: 1400, pan, send: 0.2 });
+        voice({ type: 'sine', startFreq: 220, endFreq: 70, attack: 0.003, decay: 0.16, peak: 0.3, pan: 0, send: 0.1 });
+        voice({ type: 'triangle', startFreq: 480, endFreq: 820, attack: 0.004, decay: 0.12, peak: 0.12, delay: 0.05, pan, send: 0.3 });
+    },
+
+    /** A speech bubble appearing — a soft upward pop from its side of the strip. */
+    bubble(pan = 0) {
+        if (!canPlay() || throttled('bubble', 60)) return;
+        voice({ type: 'sine', startFreq: 380, endFreq: 920, attack: 0.003, decay: 0.07, peak: 0.1, pan, send: 0.25 });
+    },
+
     // ── Narration ────────────────────────────────────────────────────────────────────────
     //
     // speechSynthesis is a separate output from the AudioContext — it does not pass through the
@@ -1046,7 +1212,7 @@ export const audio = {
      * Speakers are differentiated by pitch slot in order of first appearance, so the same
      * character keeps the same voice for the whole skit and a two-hander reads as two people.
      */
-    playSkitJson(json) {
+    playSkitJson(json, callbacks = {}) {
         if (!state.enabled || !this.canNarrate()) return false;
 
         let lines;
@@ -1067,21 +1233,29 @@ export const audio = {
             window.speechSynthesis.cancel();
 
             const slots = new Map();
-            for (const line of lines) {
-                const text = String(line?.text ?? '').trim();
-                if (!text) continue;
+            const spoken = lines
+                .map(line => ({
+                    text: String(line?.text ?? '').trim(),
+                    speaker: String(line?.speaker ?? '').trim() || 'Voice'
+                }))
+                .filter(line => line.text);
 
-                const speaker = String(line?.speaker ?? '').trim() || 'Voice';
+            spoken.forEach(({ text, speaker }, index) => {
                 if (!slots.has(speaker)) slots.set(speaker, slots.size);
+                const slot = slots.get(speaker);
 
                 const utterance = new SpeechSynthesisUtterance(text.slice(0, 300));
                 // Pitch slots walk 0.75 → 1.05 → 1.35 for three speakers, then wrap — distinct
                 // without sliding into cartoon ranges, and deterministic per speaker.
-                utterance.pitch = 0.75 + (slots.get(speaker) % 3) * 0.3;
+                utterance.pitch = 0.75 + (slot % 3) * 0.3;
                 utterance.rate = 1.02;
                 utterance.volume = 0.9;
+                // Per-utterance start/end rather than `boundary`: the queue is still built in one
+                // pass, and these only tell a caller which line is audible right now.
+                utterance.onstart = () => callbacks.onLineStart?.(index, spoken.length, speaker, slot, text);
+                utterance.onend = () => callbacks.onLineEnd?.(index, spoken.length);
                 window.speechSynthesis.speak(utterance);
-            }
+            });
             return slots.size > 0;
         } catch {
             return false;

@@ -319,6 +319,51 @@ public class ComicGenerationServiceTests
         Assert.Equal(PlaceId.From(placeId), result.PlaceId);
     }
 
+    /// <summary>
+    /// The client storyboards the wait for the artwork from this one report, so the score and
+    /// the finished captions must already be on it — and must be the same captions that get
+    /// lettered onto the strip, or the storyboard previews text the comic does not contain.
+    /// </summary>
+    [Fact]
+    public async Task GenerateComicAsync_ReportsScoreAndCaptionsBeforeTheImageCall()
+    {
+        var placeId = PlaceId.From("test-place-storyboard");
+        var reviews = Enumerable.Range(1, 5).Select(i => new Review { Text = $"Review {i}", Rating = 3 }).ToList();
+        var service = CreateService();
+        _mockComicRepository.Setup(x => x.GetByPlaceIdAsync(placeId)).ReturnsAsync((Comic?)null);
+        _mockRestaurantService.Setup(x => x.GetRestaurantByPlaceIdAsync(placeId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new Restaurant { PlaceId = placeId, Name = "Storyboard Diner", Reviews = reviews });
+        _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StrangenessAnalysis(88, 2, "Narrative", ["Panel one.", "Panel two."]));
+
+        var reports = new List<ComicGenerationProgress>();
+        ComicGenerationProgress? atImageCall = null;
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback(() => atImageCall = reports.LastOrDefault())
+            .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
+        IReadOnlyList<string>? lettered = null;
+        _mockTextOverlayService.Setup(x => x.AddTextOverlayAsync(It.IsAny<byte[]>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Callback((byte[] _, IReadOnlyList<string> captions, int _, CancellationToken _) => lettered = captions)
+            .ReturnsAsync((byte[] bytes, IReadOnlyList<string> _, int _, CancellationToken _) => bytes);
+        _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
+            .ReturnsAsync("https://blob.storage/comic.png");
+
+        await service.GenerateComicAsync(placeId, progress: new SyncProgress(reports.Add));
+
+        Assert.NotNull(atImageCall);
+        Assert.Equal(ComicGenerationPhase.GeneratingArtwork, atImageCall.Phase);
+        Assert.Equal(88, atImageCall.Score);
+        Assert.Equal(["Panel one.", "Panel two."], atImageCall.Captions);
+        Assert.Equal(atImageCall.Captions, lettered);
+        Assert.All(reports.Where(r => r.Phase != ComicGenerationPhase.GeneratingArtwork), r => Assert.Null(r.Captions));
+    }
+
+    /// <summary>Reports inline, so the assertions see every report in order.</summary>
+    private sealed class SyncProgress(Action<ComicGenerationProgress> report) : IProgress<ComicGenerationProgress>
+    {
+        public void Report(ComicGenerationProgress value) => report(value);
+    }
+
     [Fact]
     public async Task GenerateComicAsync_ShouldSet7DayCacheExpiration()
     {

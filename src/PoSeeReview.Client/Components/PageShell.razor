@@ -1,30 +1,17 @@
 @*
     One page container and header, replacing five hand-rolled ones.
 
-    Before this, `.app-header` was defined in five scoped stylesheets and `.subtitle` in two, each
-    with its own max-width, padding and heading size — which is why the Hall of Fame, Diagnostics
-    and the discovery page never quite lined up with each other.
-
-    Deliberately small. The pages genuinely differ (Login is a centred card, Diagnostics is dense,
-    discovery leads with a gradient hero), so this covers the part they actually share — width,
-    inline padding, title and subtitle — and gets out of the way via `Header` for anything else.
-    A shell with a flag per page would be worse than five honest copies.
+    The header is one row: title on the left, the page's own controls (scope chips, a clear
+    button) on the right, wrapping under it on a phone. It used to be a centred title over a
+    subtitle — and on the Hall of Fame a gradient hero banner — which spent 150–250px above the
+    fold restating what the title and the nav already said. Pages that genuinely differ (Login's
+    centred card, discovery's search) do not use this at all.
 *@
 <div class="page-shell @WidthClass @Class">
-    @if (!string.IsNullOrWhiteSpace(Title) || Header is not null)
-    {
-        <header class="@(Hero ? "page-hero" : "page-shell-header")">
-            @if (!string.IsNullOrWhiteSpace(Title))
-            {
-                <h1 class="@(Hero ? "page-hero-title" : "page-shell-title")">@Title</h1>
-            }
-            @if (!string.IsNullOrWhiteSpace(Subtitle))
-            {
-                <p class="@(Hero ? "page-hero-subtitle" : "page-shell-subtitle")">@Subtitle</p>
-            }
-            @Header
-        </header>
-    }
+    <header class="page-shell-header">
+        <h1 class="page-shell-title">@Title</h1>
+        @Header
+    </header>
 
     @ChildContent
 </div>
@@ -42,19 +29,11 @@
         Wide
     }
 
-    [Parameter] public string? Title { get; set; }
-
-    [Parameter] public string? Subtitle { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = default!;
 
     [Parameter] public ShellWidth Width { get; set; } = ShellWidth.Standard;
 
-    /// <summary>
-    /// Renders the header as the brand gradient banner. Index and the Hall of Fame had byte-identical
-    /// gradient headers in two separate stylesheets; this is the one implementation.
-    /// </summary>
-    [Parameter] public bool Hero { get; set; }
-
-    /// <summary>Extra header content (region chips, a refresh control) below the title.</summary>
+    /// <summary>Page controls, placed on the title row.</summary>
     [Parameter] public RenderFragment? Header { get; set; }
 
     [Parameter] public RenderFragment? ChildContent { get; set; }

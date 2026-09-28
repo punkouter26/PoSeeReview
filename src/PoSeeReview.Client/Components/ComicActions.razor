@@ -18,22 +18,20 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 
-@* One delegating handler rather than a tap call wired into each of the six buttons. Clicks
+@* One delegating handler rather than a tap call wired into each button. Clicks
    bubble, MouseEventArgs already carries ClientX, and the panned click is the cheapest spatial
-   cue in the app — a bar-wide handler gives every control in it one without six edits and
+   cue in the app — a bar-wide handler gives every control in it one without an edit per button and
    without a per-button ElementReference. *@
 <div class="comic-actions" role="group" aria-label="Comic actions" @onclick="OnBarClickAsync">
     <button type="button" class="btn btn-primary action-share" @onclick="ShareAsync" disabled="@_isBusy">
         <span aria-hidden="true">📤</span> Share
     </button>
 
-    <button type="button" class="btn btn-secondary" @onclick="SaveAsync" disabled="@_isBusy">
-        <span aria-hidden="true">💾</span> Save image
+    <button type="button" class="btn btn-secondary action-save" @onclick="SaveAsync" disabled="@_isBusy" title="Save image" aria-label="Save image">
+        <span aria-hidden="true">💾</span><span class="action-label"> Save</span>
     </button>
 
-    <button type="button" class="btn btn-icon action-report" @onclick="OnReport" title="Report this comic" aria-label="Report this comic">
-        <span aria-hidden="true">⚑</span>
-    </button>
+    @ChildContent
 </div>
 
 @if (_toast is not null)
@@ -45,9 +43,9 @@
     [Parameter, EditorRequired]
     public ComicDto Comic { get; set; } = default!;
 
-    /// <summary>Raised when the user opens the report flow.</summary>
+    /// <summary>Page-owned controls that belong in the bar (read aloud, skit).</summary>
     [Parameter]
-    public EventCallback OnReport { get; set; }
+    public RenderFragment? ChildContent { get; set; }
 
     private bool _isBusy;
     private string? _toast;
@@ -64,7 +62,7 @@
         await Fx.PlayTapAtAsync(e.ClientX);
     }
 
-    private async Task ShareAsync()
+    private async Task ShareAsync(MouseEventArgs e)
     {
         _isBusy = true;
 
@@ -81,13 +79,14 @@
             var url = string.IsNullOrWhiteSpace(shareLink?.ShortUrl) ? canonical : shareLink!.ShortUrl;
             var text = $"{Comic.RestaurantName} scored {Comic.StrangenessScore}/100 on the strangeness scale. Look at this.";
 
-            var outcome = await ShareService.ShareComicAsync(Comic.RestaurantName, text, url);
+            var outcome = await ShareService.ShareComicAsync(Comic.RestaurantName, text, url, Comic.PlaceId);
 
             switch (outcome)
             {
                 case ShareOutcome.Shared:
                     Analytics.Track(FunnelSteps.ComicShared);
                     await Fx.PlayShareStingerAsync();
+                    await Fx.StampAsync("ZOOM!", e.ClientX, e.ClientY);
                     ShowToast("Shared!");
                     break;
 
@@ -100,6 +99,7 @@
                     await ShareService.CopyToClipboardAsync(url);
                     Analytics.Track(FunnelSteps.ComicShared);
                     await Fx.PlayShareStingerAsync();
+                    await Fx.StampAsync("ZOOM!", e.ClientX, e.ClientY);
                     ShowToast("Link copied to clipboard");
                     break;
             }
@@ -110,7 +110,7 @@
         }
     }
 
-    private async Task SaveAsync()
+    private async Task SaveAsync(MouseEventArgs e)
     {
         _isBusy = true;
 
@@ -124,6 +124,7 @@
             {
                 Analytics.Track(FunnelSteps.ComicSaved);
                 await Fx.PlayConfirmAsync();
+                await Fx.StampAsync("SNAP!", e.ClientX, e.ClientY);
                 ShowToast("Saved to your device");
             }
             else

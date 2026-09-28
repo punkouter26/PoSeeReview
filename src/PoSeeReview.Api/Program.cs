@@ -4,6 +4,7 @@ using System.Diagnostics;
 using FluentValidation;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using PoSeeReview.Api.Caching;
 using PoSeeReview.Api.Features.Auth;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features;
@@ -77,6 +78,8 @@ try
     // Add services to the container.
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddOutputCache(options =>
+        options.AddPolicy(SharedReadCachePolicy.Name, new SharedReadCachePolicy()));
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
     builder.Services.AddScoped<ICurrentRequestIdentityAccessor, HttpContextRequestIdentityAccessor>();
@@ -165,6 +168,9 @@ try
     app.UseAuthorization();
 
     app.UseRateLimiter();
+
+    // After authorization on purpose: a cached body is only ever served to a caller who passed it.
+    app.UseOutputCache();
 
     // Health check endpoints (/health, /health/live, /health/ready)
     app.MapHealthEndpoints();

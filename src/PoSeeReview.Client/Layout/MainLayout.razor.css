@@ -79,25 +79,3 @@ main {
     z-index: 9999;
     text-decoration: none;
 }
-
-/* ── ErrorBoundary fallback (shared Po convention) ─────────────────────────── */
-.po-error-panel {
-    margin: 1rem auto;
-    max-width: 40rem;
-    padding: var(--space-md) var(--space-lg);
-    border: 1px solid var(--color-danger);
-    border-radius: var(--radius-sm);
-    /* The danger surface/ink pair, not a literal red at 8% and `color: inherit` — which left the
-       text at body colour on a red-tinted card and did not flip with the theme. */
-    background: var(--color-danger-surface);
-    color: var(--color-danger-text);
-}
-
-.po-error-panel h2 {
-    margin: 0 0 var(--space-xs);
-    font-size: var(--text-lg);
-}
-
-.po-error-panel p {
-    margin: 0;
-}

@@ -3,8 +3,16 @@
 //
 // Blazor's router does not integrate with document.startViewTransition, and there is no hook that
 // brackets "DOM is about to change" / "DOM has changed". So this drives it from navigation
-// instead: intercept the click on an internal link, snapshot the current document, let Blazor
-// navigate, and end the transition once the new route has painted.
+// instead: intercept the click on an internal link, TAKE IT AWAY FROM BLAZOR, snapshot the
+// current document, navigate from inside the transition's update callback, and end the
+// transition once the new route has rendered.
+//
+// Taking the click is the load-bearing part. startViewTransition captures the old state on the
+// NEXT frame, and Blazor's own link handler renders the new route synchronously in the same task
+// as the click — so letting it through meant the "old" snapshot was already the new page, and
+// every transition blended the destination with itself. preventDefault in this capture-phase
+// listener makes Blazor's handler stand down (it ignores default-prevented clicks), and
+// Blazor.navigateTo runs only once the old frame is safely captured.
 //
 // Deliberately conservative:
 //   * Unsupported browsers get today's hard cut. No polyfill, no JS-driven fade — a hand-rolled
@@ -67,11 +75,9 @@ function reducedMotion() {
  * arrives.
  *
  *   [data-physics-card] — a restaurant card on discovery
- *   .leaderboard-card   — the live Hall of Fame
- *   .archive-entry      — the weekly archive
- *   .history-card       — /my-comics, both the kept list and the local history
+ *   .comic-row          — the live Hall of Fame, the weekly archive and /my-comics
  */
-const MORPH_SOURCES = '[data-physics-card], .leaderboard-card, .archive-entry, .history-card';
+const MORPH_SOURCES = '[data-physics-card], .comic-row';
 
 /** The destination half of the pair. Tagged on arrival — see tagMorphTarget. */
 const MORPH_TARGET = '.comic-strip-container';
@@ -174,36 +180,62 @@ function onDocumentClick(event) {
         }
     }
 
-    beginTransition();
+    event.preventDefault();
+    beginTransition(() => navigateTo(url));
+}
+
+function navigateTo(url) {
+    const path = url.pathname + url.search + url.hash;
+    if (typeof window.Blazor?.navigateTo === 'function') {
+        window.Blazor.navigateTo(path);
+    } else {
+        location.assign(url.href);
+    }
 }
 
 /**
- * Opens a view transition and hands back a resolver that Blazor's post-render hook calls. The
- * snapshot is taken synchronously here, which is what makes the outgoing frame correct.
+ * Opens a view transition whose update callback performs the navigation, then waits for
+ * Blazor's post-render hook (settle) to say the destination is in the DOM.
+ *
+ * The arrival gate is created INSIDE the callback, after navigating: a settle() from some
+ * unrelated re-render of the outgoing page, landing between the click and the callback, would
+ * otherwise release the gate early and the "after" snapshot would be the old page again.
  */
-function beginTransition() {
-    if (pending) return;
+function beginTransition(navigate) {
+    let navigated = false;
+    const go = () => {
+        if (navigated) return;
+        navigated = true;
+        navigate();
+    };
 
-    let release;
-    const gate = new Promise((resolve) => { release = resolve; });
+    // One at a time. A second click mid-transition still navigates — it just does not animate.
+    if (pending) {
+        go();
+        return;
+    }
 
+    let release = null;
     const transition = document.startViewTransition(async () => {
-        await gate;
-        // One frame so Blazor's re-render is actually in the DOM before the snapshot is taken.
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const arrived = new Promise((resolve) => { release = resolve; });
+        go();
+        await Promise.race([arrived, new Promise((r) => setTimeout(r, SETTLE_TIMEOUT_MS))]);
+        // One task so anything Blazor queued behind settle() lands before the "after" snapshot.
+        // NOT requestAnimationFrame: rendering is suppressed while this callback is pending, so
+        // rAF never fires inside it — waiting on one stalled every navigation until the
+        // browser's own DOM-update timeout aborted the transition, and no animation ever ran.
+        await new Promise((r) => setTimeout(r, 0));
     });
-
-    const timer = setTimeout(() => release(), SETTLE_TIMEOUT_MS);
 
     pending = {
         settle() {
-            clearTimeout(timer);
-            release();
-            pending = null;
+            release?.();
         }
     };
 
     transition.finished.finally(() => {
+        // A skipped transition must still arrive somewhere: the click was taken from Blazor.
+        go();
         clearMorphTags();
         morphArmed = false;
         try {

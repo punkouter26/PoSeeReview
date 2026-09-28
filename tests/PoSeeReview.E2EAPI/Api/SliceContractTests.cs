@@ -31,7 +31,7 @@ public class SliceContractTests(CustomWebApplicationFactory<Program> factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
         Assert.NotNull(payload);
-        Assert.Equal("US", payload.Region);
+        Assert.Equal("ALL", payload.Region); // no region is the worldwide board
     }
 
     [Theory]

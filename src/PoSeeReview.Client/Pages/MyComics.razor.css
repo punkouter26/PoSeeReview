@@ -1,0 +1,16 @@
+/* Rows are the shared `.comic-row` (app.css); `.btn*` and `.state-card` are app.css too. */
+
+.my-comics-summary {
+    margin-bottom: var(--space-sm);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.clear-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+}

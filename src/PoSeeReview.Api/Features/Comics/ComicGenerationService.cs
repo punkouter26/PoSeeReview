@@ -99,7 +99,7 @@ public partial class ComicGenerationService : IComicGenerationService
     public async Task<Comic> GenerateComicAsync(
         PlaceId placeId,
         bool forceRegenerate = false,
-        IProgress<ComicGenerationPhase>? progress = null,
+        IProgress<ComicGenerationProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (placeId.IsEmpty)
@@ -268,8 +268,12 @@ public partial class ComicGenerationService : IComicGenerationService
             _telemetryClient.GetMetric("Comics.ContentFlagged").TrackValue(1);
         }
 
+        // Normalised here rather than at the overlay step so the wait for the artwork can show
+        // them: they are final once the analysis returns, and the image call is the long pole.
+        var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
+
         // Generate comic image (panel count capped at 2)
-        progress?.Report(ComicGenerationPhase.GeneratingArtwork);
+        progress?.Report(new ComicGenerationProgress(ComicGenerationPhase.GeneratingArtwork, strangenessScore, captions));
         var imageStopwatch = Stopwatch.StartNew();
         byte[] imageBytes;
         try
@@ -299,7 +303,6 @@ public partial class ComicGenerationService : IComicGenerationService
         // the second paid round trip in a pipeline that only ever needed one.
         progress?.Report(ComicGenerationPhase.ComposingStrip);
         var overlayStopwatch = Stopwatch.StartNew();
-        var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
         imageBytes = await _comicTextOverlayService.AddTextOverlayAsync(imageBytes, captions, panelCount, cancellationToken);
         overlayStopwatch.Stop();
 
@@ -336,6 +339,7 @@ public partial class ComicGenerationService : IComicGenerationService
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
             CacheState = ComicCacheState.Generated,
             Palette = palette,
+            Captions = [.. captions],
             PromptVersion = _options.PromptVersion,
             Embedding = embedding
         };

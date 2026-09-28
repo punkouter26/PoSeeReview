@@ -15,13 +15,9 @@
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
 <div class="index-container">
-    @* The h1 stays — it is the page's heading, not decoration. What went is the kicker that
-       restated the header's own tagline, which cost ~110px of hero above the fold on every
-       visit to buy a sentence the user had already read. *@
-    @* The hero is the landing page's identity, and only the landing page needs it: with results on
-       screen it was a band of gradient restating a wordmark the top nav already carries, and that
-       wordmark is itself the link home. The page keeps a top-level heading either way — invisibly,
-       because the alternative is a results view with no h1 at all. *@
+    @* The hero is the landing page's identity, and only the landing page needs it: with results
+       on screen it would be a band of gradient restating the wordmark the nav already carries.
+       The page keeps a top-level heading either way — invisibly once results are showing. *@
     @if (_restaurants.Count == 0)
     {
         <header class="app-header">
@@ -34,66 +30,58 @@
         <h1 class="visually-hidden">PoSeeReview</h1>
     }
 
-    @* The error banner renders ABOVE the prompt card, and the prompt card stays mounted in
-       the Error state. Previously Error replaced the whole form, so a failed text search left
-       the user with a single "Try again" link that re-requested geolocation — no way back to
-       the search box they had just used. *@
+    @* The error sits ABOVE the search bar, and the bar stays mounted in the Error state — a failed
+       text search must leave the user their search box, not a lone "Try again" link. *@
     @if (_flowState == LocationFlowState.Error)
     {
-        <div class="error-message" role="alert">
-            <h2>Something Went Wrong</h2>
-            <p>@_errorMessage</p>
-            <button type="button" class="retry-link" @onclick="RetryLastAttemptAsync">@RetryLabel</button>
+        <div class="alert alert-danger error-message" role="alert">
+            <span>@_errorMessage</span>
+            <button type="button" class="btn btn-secondary retry-link" @onclick="RetryLastAttemptAsync">@RetryLabel</button>
         </div>
     }
 
-    @* Rendered while the location request is in flight as well as before it. Previously the
-       Loading state replaced this card with skeletons — so the one control a user needs when the
-       browser permission prompt is sitting unanswered, "or type a city", vanished at exactly the
-       moment it mattered. The list is still loading underneath; the escape hatch stays put. *@
+    @* One search bar: location, text field, submit. It replaces a card with an eyebrow, a heading,
+       a paragraph, an "or" divider and a hint line — five lines of instructions for two controls.
+       Rendered while the location request is in flight too: the escape hatch ("or type a city")
+       must not vanish while a browser permission prompt sits unanswered. *@
     @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied
                          or LocationFlowState.Error or LocationFlowState.Loading)
     {
-        <div class="location-prompt">
-            <RadzenCard class="@($"prompt-card glass {(_flowState == LocationFlowState.Loading ? "prompt-card--searching" : "")}")">
-                <div class="prompt-eyebrow">Start here</div>
-                <h2>Find Nearby Restaurants</h2>
-                <p>Use your location for the fastest path to a comic, or type a city or ZIP code.</p>
+        <div class="location-prompt glass">
+            <div class="search-row">
                 @if (_flowState != LocationFlowState.Denied)
                 {
-                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary location-btn"
-                                  Disabled="@(_flowState == LocationFlowState.Loading)"
-                                  Click="@(_ => RequestLocationAsync())">
-                        @(_flowState == LocationFlowState.Loading ? "Finding you..." : "Use My Location")
-                    </RadzenButton>
-                    <div class="divider-or"><span>or</span></div>
+                    <button type="button" class="btn btn-primary location-btn"
+                            disabled="@(_flowState == LocationFlowState.Loading)"
+                            @onclick="RequestLocationAsync"
+                            title="Use my location" aria-label="Use my location">
+                        <span aria-hidden="true">📍</span>
+                        <span class="location-btn-label">@(_flowState == LocationFlowState.Loading ? "Finding you..." : "Near me")</span>
+                    </button>
                 }
-                @if (_flowState == LocationFlowState.Denied)
-                {
-                    <div class="denied-alert" role="alert">
-                        <span class="denied-icon">📍</span>
-                        <span>Location access was denied. Search manually below or <a href="#" @onclick="RequestLocationAsync" @onclick:preventDefault>try enabling location</a> again.</span>
-                    </div>
-                }
-                <div class="search-row">
-                    <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
-                    <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @oninput="HandleSearchInput" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
-                    <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary"
-                                  Click="@(_ => SearchByLocationAsync())"
-                                  Disabled="@(string.IsNullOrWhiteSpace(_searchQuery))"
-                                  title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
-                        Search
-                    </RadzenButton>
-                </div>
-                <p class="hint-text">Comics are drawn from a place's recent public reviews — the more it has, the stranger the story.</p>
-            </RadzenCard>
+                <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
+                <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @oninput="HandleSearchInput" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
+                <button type="button" class="btn btn-secondary"
+                        @onclick="SearchByLocationAsync"
+                        disabled="@string.IsNullOrWhiteSpace(_searchQuery)"
+                        title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
+                    Search
+                </button>
+            </div>
+            @if (_flowState == LocationFlowState.Denied)
+            {
+                <p class="denied-alert" role="alert">
+                    📍 Location access was denied — search above, or
+                    <button type="button" class="link-button" @onclick="RequestLocationAsync">try location again</button>.
+                </p>
+            }
         </div>
     }
 
     @if (_flowState == LocationFlowState.Loading)
     {
+        <p class="results-info">@_loadingMessage</p>
         <div class="restaurants-grid">
-            <p class="results-info">@_loadingMessage</p>
             @for (var i = 0; i < 6; i++)
             {
                 <div class="skeleton-card">
@@ -102,10 +90,6 @@
                         <div class="sk-block sk-badge"></div>
                     </div>
                     <div class="sk-block sk-address"></div>
-                    <div class="sk-row sk-footer-row">
-                        <div class="sk-block sk-pill"></div>
-                        <div class="sk-block sk-pill"></div>
-                    </div>
                     <div class="sk-block sk-btn"></div>
                 </div>
             }
@@ -114,27 +98,24 @@
 
     @if (_restaurants.Count > 0)
     {
-        <div class="results-layout">
-            <div class="results-header">
-                <button type="button" class="btn btn-secondary new-search-btn" @onclick="ClearSearch"
-                        title="Search a different area">
-                    <span aria-hidden="true">&#215;</span> New search
-                </button>
-                <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
-            </div>
-
-            <div class="restaurants-grid">
-                @foreach (var restaurant in _restaurants)
-                {
-                    <div class="cq-card">
-                        <RestaurantCard
-                            Restaurant="restaurant"
-                            IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
-                            IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
-                            OnRestaurantClick="HandleRestaurantClick" />
-                    </div>
-                }
-            </div>
+        <div class="results-header">
+            <button type="button" class="btn btn-secondary new-search-btn" @onclick="ClearSearch"
+                    title="Search a different area">
+                <span aria-hidden="true">&#215;</span> New search
+            </button>
+            <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
+        </div>
+        <div class="restaurants-grid">
+            @foreach (var restaurant in _restaurants)
+            {
+                <div class="cq-card">
+                    <RestaurantCard
+                        Restaurant="restaurant"
+                        IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
+                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                        OnRestaurantClick="HandleRestaurantClick" />
+                </div>
+            }
         </div>
     }
 </div>
@@ -151,7 +132,7 @@
     private string _errorMessage = string.Empty;
     private List<RestaurantDto> _restaurants = new();
     private string _searchQuery = string.Empty;
-    private string _searchPlaceholder = "e.g. Seattle, 10001, Chicago";
+    private string _searchPlaceholder = "City or ZIP";
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;

@@ -6,6 +6,7 @@
 @inject IWebAssemblyHostEnvironment HostEnvironment
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@implements IDisposable
 
 <div class="top-row">
     <div class="nav-shell">
@@ -18,7 +19,6 @@
             </svg>
             <span>
                 <span class="brand-name">PoSeeReview</span>
-                <span class="brand-tagline">Strange stories, illustrated</span>
                 @if (_isMockData)
                 {
                     <span class="nav-mock-badge" title="Running with mock data — no real AI or storage connections">USING MOCK DATA</span>
@@ -39,20 +39,29 @@
             </div>
         </nav>
 
+        @* One account control instead of four. My comics, the signed-in identity and Sign out
+           used to sit side by side in this zone (with Insights, now a Hall of Fame tab), and
+           because `.nav-links` is `flex: 1; min-width: 0` against a zone that cannot shrink,
+           every one of them came straight out of the primary nav's width on a phone.
+
+           A native popover: light-dismiss, Esc and the top layer come free, with no JS. It is
+           keyed on the route so navigating from inside it (My comics) closes it — a new element
+           is not in the top layer. *@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-user-zone">
-                    <NavLink class="nav-insights" href="insights" title="Insights">
-                        <span aria-hidden="true">📊</span>
-                        <span class="nav-insights-label">Insights</span>
-                    </NavLink>
-                    <div class="nav-user-badge nav-user-badge--user">
+                    <button type="button" class="nav-user-badge nav-user-badge--user" popovertarget="account-menu"
+                            title="@(auth.User.Identity?.Name ?? "Account")" aria-label="Account menu">
                         <span class="nav-user-dot" aria-hidden="true"></span>
-                        <span class="nav-user-email nav-user-label" title="@auth.User.Identity?.Name">
-                            @(auth.User.Identity?.Name ?? "User")
-                        </span>
+                        <span class="nav-user-email nav-user-label">@(auth.User.Identity?.Name ?? "User")</span>
+                    </button>
+                    <div id="account-menu" class="nav-account-menu" popover @key="Navigation.Uri">
+                        <p class="nav-account-name">@(auth.User.Identity?.Name ?? "User")</p>
+                        <NavLink class="nav-my-comics" href="my-comics">
+                            <span aria-hidden="true">🗂️</span> My comics
+                        </NavLink>
+                        <button type="button" class="nav-logout-btn" @onclick="Logout">Sign out</button>
                     </div>
-                    <button class="nav-logout-btn" @onclick="Logout" title="Sign out">Sign out</button>
                 </div>
             </Authorized>
         </AuthorizeView>
@@ -64,6 +73,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Navigation.LocationChanged += OnLocationChanged;
+
         try
         {
             var mockStatus = await Http.GetFromJsonAsync("diag/mock-status", AppJsonContext.Default.MockStatusDto);
@@ -74,6 +85,11 @@
             _isMockData = false;
         }
     }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        StateHasChanged();
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 
     private void Logout()
     {

@@ -120,9 +120,9 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
     [Fact]
 
     [Trait("Category", "Integration")]
-    public async Task GetLeaderboard_WithEmptyRegion_UsesDefaultRegion()
+    public async Task GetLeaderboard_WithEmptyRegion_ReturnsWorldwideBoard()
     {
-        // Act - Empty region parameter should use default "US"
+        // Act - an empty region is the worldwide board, not a silent default to US
         var response = await _client.GetAsync("/api/leaderboard?region=");
 
         // Assert - Should succeed with default region
@@ -130,7 +130,7 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
 
         var content = await response.Content.ReadFromJsonAsync<LeaderboardResponse>();
         Assert.NotNull(content);
-        Assert.Equal("US", content.Region); // Default region is US
+        Assert.Equal("ALL", content.Region);
     }
 
     [Fact]

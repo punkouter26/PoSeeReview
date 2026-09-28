@@ -33,9 +33,10 @@ public class ShareService
     /// <param name="title">Title of the comic (restaurant name)</param>
     /// <param name="text">Description text for the share</param>
     /// <param name="url">URL to the comic page</param>
+    /// <param name="placeId">When given, the comic image is attached where the browser can share files.</param>
     /// <returns>Whether the share completed, was cancelled by the user, or is unsupported.</returns>
     /// <exception cref="ArgumentException">Thrown when title or url is null or empty</exception>
-    public async Task<ShareOutcome> ShareComicAsync(string title, string text, string url)
+    public async Task<ShareOutcome> ShareComicAsync(string title, string text, string url, string? placeId = null)
     {
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Title cannot be null or empty", nameof(title));
@@ -45,7 +46,7 @@ public class ShareService
 
         try
         {
-            var outcome = await _jsRuntime.InvokeAsync<string>("shareUtils.share", title, text ?? "", url);
+            var outcome = await _jsRuntime.InvokeAsync<string>("shareUtils.share", title, text ?? "", url, placeId);
             return outcome switch
             {
                 "shared" => ShareOutcome.Shared,

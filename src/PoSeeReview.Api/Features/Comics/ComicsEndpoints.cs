@@ -624,13 +624,15 @@ internal static class ComicsEndpoints
     /// thread pool, so phases could be written out of order or overlap the completion event.
     /// </summary>
     private sealed class ChannelProgress(ChannelWriter<ComicGenerationEventDto> writer)
-        : IProgress<ComicGenerationPhase>
+        : IProgress<ComicGenerationProgress>
     {
-        public void Report(ComicGenerationPhase value) =>
+        public void Report(ComicGenerationProgress value) =>
             writer.TryWrite(new ComicGenerationEventDto
             {
                 Kind = ComicGenerationEventDto.PhaseKind,
-                Phase = value
+                Phase = value.Phase,
+                Score = value.Score,
+                Captions = value.Captions is null ? null : [.. value.Captions]
             });
     }
 
@@ -859,7 +861,7 @@ internal static class ComicsEndpoints
             var skit = await chatService.GenerateSkitAsync(
                 comic.RestaurantName,
                 comic.Narrative,
-                captions: null, // captions live only inside the generation pipeline; the narrative is the durable input
+                captions: comic.Captions, // empty on rows drawn before captions were stored
                 http.RequestAborted);
 
             if (skit.Lines.Count == 0)

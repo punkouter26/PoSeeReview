@@ -88,6 +88,13 @@ public class Comic
     public float[] Embedding { get; set; } = [];
 
     /// <summary>
+    /// The narrator caption drawn onto each panel, in panel order. Kept because the captions
+    /// otherwise exist only as pixels, which a screen reader cannot read. Empty on rows written
+    /// before they were persisted.
+    /// </summary>
+    public string[] Captions { get; set; } = [];
+
+    /// <summary>
     /// Cached serialised <c>ComicAudioSkit</c>, written by <c>POST /api/comics/{placeId}/audio</c>
     /// the first time the skit is requested for this comic, and round-tripped on subsequent
     /// requests so the chat call is paid for once. Empty for comics drawn before the feature

@@ -55,6 +55,9 @@ public sealed class HeaderContractUiTests(PlaywrightFixture fixture)
         var signedIn = await SignedInPageAsync(viewport);
 
         await Assertions.Expect(signedIn.Locator(".nav-user-zone .nav-user-badge")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
+
+        // Sign out lives in the account menu the badge opens.
+        await signedIn.Locator(".nav-user-zone .nav-user-badge").ClickAsync();
         await Assertions.Expect(signedIn.GetByRole(AriaRole.Button, new()
         {
             NameRegex = new("sign out", System.Text.RegularExpressions.RegexOptions.IgnoreCase)

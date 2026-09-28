@@ -12,6 +12,7 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(ComicDto))]
 [JsonSerializable(typeof(ComicGenerationEventDto))]
 [JsonSerializable(typeof(LeaderboardResponse))]
+[JsonSerializable(typeof(HallOfFameResponse))]
 [JsonSerializable(typeof(HealthStatusDto))]
 [JsonSerializable(typeof(DiagnosticsSnapshotDto))]
 [JsonSerializable(typeof(MockStatusDto))]
@@ -27,6 +28,8 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(CachedComicsResponse))]
 // The comic's invented conversation, fetched on demand by the comic page's play button.
 [JsonSerializable(typeof(ComicAudioSkit))]
+// Not a wire DTO: the locally-stored comic history (ComicHistoryService).
+[JsonSerializable(typeof(List<ComicHistoryEntry>))]
 // Not a wire DTO: the remembered leaderboard ranks (BoardMemoryService).
 [JsonSerializable(typeof(Dictionary<string, int>))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

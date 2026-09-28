@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Azure;
+using PoSeeReview.Api.Caching;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Contracts;
@@ -27,9 +28,161 @@ internal static partial class LeaderboardEndpoints
     {
         var group = app.MapGroup("/api/leaderboard").WithTags("Leaderboard");
 
-        group.MapGet("", GetLeaderboard);
+        group.MapGet("", GetLeaderboard).CacheOutput(SharedReadCachePolicy.Name);
+
+        // Literal segment, so it is matched ahead of anything parameterised in this group.
+        // Cached because every entry costs a blob existence probe.
+        group.MapGet("/weekly", GetWeeklyHallOfFame).CacheOutput(SharedReadCachePolicy.Name);
 
         return app;
+    }
+
+    /// <summary>Weeks of archive a single request may ask for.</summary>
+    private const int MaxWeeks = 12;
+
+    /// <summary>
+    /// The permanent weekly archive. Unlike the live board, these rows outlive the 24-hour
+    /// comic they came from — which is the entire point, and also why an entry can carry a
+    /// blob URL that no longer resolves.
+    /// </summary>
+    private static async Task<IResult> GetWeeklyHallOfFame(
+        HallOfFameRepository hallOfFame,
+        IBlobStorageService blobStorageService,
+        ILogger<HallOfFameRepository> logger,
+        TimeProvider timeProvider,
+        HttpContext http,
+        int weeks = 4,
+        int limit = 10,
+        string? region = null)
+    {
+        // Same sentinel as the live board: absent means every region's archive, merged per week.
+        var isGlobal = string.IsNullOrWhiteSpace(region);
+
+        if (!isGlobal && !RegionFormat.IsMatch(region!))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid region",
+                detail: $"Region '{region}' has invalid format. Must start with a 2-letter country code (e.g., US, GB, US-WA).");
+        }
+
+        if (weeks < 1 || weeks > MaxWeeks)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid weeks", detail: $"Weeks must be between 1 and {MaxWeeks}");
+        }
+
+        if (limit < 1 || limit > 50)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status400BadRequest,
+                title: "Invalid limit", detail: "Limit must be between 1 and 50");
+        }
+
+        var regionCode = isGlobal ? new RegionCode(string.Empty) : RegionCode.From(region);
+        var now = timeProvider.GetUtcNow();
+        var response = new HallOfFameResponse { Region = isGlobal ? "ALL" : region!.ToUpperInvariant() };
+
+        for (var offset = 0; offset < weeks; offset++)
+        {
+            var instant = now.AddDays(-7 * offset);
+            var weekKey = HallOfFameEntity.WeekKeyFor(instant);
+
+            var entities = isGlobal
+                ? await hallOfFame.GetWeekGlobalAsync(weekKey, limit, http.RequestAborted)
+                : await hallOfFame.GetWeekAsync(regionCode, weekKey, limit, http.RequestAborted);
+            if (entities.Count == 0)
+            {
+                // Empty weeks are skipped rather than rendered: a column of "nothing happened"
+                // headings is worse than a shorter archive.
+                continue;
+            }
+
+            var week = new HallOfFameWeekDto
+            {
+                WeekKey = weekKey,
+                WeekStart = HallOfFameEntity.WeekStartFor(weekKey)
+            };
+
+            var rank = 1;
+            foreach (var entity in entities)
+            {
+                var imageGone = await IsImageGoneAsync(blobStorageService, logger, entity.ComicBlobUrl);
+
+                week.Entries.Add(new HallOfFameEntryDto
+                {
+                    Rank = rank++,
+                    PlaceId = entity.PlaceId,
+                    RestaurantName = entity.RestaurantName,
+                    Address = entity.Address,
+                    Region = entity.Region,
+                    StrangenessScore = entity.StrangenessScore,
+                    ComicBlobUrl = imageGone
+                        ? entity.ComicBlobUrl
+                        : await FreshReadUrlAsync(blobStorageService, logger, entity.ComicBlobUrl),
+                    ArchivedAt = entity.ArchivedAt,
+                    ImageExpired = imageGone
+                });
+            }
+
+            response.Weeks.Add(week);
+        }
+
+        return Results.Ok(response);
+    }
+
+    /// <summary>
+    /// The archive row keeps the SAS it was written with, and an archive outlives a SAS by
+    /// design — so a surviving blob would render as a 403 broken image. Re-signed per read, as the
+    /// live board does, but not written back: the row is a record, and the output cache already
+    /// stops this costing a signature per view.
+    /// </summary>
+    private static async Task<string> FreshReadUrlAsync(IBlobStorageService blobStorageService, ILogger logger, string url)
+    {
+        if (!SasUrl.IsExpiringSoon(url))
+        {
+            return url;
+        }
+
+        try
+        {
+            return await blobStorageService.RefreshSasUrlAsync(url);
+        }
+        catch (Exception ex) when (ex is RequestFailedException or UriFormatException or InvalidOperationException)
+        {
+            logger.LogDebug(ex, "Could not re-sign archived comic artwork");
+            return url;
+        }
+    }
+
+    /// <summary>
+    /// Whether an archived comic's artwork is still there, so the client can render a score
+    /// card instead of a broken image. Only blobs this app uploaded can be probed; anything
+    /// else (including seeded test URLs) is assumed present.
+    /// </summary>
+    private static async Task<bool> IsImageGoneAsync(
+        IBlobStorageService blobStorageService,
+        ILogger logger,
+        string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return true;
+        }
+
+        try
+        {
+            if (!new Uri(url).AbsolutePath.Contains("/comics/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return !await blobStorageService.BlobExistsAsync(url);
+        }
+        catch (Exception ex) when (ex is UriFormatException or RequestFailedException)
+        {
+            // An unprobeable URL is not evidence of deletion; assume the image is fine and let
+            // the browser be the judge.
+            logger.LogDebug(ex, "Could not probe archived comic artwork");
+            return false;
+        }
     }
 
     private static async Task<IResult> GetLeaderboard(

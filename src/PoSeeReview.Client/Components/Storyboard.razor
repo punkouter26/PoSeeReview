@@ -1,0 +1,70 @@
+@* The wait, storyboarded.
+
+   Generation is ten seconds, and most of them are the image call. But the one chat call has
+   already written the captions by then — they arrive with the GeneratingArtwork phase — so the
+   panels can be framed and lettered while the artwork is still being painted. The wait shows
+   the strip's own words instead of a spinner.
+
+   Frames ink themselves in as the pipeline advances; until the captions exist a pencil works
+   the empty panel. The score is known too, and deliberately NOT shown: the count-up is the
+   payoff. A strange one only makes the frames tremble. *@
+
+<div class="storyboard" data-stage="@(Captions is { Count: > 0 } ? "lettering" : "sketching")"
+     data-uneasy="@((Score ?? 0) >= UneasyScore ? "true" : "false")">
+    @for (var panel = 0; panel < PanelCount; panel++)
+    {
+        var inked = ActiveStep >= panel;
+        <div class="storyboard-panel" data-inked="@(inked ? "true" : "false")">
+            <svg class="storyboard-frame" viewBox="0 0 100 60" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="97" height="57" rx="2" pathLength="100" />
+            </svg>
+
+            @if (CaptionAt(panel) is { } caption)
+            {
+                <p class="storyboard-caption">
+                    @foreach (var (word, index) in Words(caption, panel))
+                    {
+                        <span class="storyboard-word" style="--i: @index">@word</span>
+                    }
+                </p>
+            }
+            else
+            {
+                <span class="storyboard-pencil" aria-hidden="true">✏️</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Index into the page's stepper; a panel's frame inks once the pipeline reaches it.</summary>
+    [Parameter] public int ActiveStep { get; set; }
+
+    /// <summary>Null until the analysis has produced them.</summary>
+    [Parameter] public IReadOnlyList<string>? Captions { get; set; }
+
+    [Parameter] public int? Score { get; set; }
+
+    private const int UneasyScore = 80;
+
+    /// <summary>Two until the captions say otherwise: two stacked panels is the server's cap.</summary>
+    private int PanelCount => Math.Clamp(Captions?.Count ?? 2, 1, 4);
+
+    private string? CaptionAt(int panel) =>
+        Captions is { } c && panel < c.Count && !string.IsNullOrWhiteSpace(c[panel]) ? c[panel] : null;
+
+    /// <summary>
+    /// Words with a running index across ALL panels, so panel two starts lettering where panel
+    /// one finished rather than both typing at once.
+    /// </summary>
+    private IEnumerable<(string Word, int Index)> Words(string caption, int panel)
+    {
+        var offset = 0;
+        for (var p = 0; p < panel; p++)
+        {
+            offset += CaptionAt(p)?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length ?? 0;
+        }
+
+        return caption.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select((w, i) => (w, offset + i));
+    }
+}

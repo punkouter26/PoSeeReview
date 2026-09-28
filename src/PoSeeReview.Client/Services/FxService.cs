@@ -48,16 +48,6 @@ public enum FxSeverity
     Remove = 2
 }
 
-/// <summary>Which seeding the Verlet solver uses. See <c>js/physics.js</c>.</summary>
-public enum FxInkMode
-{
-    /// <summary>Drops fall in from above and pool at the bottom. Follows the burst.</summary>
-    Ink = 0,
-
-    /// <summary>Pieces fly out from an origin and fall. Reserved for a high score.</summary>
-    Shatter = 1
-}
-
 /// <param name="Supported">Whether the underlying API exists on this device at all.</param>
 /// <param name="Enabled">Whether it is actually active right now.</param>
 /// <param name="Explicit">The user pinned it, rather than inheriting the audio preference.</param>
@@ -100,15 +90,6 @@ public readonly record struct FxFrameStats(
 /// <param name="ContextState">running / suspended / closed.</param>
 public readonly record struct FxAudioLatency(
     double BaseMs, double OutputMs, double SampleRate, string? ContextState);
-
-/// <summary>
-/// One card on the 3D shelf. Deliberately just rank and score — the shelf renders shapes, not
-/// text, so passing restaurant names or blob URLs across interop would ship data the renderer
-/// cannot use and would put third-party review content into a decorative layer for no reason.
-/// </summary>
-/// <param name="Rank">1-based board position; drives colour and how high the card floats.</param>
-/// <param name="Score">Strangeness score, 0-100.</param>
-public readonly record struct FxShelfEntry(int Rank, double Score);
 
 /// <summary>
 /// One voice of the leaderboard chord.
@@ -224,14 +205,6 @@ public sealed class FxService(IJSRuntime js)
         SafeAsync("poseeFx.stats", default(FxFrameStats));
 
     public Task ResetFrameStatsAsync() => SafeVoidAsync("poseeFx.resetStats");
-
-    /// <summary>
-    /// Shows or hides the live performance overlay. Also bound to Ctrl+Shift+F and <c>?fx=debug</c>
-    /// in JS, so this is a convenience for the diagnostics page rather than the only way in.
-    /// </summary>
-    public Task<bool> TogglePerfHudAsync() => SafeAsync("poseeFx.togglePerfHud", false);
-
-    public Task<bool> IsPerfHudVisibleAsync() => SafeAsync("poseeFx.perfHudVisible", false);
 
     // ── Audio ────────────────────────────────────────────────────────────────────────────
 
@@ -369,8 +342,13 @@ public sealed class FxService(IJSRuntime js)
     /// exact thing the source-generated context exists to avoid on a trim-analyzed client.
     /// Shares speechSynthesis with narration, so <see cref="StopNarrationAsync"/> stops it too —
     /// one queue, one cancel.
+    /// <para>
+    /// Each line pops a speech bubble over <paramref name="strip"/> as it starts speaking, so
+    /// the voices have faces. The bubbles are cleared by the same stop.
+    /// </para>
     /// </summary>
-    public Task<bool> PlaySkitJsonAsync(string skitJson) => SafeAsync("poseeFx.playSkit", false, skitJson);
+    public Task<bool> PlaySkitJsonAsync(string skitJson, ElementReference strip) =>
+        SafeAsync("poseeFx.playSkit", false, skitJson, strip);
 
     public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
 
@@ -386,25 +364,6 @@ public sealed class FxService(IJSRuntime js)
     public Task<bool> SetHapticsEnabledAsync(bool enabled) =>
         SafeAsync("poseeFx.setHapticsEnabled", false, enabled);
 
-    // ── Ambient bed ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Starts the generative bed, if audio is on and unlocked and the user has not opted out.
-    /// Safe to call repeatedly — a second call retunes the running node rather than stacking a
-    /// second one, which is what a route re-entry or a regenerate should do.
-    /// </summary>
-    public Task<bool> StartAmbientAsync(int score) => SafeAsync("poseeFx.startAmbient", false, score);
-
-    public Task SetAmbientScoreAsync(int score) => SafeVoidAsync("poseeFx.setAmbientScore", score);
-
-    public Task StopAmbientAsync() => SafeVoidAsync("poseeFx.stopAmbient");
-
-    public Task<FxToggleState> GetAmbientAsync() =>
-        SafeAsync("poseeFx.ambientDescribe", default(FxToggleState));
-
-    public Task<bool> SetAmbientEnabledAsync(bool enabled) =>
-        SafeAsync("poseeFx.setAmbientEnabled", false, enabled);
-
     // ── Effects. Handles are opaque; 0 means "not running". ──────────────────────────────
 
     public Task<int> StartGradientAsync(ElementReference canvas, int score) =>
@@ -417,19 +376,11 @@ public sealed class FxService(IJSRuntime js)
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopGradient", handle);
 
     /// <summary>
-    /// Dresses the app in the comic's own colours — the shader backdrop eases to them, and three
-    /// CSS variables carry them to the score ring, the reaction chips and the card rim.
+    /// Dresses the shader backdrop in the comic's own colours.
     /// <para>
     /// The palette is sampled on the SERVER, off the finished image bytes. It cannot be sampled
     /// here: the comic blob is served without CORS headers, so a canvas that has drawn it is
-    /// tainted and cannot be read back — the same constraint that keeps the comic post-process
-    /// from attaching for most visitors.
-    /// </para>
-    /// <para>
-    /// The tint only ever reaches accents, never a text colour or a text background. Every
-    /// readable pair in this app is measured against WCAG by ColorContrastTests parsing the real
-    /// tokens out of app.css, and a colour invented at runtime by an image model is precisely
-    /// what that test cannot cover.
+    /// tainted and cannot be read back.
     /// </para>
     /// </summary>
     /// <returns>Whether a palette was actually applied. False for a comic drawn before the
@@ -447,105 +398,23 @@ public sealed class FxService(IJSRuntime js)
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.clearComicPalette", handle);
 
     /// <summary>
-    /// Turns the canvas's PARENT element into a real refractive glass pane.
-    /// <para>
-    /// What this adds over the CSS <c>.glass</c> material is what a blur radius cannot express:
-    /// the backdrop is genuinely bent at the pane's edges, the colour splits across that bend,
-    /// and a highlight travels the face on the same clock as the backdrop's own lights.
-    /// </para>
-    /// <para>
-    /// It works only because the backdrop is PROCEDURAL. No browser exposes composited DOM to a
-    /// shader, so a pane cannot read what is behind it — but it can recompute it, from the same
-    /// GLSL the full-screen pass uses, at whatever coordinate the refraction asks for. A pane
-    /// over an arbitrary image could not do this; the comic blob is cross-origin and tainting,
-    /// which is the same wall the comic post-process hits.
-    /// </para>
-    /// <para>
-    /// A zero handle is the ordinary case below the Full tier, and the CSS material underneath is
-    /// a complete answer on its own — prefer <see cref="Components.GlassPane"/> over calling this
-    /// directly, since it owns the canvas and the teardown.
-    /// </para>
-    /// </summary>
-    public Task<int> StartGlassAsync(ElementReference canvas, double thickness, double tint, double sheen) =>
-        SafeAsync("poseeFx.startGlass", 0, canvas, thickness, tint, sheen);
-
-    /// <summary>
-    /// Tears a pane down. MUST be called: the JS side flags the parent element so app.css can
-    /// stand the CSS blur down, and a pane abandoned with that flag set leaves the card with no
-    /// material at all — worse than either one alone.
-    /// </summary>
-    public Task StopGlassAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopGlass", handle);
-
-    /// <summary>Live pane count, for the diagnostics panel. Creep here is a leak.</summary>
-    public Task<int> GetGlassPaneCountAsync() => SafeAsync("poseeFx.glassPanes", 0);
-
-    /// <summary>
     /// Viewport width, for converting a pointer coordinate into a fraction of a full-width
     /// canvas. Falls back to 1, which every caller clamps against — a bad width places an effect
     /// in the wrong spot, never off the canvas.
     /// </summary>
     public Task<double> GetViewportWidthAsync() => SafeAsync("poseeFx.viewportWidth", 1d);
 
-    public Task<int> AttachComicFxAsync(ElementReference canvas, ElementReference image) =>
-        SafeAsync("poseeFx.attachComicFx", 0, canvas, image);
-
-    public Task DetachComicFxAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.detachComicFx", handle);
-
-    /// <summary>
-    /// An expanding ring of displacement and chromatic split through the panel, fired when the
-    /// score lands. Origin is 0..1 across and down the panel; the score ring sits above the
-    /// strip, so callers pass the top edge rather than the centre.
-    /// <para>
-    /// Requires the post-process to have attached, which it only does at the Full tier and only
-    /// when the blob is CORS-readable — so a zero handle is the ordinary case, not a failure.
-    /// </para>
-    /// </summary>
-    public Task ComicShockwaveAsync(int handle, int score, double originX, double originY) =>
-        handle == 0 ? Task.CompletedTask
-                    : SafeVoidAsync("poseeFx.comicShockwave", handle, score, originX, originY);
-
     // ── Ink development ──────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Develops the comic onto the page over about 1.4 seconds instead of popping it into the
     /// layout in one frame — the single frame that was carrying the payoff of a ten-second wait.
-    /// <para>
-    /// Two layers. A CSS mask on the container, which always runs above the Off tier and is what
-    /// nearly everyone sees; and the shader's ink-threshold boundary on top of it when
-    /// <paramref name="comicFxHandle"/> is non-zero. Pass 0 and the CSS mask runs alone.
-    /// </para>
+    /// A CSS mask on the container, so it runs above the Off tier with no WebGL at all.
     /// </summary>
-    /// <param name="container">The .comic-strip-container: it carries the mask over image and canvas together.</param>
+    /// <param name="container">The .comic-strip-container: the mask covers everything inside it.</param>
     /// <param name="bands">Panels to develop in sequence. Two matches the server's cap.</param>
-    public Task<int> StartComicRevealAsync(ElementReference container, int bands, int comicFxHandle) =>
-        SafeAsync("poseeFx.startComicReveal", 0, container, bands, comicFxHandle);
-
-    /// <summary>
-    /// The reveal, preferring a simulated wet-ink boundary over the CSS mask.
-    /// <para>
-    /// These are two different effects, not two qualities of one. The CSS mask is a function of
-    /// POSITION — the edge looks the way it does because of where it is. The field is a function
-    /// of HISTORY: ink wicks along the paper's grain, runs ahead of itself where the sheet is
-    /// thirsty, and pools at the boundary, because every cell reads what its neighbours did on
-    /// the previous step. State per cell per frame is what a WebGPU compute pass is for, and it
-    /// is the second effect in this app to earn one.
-    /// </para>
-    /// <para>
-    /// The two are mutually exclusive and the JS side enforces it: the field covers the comic in
-    /// paper and eats the cover away, so running the mask as well would develop the artwork twice
-    /// with a seam where the boundaries disagreed.
-    /// </para>
-    /// <para>
-    /// Falls through to the CSS mask without WebGPU or below the Full tier. Never read that as
-    /// degraded — it is what nearly everyone sees, and it is a complete effect.
-    /// </para>
-    /// </summary>
-    /// <param name="canvas">Overlay canvas sized to the strip, above the image, below the reactions.</param>
-    public Task<int> StartComicRevealFieldAsync(ElementReference container, ElementReference canvas,
-        int bands, int comicFxHandle) =>
-        SafeAsync("poseeFx.startComicRevealField", 0, container, canvas, bands, comicFxHandle);
+    public Task<int> StartComicRevealAsync(ElementReference container, int bands) =>
+        SafeAsync("poseeFx.startComicReveal", 0, container, bands);
 
     /// <summary>
     /// Ends a reveal with the comic fully visible. MUST be called on teardown: the mask only
@@ -573,90 +442,77 @@ public sealed class FxService(IJSRuntime js)
     public Task StopPanelScrubAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopPanelScrub", handle);
 
-    /// <summary>
-    /// Fires the ink burst. Prefers the WebGPU compute backend, where the drops decelerate, hit
-    /// the bottom of the panel and settle; falls back to the stateless WebGL2 sim, which fades
-    /// out mid-air because a vertex-shader simulation cannot know the floor exists.
-    /// </summary>
+    /// <summary>Fires the WebGL2 ink burst, sized to the score. Full tier only.</summary>
     public Task<int> BurstParticlesAsync(ElementReference canvas, int score) =>
         SafeAsync("poseeFx.burstParticles", 0, canvas, score);
 
     public Task StopParticlesAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopParticles", handle);
 
-    // ── Physics ──────────────────────────────────────────────────────────────────────────
+    // ── Generation wait ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Where the ink ends up: a Verlet pile that collides with itself and the bottom of the
-    /// frame. Lazy-loaded on first use and Full tier only, on the same terms the 3D shelf is —
-    /// no library, one route, and the real element stays underneath.
+    /// One pipeline phase landed: its blip, plus one more sustained voice stacked on the riser,
+    /// so ten seconds of waiting builds instead of beeping. <paramref name="score"/> is 0 until
+    /// the analysis has produced one; a strange score detunes the stack.
     /// </summary>
-    /// <param name="score">Scales the drop count and how hard they are thrown.</param>
-    /// <param name="originX">0..1 across the canvas. Only used by <see cref="FxInkMode.Shatter"/>.</param>
-    /// <param name="originY">0..1 down the canvas. Only used by <see cref="FxInkMode.Shatter"/>.</param>
-    public Task<int> SettleInkAsync(ElementReference canvas, int score, FxInkMode mode,
-        double originX = 0.5, double originY = 0.5) =>
-        SafeAsync("poseeFx.settleInk", 0, canvas, score,
-            mode == FxInkMode.Shatter ? "shatter" : "ink", originX, originY);
+    public Task PlayRiserStepAsync(int index, int total, int score) =>
+        SafeVoidAsync("poseeFx.riserStep", index, total, score);
 
-    public Task StopInkAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopInk", handle);
+    /// <summary>Lets the riser ring out as the comic arrives. The score reveal follows it.</summary>
+    public Task ResolveRiserAsync() => SafeVoidAsync("poseeFx.riserResolve");
+
+    /// <summary>Cuts the riser. MUST be called on failure and teardown — it is sustained.</summary>
+    public Task StopRiserAsync() => SafeVoidAsync("poseeFx.riserStop");
+
+    // ── The comic as an object ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Opens a persistent reaction pile over the comic. Starts empty; bodies arrive from
-    /// <see cref="ThrowReactionAsync"/> as the user taps.
-    /// <para>
-    /// Separate from <see cref="SettleInkAsync"/> on purpose. That is a one-shot that seeds
-    /// itself and tears itself down after about three seconds; this is a surface that lives for
-    /// the page and accumulates. Stop it with <see cref="StopInkAsync"/> — the handles are the
-    /// same kind — and stop it you must, or the solver keeps a frame task alive after the route
-    /// has gone.
-    /// </para>
+    /// Attaches the strip's pointer surface: loupe support always, and holographic foil that
+    /// follows the pointer (or the phone's tilt) when <paramref name="holo"/> is set. All of it
+    /// is CSS drawing the comic's own URL, so none of it reads pixels and the cross-origin blob
+    /// is no obstacle.
     /// </summary>
-    public Task<int> StartReactionPileAsync(ElementReference canvas) =>
-        SafeAsync("poseeFx.startPile", 0, canvas);
+    public Task<int> StartComicSurfaceAsync(ElementReference container, ElementReference image, bool holo) =>
+        SafeAsync("poseeFx.startComicSurface", 0, container, image, holo);
+
+    /// <summary>Loupe on/off. Call from a click: turning it on also starts its hum.</summary>
+    public Task<bool> ToggleLoupeAsync(int handle) =>
+        handle == 0 ? Task.FromResult(false) : SafeAsync("poseeFx.toggleLoupe", false, handle);
+
+    /// <summary>A displacement ripple through the artwork, as deep as the score is strange.</summary>
+    public Task WobbleComicAsync(int handle, int score) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.wobbleComic", handle, score);
+
+    /// <summary>MUST be called on teardown: the loupe hum is sustained.</summary>
+    public Task StopComicSurfaceAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopComicSurface", handle);
 
     /// <summary>
-    /// Throws one reaction onto the pile: a handful of emoji bodies that arc off the chip, tumble
-    /// down the comic and land unevenly on whatever is already there.
-    /// <para>
-    /// This is the thing a tally cannot say. A count next to a glyph reports how many people
-    /// pressed it and says nothing about the fact that you just did — and a reaction is the only
-    /// thing a viewer can give a comic that expires in 24 hours.
-    /// </para>
+    /// The page misbehaves for an absurd score: the nav twitches, the title splits, the pointer
+    /// leaves ink, and a detuned drone sits under everything. MUST be cleared on teardown — it is
+    /// stamped on the document element and would follow the user to the next route.
     /// </summary>
-    /// <param name="originX">0..1 across the canvas — where the tapped chip is.</param>
-    /// <param name="originY">0..1 down the canvas. Near 0, so the bodies have room to fall.</param>
-    /// <param name="clientX">Viewport x of the tap, so the click is panned to where it happened.</param>
-    public Task<bool> ThrowReactionAsync(int handle, string glyph, double originX, double originY, double clientX) =>
-        handle == 0 ? Task.FromResult(false)
-                    : SafeAsync("poseeFx.throwReaction", false, handle, glyph, originX, originY, clientX);
+    public Task SetWeirdAsync(int score) => SafeVoidAsync("poseeFx.setWeird", score);
 
-    public Task<int> StartLoadingRingAsync(ElementReference canvas, double progress) =>
-        SafeAsync("poseeFx.startLoadingRing", 0, canvas, progress);
+    public Task ClearWeirdAsync() => SafeVoidAsync("poseeFx.clearWeird");
 
-    public Task SetLoadingRingProgressAsync(int handle, double progress) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.setLoadingRingProgress", handle, progress);
+    /// <summary>A comic-book sound word ("POW!") stamped at a viewport point, with its thwack.</summary>
+    public Task StampAsync(string word, double clientX, double clientY) =>
+        SafeVoidAsync("poseeFx.stamp", word, clientX, clientY);
 
-    public Task StopLoadingRingAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopLoadingRing", handle);
+    /// <summary>The same stamp, centred on an element.</summary>
+    public Task StampAsync(string word, ElementReference element) =>
+        SafeVoidAsync("poseeFx.stamp", word, element);
 
-    // ── Hall of Fame shelf ───────────────────────────────────────────────────────────────
+    // ── Leaderboard ──────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Starts the 3D shelf behind the leaderboard list. The module is fetched on demand, so this
-    /// is the one effect whose first call pays a network cost — deliberately, to keep a renderer
-    /// off the first-load path of every other route.
-    /// <para>
-    /// The DOM list underneath must stay exactly where it is. It is the only keyboard-reachable
-    /// and screen-reader-legible form of the leaderboard; this canvas is decoration over it.
-    /// </para>
+    /// Slides every row carrying <c>data-delta</c> from where it sat last visit to where it sits
+    /// now, each with its own panned climb or fall. Call after the rows have rendered.
     /// </summary>
-    public Task<int> StartShelfAsync(ElementReference canvas, IReadOnlyList<FxShelfEntry> entries) =>
-        SafeAsync("poseeFx.startShelf", 0, canvas, entries);
-
-    public Task StopShelfAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopShelf", handle);
+    public Task AnimateBoardMovesAsync(ElementReference container) =>
+        SafeVoidAsync("poseeFx.animateBoardMoves", container);
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
 

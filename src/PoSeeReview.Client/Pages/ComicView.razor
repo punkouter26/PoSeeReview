@@ -10,76 +10,81 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 @inject AnalyticsService Analytics
+@inject ComicHistoryService History
 
 <PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
 
 <div class="comic-view">
     @if (_isLoading)
     {
+        @* A generation shows the step it is on over the storyboard, which is itself the progress
+           display — frames ink in as the pipeline advances. A cache read is a plain spinner. *@
         <LoadingIndicator Message="Reading the weird stuff..."
-                          Steps="@_stepDisplay"
+                          Steps="@(_isGenerating ? _stepDisplay : null)"
                           ActiveStep="@_activeStepIndex" />
+
+        @if (_isGenerating)
+        {
+            <Storyboard ActiveStep="@_activeStepIndex" Captions="@_storyCaptions" Score="@_storyScore" />
+        }
     }
     else if (_error != null)
     {
-        <RadzenCard class="error-container glass">
-            <div class="error-icon">🤷</div>
-            <h1>@_errorTitle</h1>
-            <p class="error-message">@_error</p>
-            <div class="error-actions">
+        <StateCard Class="error-container" Icon="🤷" Title="@_errorTitle" Heading1="true" Alert="true">
+            <ChildContent>@_error</ChildContent>
+            <Actions>
                 @* A 429 that says "wait about a minute" needs somewhere to wait a minute and try
                    again. Only offered when a retry could plausibly end differently — a restaurant
                    that does not exist or reviews that are too ordinary will not change. *@
                 @if (_canRetry)
                 {
-                    <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary"
-                                  Disabled="@(_budget is { CanGenerate: false })"
-                                  Click="@(_ => RetryAsync())" data-testid="comic-retry-btn">
-                        Try Again
-                    </RadzenButton>
+                    <button type="button" class="btn btn-primary"
+                            disabled="@(_budget is { CanGenerate: false })"
+                            @onclick="RetryAsync" data-testid="comic-retry-btn">
+                        Try again
+                    </button>
                 }
-                <RadzenButton ButtonStyle="@(_canRetry ? ButtonStyle.Base : ButtonStyle.Primary)"
-                              class="@(_canRetry ? "btn btn-secondary" : "btn btn-primary")"
-                              Click="@(_ => GoBack())">
+                <button type="button" class="btn @(_canRetry ? "btn-secondary" : "btn-primary")" @onclick="GoBack">
                     &#8592; @BackLabel
-                </RadzenButton>
-            </div>
-        </RadzenCard>
+                </button>
+            </Actions>
+        </StateCard>
     }
     else if (_needsGeneration)
     {
-        <RadzenCard class="error-container glass">
-            <div class="error-icon">🎨</div>
-            <h1>No Comic Here Yet</h1>
-            <p class="error-message">This place doesn't have an active comic — it may have expired. Generating a fresh one takes about 10 seconds.</p>
-            @* Stated before the tap, not after a 429. The generate button is the one control in
-               the app that spends money, so the cost of pressing it should be visible first. *@
-            @if (_budget is { CanGenerate: false })
-            {
-                <p class="budget-note" role="status">@BudgetBlockedMessage</p>
-            }
-            else if (_budget is { Remaining: <= 3 } budget)
-            {
-                <p class="budget-note" role="status">@budget.Remaining comic@(budget.Remaining == 1 ? "" : "s") left today.</p>
-            }
-            <div class="error-actions">
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" class="btn btn-primary"
-                              Disabled="@(_budget is { CanGenerate: false })"
-                              Click="@(_ => GenerateFromPromptAsync())">
-                    Generate Comic
-                </RadzenButton>
-                <RadzenButton ButtonStyle="ButtonStyle.Base" class="btn btn-secondary" Click="@(_ => GoBack())">
+        <StateCard Class="error-container" Icon="🎨" Title="No comic here yet" Heading1="true">
+            <ChildContent>
+                This place doesn't have an active comic — it may have expired. Drawing a fresh one
+                takes about 10 seconds.
+                @* Stated before the tap, not after a 429. The generate button is the one control in
+                   the app that spends money, so the cost of pressing it should be visible first. *@
+                @if (_budget is { CanGenerate: false })
+                {
+                    <p class="budget-note" role="status">@BudgetBlockedMessage</p>
+                }
+                else if (_budget is { Remaining: <= 3 } budget)
+                {
+                    <p class="budget-note" role="status">@budget.Remaining comic@(budget.Remaining == 1 ? "" : "s") left today.</p>
+                }
+            </ChildContent>
+            <Actions>
+                <button type="button" class="btn btn-primary"
+                        disabled="@(_budget is { CanGenerate: false })"
+                        @onclick="GenerateFromPromptAsync">
+                    Generate comic
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="GoBack">
                     &#8592; @BackLabel
-                </RadzenButton>
-            </div>
-        </RadzenCard>
+                </button>
+            </Actions>
+        </StateCard>
     }
     else if (_comic != null)
     {
         <RadzenCard class="comic-container glass">
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
-                <div class="strangeness-ring-wrap">
+                <div class="strangeness-ring-wrap" @ref="_ringWrap">
                     <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                             <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -105,14 +110,8 @@
                         <div class="sweep-halo ring-halo" aria-hidden="true"></div>
                     }
 
-                    @* Ink-splatter burst (FX #4), fired when the count lands. Sized to the score. *@
+                    @* Ink-splatter burst, fired when the count lands. Sized to the score. *@
                     <canvas @ref="_burstCanvas" class="fx-overlay fx-burst-canvas" aria-hidden="true"></canvas>
-
-                    @* And, only for a genuinely bizarre score, the ring breaking apart. A
-                       separate 2D canvas because the solver is a CPU Verlet pile and the burst
-                       above is a GPU surface owned by the pooled atlas — the two share a
-                       position and nothing else. *@
-                    <canvas @ref="_shatterCanvas" class="fx-overlay fx-shatter-canvas" aria-hidden="true"></canvas>
                 </div>
             </div>
 
@@ -121,52 +120,46 @@
             <ComicStrip @ref="_strip"
                         ImageUrl="@ComicImageUrl.For(_comic.BlobUrl, _comic.PlaceId)"
                         RestaurantName="@_comic.RestaurantName"
+                        Captions="@_comic.Captions"
                         PlaceId="@_comic.PlaceId"
-                        StrangenessScore="@_comic.StrangenessScore" />
+                        StrangenessScore="@_comic.StrangenessScore"
+                        Holo="@(_comic.StrangenessScore >= HoloThreshold)"
+                        Develop="@_freshlyDrawn" />
 
-            <ComicActions Comic="_comic"
-                          OnReport="() => _isReporting = true" />
-
-            <div class="comic-narrative-block">
-                <p class="comic-narrative">@_comic.Narrative</p>
-
+            @* One action bar. Listening lives in it rather than beside the narrative, and Report
+               lives only in the disclosure line below — it used to be both a flag button here and
+               that link. *@
+            <ComicActions Comic="_comic">
                 @* Reading the joke aloud is an accessibility win before it is a flourish: the
-                   narrative is the punchline, and it currently sits as plain text under an image
-                   a screen reader can only describe as "comic strip". Rendered only where
-                   speechSynthesis actually exists — a button that does nothing is worse than no
-                   button. *@
+                   narrative is the punchline, and a screen reader can only describe the image as
+                   "comic strip". Rendered only where speechSynthesis exists. *@
                 @if (_canNarrate)
                 {
-                    <button type="button" class="btn btn-icon narrate-btn"
+                    <button type="button" class="btn btn-icon"
                             @onclick="ToggleNarrationAsync"
                             title="@(_isNarrating ? "Stop reading" : "Read this aloud")"
                             aria-label="@(_isNarrating ? "Stop reading the narrative aloud" : "Read the narrative aloud")">
                         <span aria-hidden="true">@(_isNarrating ? "■" : "🔊")</span>
                     </button>
-
-                    @* The strip's own invented conversation: the characters talking about what
-                       is happening to them. First tap asks the server to write it (a chat call,
-                       so it rides the same rate limiter as generation); every later tap is
-                       served from the comic row. Shares speechSynthesis with narration, so
-                       stopping either stops both. *@
-                    <button type="button" class="btn btn-icon narrate-btn skit-btn"
+                    @* The strip's own invented conversation. First tap asks the server to write it
+                       (a chat call, so it rides the generation rate limiter); later taps are served
+                       from the comic row. Shares speechSynthesis with narration. *@
+                    <button type="button" class="btn btn-icon"
                             disabled="@_isSkitLoading"
                             @onclick="ToggleSkitAsync"
                             title="@SkitButtonTitle"
                             aria-label="@(_isSkitPlaying ? "Stop the conversation" : "Play the strip's conversation")">
                         <span aria-hidden="true">@(_isSkitPlaying ? "■" : _isSkitLoading ? "…" : "🎭")</span>
                     </button>
-
-                    @* A skit the server could not stage is otherwise a button that does
-                       nothing, which reads as broken rather than as refused. One muted line,
-                       cleared by the next successful play. *@
-                    @if (_skitStatus is not null)
-                    {
-                        <span class="skit-status" role="status">@_skitStatus</span>
-                    }
                 }
-            </div>
-
+            </ComicActions>
+            @* A skit the server could not stage is otherwise a button that does nothing, which
+               reads as broken rather than as refused. One muted line, cleared by the next play. *@
+            @if (_skitStatus is not null)
+            {
+                <p class="skit-status" role="status">@_skitStatus</p>
+            }
+            <p class="comic-narrative">@_comic.Narrative</p>
             <p class="comic-disclosure">
                 Generated by AI from public reviews. It's a joke, not a review —
                 <button type="button" class="link-button" @onclick="() => _isReporting = true">report a problem</button>.
@@ -239,22 +232,36 @@
     private int _activeStepIndex;
 
     private ElementReference _burstCanvas;
-    private ElementReference _shatterCanvas;
+    private ElementReference _ringWrap;
     private bool _burstFired;
     private int _burstHandle;
-    private int _shatterHandle;
+
+    // Rarity, in three steps. High on purpose, and each rarer than the last: an effect that
+    // fires on every comic stops meaning anything, and the point is that someone who has seen a
+    // dozen comics knows at a glance that this one is different.
+
+    /// <summary>The strip gets holographic foil.</summary>
+    private const int HoloThreshold = 80;
+
+    /// <summary>The page itself starts misbehaving. Mirrors comic-surface.js WEIRD_THRESHOLD.</summary>
+    private const int WeirdThreshold = 85;
+
+    /// <summary>A sound word is stamped over the ring as the count lands.</summary>
+    private const int StampThreshold = 90;
+
+    /// <summary>What the pipeline has already produced while the artwork is still painting.</summary>
+    private IReadOnlyList<string>? _storyCaptions;
+    private int? _storyScore;
 
     /// <summary>
-    /// Score at which the ring breaks apart rather than merely bursting. High on purpose: a ring
-    /// that shatters on every comic stops meaning anything, and the point of the threshold is
-    /// that a user who has seen a dozen comics knows immediately that this one is different.
+    /// The comic was drawn during this visit, so it develops in rather than just appearing. A
+    /// comic opened from a list morphs in from its card instead, and a reveal on top would fight it.
     /// </summary>
-    private const int ShatterThreshold = 90;
+    private bool _freshlyDrawn;
 
     private ComicStrip? _strip;
     private bool _canNarrate;
     private bool _isNarrating;
-    private bool _ambientStarted;
     private bool _isSkitPlaying;
     private bool _isSkitLoading;
     private string? _skitStatus;
@@ -369,12 +376,11 @@
             return;
         }
 
-        _canNarrate = await Fx.CanNarrateAsync();
+        // Never throws: the history is a convenience and a full or blocked store must not
+        // cost the user the comic they just waited for.
+        await History.RecordAsync(_comic);
 
-        // The bed only actually starts if audio is enabled AND already unlocked by a gesture, so
-        // on a first visit this is a no-op and the reveal's own cues unlock the context. That is
-        // the correct order: a drone is not what should greet someone who has not tapped yet.
-        _ambientStarted = await Fx.StartAmbientAsync(_comic.StrangenessScore);
+        _canNarrate = await Fx.CanNarrateAsync();
     }
 
     /// <summary>
@@ -496,10 +502,9 @@
             await _strip.PlayScoreImpactAsync(score);
         }
 
-        if (score >= ShatterThreshold)
+        if (score >= StampThreshold)
         {
-            await Fx.StopInkAsync(_shatterHandle);
-            _shatterHandle = await Fx.SettleInkAsync(_shatterCanvas, score, FxInkMode.Shatter);
+            await Fx.StampAsync("WHOA!", _ringWrap);
         }
 
         // The restaurant's own motif, seeded from its place id. Deliberately after the chord:
@@ -507,15 +512,9 @@
         // like, and playing them together makes one muddle instead of two statements.
         await Fx.PlaySignatureAsync(_comic?.PlaceId ?? PlaceId, score);
 
-        // Retunes the bed if it is running, and starts it if the reveal's own cues were what
-        // unlocked the AudioContext — which on a first visit they are.
-        if (_ambientStarted)
+        if (score >= WeirdThreshold)
         {
-            await Fx.SetAmbientScoreAsync(score);
-        }
-        else
-        {
-            _ambientStarted = await Fx.StartAmbientAsync(score);
+            await Fx.SetWeirdAsync(score);
         }
 
         // Tint the app-wide backdrop to this comic (FX #2).
@@ -580,7 +579,7 @@
             {
                 await Fx.UnlockAudioAsync();
                 var json = JsonSerializer.Serialize(skit, AppJsonContext.Default.ComicAudioSkit);
-                _isSkitPlaying = await Fx.PlaySkitJsonAsync(json);
+                _isSkitPlaying = _strip is not null && await Fx.PlaySkitJsonAsync(json, _strip.Container);
                 _skitStatus = _isSkitPlaying ? null : "Couldn't start speech — check the browser's sound settings.";
             }
             else
@@ -629,13 +628,14 @@
         // unless cleared — the leaderboard would otherwise wear the last comic's palette.
         Layout.MainLayout.RaisePaletteChanged([]);
 
-        // The bed and the narration both outlive this component unless they are stopped: the
-        // worklet node is attached to the app-wide AudioContext, and speechSynthesis is a
-        // browser-global queue. Either one would follow the user to the next route.
+        // Everything sustained or document-level outlives this component unless stopped: the
+        // riser and the drone are live voices on the app-wide AudioContext, speechSynthesis is a
+        // browser-global queue, and the weirdness is stamped on <html>. Each would follow the
+        // user to the next route.
         await Fx.StopNarrationAsync();
-        await Fx.StopAmbientAsync();
+        await Fx.StopRiserAsync();
+        await Fx.ClearWeirdAsync();
         await Fx.StopParticlesAsync(_burstHandle);
-        await Fx.StopInkAsync(_shatterHandle);
     }
 
     private async Task LoadComic(bool forceRegenerate)
@@ -645,6 +645,8 @@
         _error = null;
         _canRetry = false;
         _activeStepIndex = 0;
+        _storyCaptions = null;
+        _storyScore = null;
         StateHasChanged();
 
         try
@@ -656,14 +658,31 @@
             // SynchronizationContext here and would queue each phase to the thread pool — the
             // same race the server moved onto a Channel to avoid. The stream is read on the
             // renderer's context, so the callback already runs where StateHasChanged is legal.
-            var progress = new InlineProgress<ComicGenerationPhase>(phase =>
+            var progress = new InlineProgress<ComicGenerationEventDto>(evt =>
             {
-                var index = Array.FindIndex(_comicSteps, s => s.Phase == phase);
-                if (index >= 0 && !_disposed)
+                var index = Array.FindIndex(_comicSteps, s => s.Phase == evt.Phase);
+                if (index < 0 || _disposed)
                 {
-                    _activeStepIndex = index;
-                    StateHasChanged();
+                    return;
                 }
+
+                _activeStepIndex = index;
+                if (evt.Captions is { Count: > 0 })
+                {
+                    _storyCaptions = evt.Captions;
+                }
+
+                if (evt.Score is { } early)
+                {
+                    // The backdrop starts leaning toward this comic's strangeness while it is
+                    // still being drawn. The number itself stays hidden until the count-up.
+                    _storyScore = early;
+                    Layout.MainLayout.RaiseScoreChanged(early);
+                }
+
+                // Fire-and-forget is safe: every Fx call swallows its own failures.
+                _ = Fx.PlayRiserStepAsync(index, _comicSteps.Length, _storyScore ?? 0);
+                StateHasChanged();
             });
 
             Analytics.TrackGenerationStarted();
@@ -679,6 +698,8 @@
 
             Analytics.TrackGenerationCompleted(fromCache: _comic.IsCached);
 
+            _freshlyDrawn = !_comic.IsCached;
+            await Fx.ResolveRiserAsync();
             await OnComicReadyAsync();
             StartScoreReveal();
         }
@@ -738,6 +759,7 @@
             {
                 if (_error is not null)
                 {
+                    await Fx.StopRiserAsync();
                     await Fx.PlayErrorAsync();
                 }
                 StateHasChanged();

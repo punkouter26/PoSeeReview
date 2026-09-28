@@ -64,22 +64,22 @@ internal static class TelemetryServiceCollectionExtensions
                     .AddSource("PoSeeReview.*"))
                 .WithMetrics(metrics =>
                 {
+                    // Cost cap: the ASP.NET Core hosting/Kestrel and HttpClient meters were ~70–80%
+                    // of this app's Log Analytics ingestion. MeterProviderBuilder has no way to
+                    // remove a meter once added, so they are simply not added. Reversible via config.
+                    if (configuration.GetValue("ApplicationInsights:EnableAspNetCoreMeters", false))
+                    {
+                        metrics
+                            .AddAspNetCoreInstrumentation()
+                            .AddHttpClientInstrumentation();
+                    }
+
                     metrics
-                        .AddAspNetCoreInstrumentation()
-                        .AddHttpClientInstrumentation()
                         .AddMeter("PoSeeReview.*")
                         .AddAzureMonitorMetricExporter(options =>
                         {
                             options.ConnectionString = appInsightsConnectionString;
                         });
-
-                    // Cost cap: drop the noisy ASP.NET HTTP client/hosting pre-aggregated meters
-                    // (~70–80% of this app's Log Analytics ingestion). Reversible via config.
-                    if (!configuration.GetValue("ApplicationInsights:EnableAspNetCoreMeters", false))
-                    {
-                        metrics.RemoveMeter("Microsoft.AspNetCore.Hosting");
-                        metrics.RemoveMeter("Microsoft.AspNetCore.HttpClient");
-                    }
                 });
         }
 

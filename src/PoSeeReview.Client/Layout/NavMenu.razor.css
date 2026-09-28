@@ -44,14 +44,6 @@
     text-shadow: 0 0 12px color-mix(in srgb, var(--color-brand-alt) 70%, transparent), 0 0 24px color-mix(in srgb, var(--color-brand) 50%, transparent);
 }
 
-.brand-tagline {
-    display: block;
-    font-family: var(--font-body, 'DM Sans', sans-serif);
-    font-size: var(--text-2xs);
-    color: var(--color-on-dark-muted);
-    letter-spacing: 0.04em;
-}
-
 .nav-mock-badge {
     display: inline-block;
     margin-left: 0.5rem;
@@ -137,7 +129,12 @@
 }
 
 .nav-user-badge {
+    position: relative;
     display: inline-flex;
+    min-height: 2rem;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
     align-items: center;
     gap: 0.45rem;
     padding: 0.3rem 0.7rem;
@@ -214,10 +211,6 @@
         flex-shrink: 1;
     }
 
-    .brand-tagline {
-        display: none;
-    }
-
     /* The wordmark collapses to the mark. This block has to fit a brand, two primary nav items,
        two session links, the sound switch, the identity badge and a sign-out button into 320px,
        and once the two session links began rendering at their real size — they had been unstyled
@@ -282,75 +275,73 @@
     .nav-user-badge--anon {
         width: 28px;
         height: 28px;
+        min-height: 28px;
         padding: 0;
         justify-content: center;
         border-radius: 50%;
         border: 1.5px solid currentColor;
     }
+
+    /* 28px visual, 44px target. Shrinking the visual and the target are different things. */
+    .nav-user-badge::after {
+        content: "";
+        position: absolute;
+        inset: -8px;
+    }
 }
 
-/* ── Insights ────────────────────────────────────────────────────────────────────────────────
-   Lives in the right-hand session zone, not in nav.nav-links: the primary nav is contractually
-   two items (HeaderContractUiTests asserts exactly that). Colour comes from the on-dark tokens
-   because this bar is dark in BOTH themes. */
-/* It is a <NavLink>, not a plain anchor, and that is why every selector below is prefixed with
-   `.nav-user-zone ::deep`. Blazor's CSS isolation stamps the scope attribute onto elements in
-   THIS component's markup, but NavLink renders its own <a> — so the anchor came out with no
-   `b-*` attribute, none of these rules matched, and the link was a bare 22x25 emoji: below the
-   44px --tap-target, with no pill, no hover and — worst of the three — no `.active` state, so the
-   header gave no indication of the current route. `::deep` emits `.nav-user-zone[b-*] .nav-insights`
-   instead, which matches the child component's root. The nav items above already did this. */
-.nav-user-zone ::deep .nav-insights {
-    display: inline-flex;
-    align-items: center;
+/* ── Account menu ────────────────────────────────────────────────────────────────────────────
+   A native popover, so it sits in the top layer: `position: fixed` against the viewport, pinned
+   under the bar's right edge. `inset: auto` first, because the UA sheet centres popovers. */
+.nav-account-menu {
+    inset: auto;
+    top: 3.75rem;
+    right: max(0.75rem, calc((100vw - 1200px) / 2 + 1.25rem));
+    margin: 0;
+    min-width: 13rem;
+    max-width: calc(100vw - 1.5rem);
+    padding: var(--space-xs);
+    border: 1px solid var(--border-on-dark);
+    border-radius: var(--radius-card);
+    background: var(--surface-inverse);
+    color: var(--color-on-dark);
+    box-shadow: var(--elevation-3-shadow);
+}
+
+.nav-account-menu:popover-open {
+    display: grid;
     gap: var(--space-3xs);
-    min-height: var(--tap-target);
+}
+
+.nav-account-name {
     padding: var(--space-2xs) var(--space-sm);
-    border-radius: var(--radius-pill);
-    color: var(--color-on-dark-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--text-xs);
+    color: var(--color-on-dark-muted);
+}
+
+/* NavLink renders its own <a>, which does not carry this component's scope attribute — hence
+   ::deep from the menu, the same reason the primary nav items need it. */
+.nav-account-menu ::deep .nav-my-comics {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    min-height: var(--tap-target);
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-sm);
+    color: var(--color-on-dark);
     font-size: var(--text-sm);
     font-weight: 600;
     text-decoration: none;
-    white-space: nowrap;
 }
 
-.nav-user-zone ::deep .nav-insights:hover,
-.nav-user-zone ::deep .nav-insights.active {
+.nav-account-menu ::deep .nav-my-comics:hover,
+.nav-account-menu ::deep .nav-my-comics.active {
     background: var(--overlay-on-dark);
-    color: var(--color-on-dark);
-    text-decoration: none;
 }
 
-/* On a phone the label is dropped and the glyph carries it — the session zone already competes
-   with the brand and the sign-out control for a very narrow bar. */
-@media (max-width: 48rem) {
-    .nav-insights-label {
-        display: none;
-    }
-}
-
-/* The link collapses to a 30px circle for the same measured reason the badge beside it does:
-   `.nav-links` is `flex: 1; min-width: 0` against a session zone that cannot shrink, so a
-   full-size pill on the right is taken straight out of the primary nav. 30px visual with an inset
-   -7px hit box keeps the real target at 44px. Shrinking the visual and shrinking the target are
-   different things.
-
-   The bug above hid this problem rather than solving it: an unstyled 22px anchor happened to fit,
-   so the squeeze only appears once these rules start applying. */
-@media (max-width: 40rem) {
-    .nav-user-zone ::deep .nav-insights {
-        position: relative;
-        justify-content: center;
-        width: 30px;
-        min-width: 30px;
-        height: 30px;
-        min-height: 30px;
-        padding: 0;
-    }
-
-    .nav-user-zone ::deep .nav-insights::after {
-        content: "";
-        position: absolute;
-        inset: -7px;
-    }
+.nav-account-menu .nav-logout-btn {
+    width: 100%;
 }

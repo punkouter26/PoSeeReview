@@ -1,34 +1,26 @@
 @using Radzen
 @using Radzen.Blazor
 
-<div class="loading-indicator" role="status" aria-live="polite" aria-busy="true">
+@* One loading display for the whole app, carrying role="status" + aria-busy so a screen reader
+   is told a wait is happening.
+
+   With `Steps` it is a single line — the step the pipeline is on and how far along — because the
+   comic page puts the Storyboard directly under it, and the storyboard IS the progress display.
+   It used to stack a spinner, the step label, a progress bar and a Radzen stepper on top of that:
+   five indicators of one wait. *@
+<div class="loading-indicator @(Steps is { Length: > 0 } ? "loading-indicator--steps" : "")"
+     role="status" aria-live="polite" aria-busy="true">
     @if (Steps is { Length: > 0 })
     {
-        <div class="progress-stepper" style="display: flex; flex-direction: column; align-items: center; gap: 1rem; width: 100%; max-width: 480px; margin: 0 auto;">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" aria-hidden="true" />
-            <p class="loading-message stepper-message" style="font-weight: 600; font-size: 1.1rem; margin: 0;">
-                @Steps[_stepIndex % Steps.Length].Icon @Steps[_stepIndex % Steps.Length].Label
-            </p>
-            <RadzenProgressBar Value="@((((_stepIndex % Steps.Length) + 1.0) / Steps.Length) * 100)"
-                               Mode="ProgressBarMode.Determinate" ShowValue="false"
-                               Class="stepper-progress-bar" Style="width: 240px; height: 8px; border-radius: 999px;" />
-            <RadzenSteps SelectedIndex="@(_stepIndex % Steps.Length)" ShowStepsButtons="false" Style="width: 100%;">
-                <Steps>
-                    @for (var i = 0; i < Steps.Length; i++)
-                    {
-                        var step = Steps[i];
-                        <RadzenStepsItem Text="@step.Icon" Title="@step.Label" Disabled="true" />
-                    }
-                </Steps>
-            </RadzenSteps>
-        </div>
+        <p class="stepper-message" @key="_stepIndex">
+            @Steps[_stepIndex].Icon @Steps[_stepIndex].Label
+            <span class="stepper-count">@(_stepIndex + 1)/@Steps.Length</span>
+        </p>
     }
     else
     {
-        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
-            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" aria-hidden="true" />
-            <p class="loading-message">@Message</p>
-        </div>
+        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" aria-hidden="true" />
+        <p class="loading-message">@Message</p>
     }
 </div>
 
@@ -41,14 +33,6 @@
 
     protected override void OnParametersSet()
     {
-        if (Steps is not { Length: > 0 })
-        {
-            return;
-        }
-
-        if (ActiveStep is { } active)
-        {
-            _stepIndex = Math.Clamp(active, 0, Steps.Length - 1);
-        }
+        _stepIndex = Steps is { Length: > 0 } steps ? Math.Clamp(ActiveStep ?? 0, 0, steps.Length - 1) : 0;
     }
 }

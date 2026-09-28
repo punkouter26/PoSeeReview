@@ -3,73 +3,35 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 3rem 1rem;
+    gap: var(--space-sm);
+    padding: var(--space-2xl) var(--space-md);
+}
+
+/* Above the storyboard: one line, not a block. */
+.loading-indicator--steps {
+    padding: var(--space-sm) var(--space-md);
 }
 
 .loading-message {
-    margin-top: 1rem;
     font-size: var(--text-md);
     color: var(--color-text-secondary);
     text-align: center;
-}
-
-/* Progress stepper */
-.progress-stepper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-}
-
-.stepper-ring {
-    position: relative;
-    width: 88px;
-    height: 88px;
-}
-
-.stepper-ring-svg {
-    width: 100%;
-    height: 100%;
-    transform: rotate(-90deg);
-}
-
-.stepper-ring-bg {
-    fill: none;
-    stroke: var(--brand-a12);
-    stroke-width: 6;
-}
-
-/* #ringGrad is defined inside ComicView's SVG, not this component's — referencing it here
-   never resolved. The brand token is the actual stroke and always was. */
-.stepper-ring-fill {
-    fill: none;
-    stroke: var(--color-brand);
-    stroke-width: 6;
-    stroke-linecap: round;
-    transition: stroke-dasharray 0.3s ease-out;
-}
-
-.stepper-ring-icon {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--text-xl);
-    animation: iconBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-@keyframes iconBounce {
-    from { opacity: 0; transform: scale(0.6); }
-    to   { opacity: 1; transform: scale(1); }
 }
 
 .stepper-message {
     font-size: var(--text-md);
     font-weight: 600;
     color: var(--color-text-primary);
-    margin: 0;
+    text-align: center;
     animation: fadeSlideUp 0.3s ease-out both;
+}
+
+.stepper-count {
+    margin-inline-start: var(--space-xs);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 @keyframes fadeSlideUp {
@@ -77,66 +39,8 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
-::deep .stepper-progress-bar {
-    background: var(--brand-a12) !important;
-    overflow: hidden;
-}
-
-::deep .stepper-progress-bar .rz-progressbar-value {
-    background: var(--color-brand) !important;
-    border-radius: 999px;
-    transition: width 0.3s ease-out;
-}
-
-.stepper-dots {
-    display: flex;
-    gap: 0.4rem;
-}
-
-.stepper-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--color-border);
-    transition: background 0.3s, transform 0.2s;
-}
-
-.stepper-dot.active {
-    background: var(--color-brand);
-    transform: scale(1.3);
-}
-
-.stepper-dot.done {
-    background: var(--brand-a35);
-}
-
-
-/* === Shader loading ring (FX #7) ===
-   Layered exactly over the SVG ring. The SVG only gets .fx-replaced once the shader confirms it
-   started, so a device without WebGL2 keeps the ring it always had. */
-.stepper-ring-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-}
-
-.stepper-ring-svg {
-    transition: opacity 200ms ease;
-}
-
-.stepper-ring-svg.fx-replaced {
-    opacity: 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
-    .stepper-ring-canvas {
-        display: none;
-    }
-
-    /* Never hide the SVG when the shader cannot run — that would leave no ring at all. */
-    .stepper-ring-svg.fx-replaced {
-        opacity: 1;
+    .stepper-message {
+        animation: none;
     }
 }

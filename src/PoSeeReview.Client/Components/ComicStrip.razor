@@ -4,23 +4,41 @@
 @inject FxService Fx
 
 @*
-    The <img> is deliberately still the real element (FX #3).
+    The <img> is deliberately still the real element. Everything layered over it — foil, loupe,
+    speech bubbles — is aria-hidden and pointer-events:none, so the image stays the accessible
+    element and stays saveable: long-press on mobile and right-click save-image on desktop both
+    keep working on the app's single most shareable artifact.
 
-    The print post-process draws to the canvas layered over it, but the image itself stays in the
-    DOM, stays the accessible element, and stays saveable — long-press on mobile and right-click
-    save-image on desktop both keep working on the app's single most shareable artifact. If the
-    shader never attaches (no WebGL2, reduced motion, a downgraded tier, or a blob URL served
-    without CORS) the canvas simply stays transparent and the untouched image is what shows.
+    The layers are rendered here, empty, and only ever STYLED from js/comic-surface.js and
+    js/overlays.js — so Blazor's diff never meets a node it did not create.
 
-    The ink-development reveal is applied to the CONTAINER, not to either child, so the mask
-    covers the image and the canvas together. Masking one of them would develop the shader layer
-    over an already-visible copy of the finished comic.
+    The tilt wrapper exists because the container's own entrance animation fills `transform`
+    for good; the scroll-driven tilt needs an element whose transform nobody else owns.
 *@
-<div @ref="_container" class="comic-strip-container">
-    <img @ref="_image"
-         src="@ImageUrl"
-         alt="Comic strip for @RestaurantName"
-         class="comic-strip-image" />
+<div class="comic-strip-tilt">
+    <div @ref="_container" class="comic-strip-container">
+        <img @ref="_image"
+             src="@ImageUrl"
+             alt="@AltText(RestaurantName, Captions)"
+             class="comic-strip-image"
+             @onload="OnImageLoadedAsync" />
+        @if (Holo)
+        {
+            <div class="holo-foil" aria-hidden="true"></div>
+        }
+        <div class="comic-loupe" aria-hidden="true"></div>
+        <div class="skit-layer" aria-hidden="true"></div>
+        @if (_surfaceHandle != 0)
+        {
+            <button type="button" class="loupe-toggle"
+                    aria-pressed="@(_loupeOn ? "true" : "false")"
+                    title="@(_loupeOn ? "Put the magnifier away" : "Magnify the comic")"
+                    aria-label="@(_loupeOn ? "Turn off the magnifier" : "Turn on the magnifier")"
+                    @onclick="ToggleLoupeAsync">
+                <span aria-hidden="true">🔍</span>
+            </button>
+        }
+    </div>
 </div>
 
 @code {
@@ -29,6 +47,27 @@
 
     [Parameter]
     public string RestaurantName { get; set; } = string.Empty;
+
+    /// <summary>The caption drawn onto each panel, which only exists as pixels otherwise.</summary>
+    [Parameter]
+    public IReadOnlyList<string> Captions { get; set; } = [];
+
+    /// <summary>
+    /// Alt text that reads the strip panel by panel. The narrative is already visible text under
+    /// the image, so it is not repeated here — the captions are the part a screen reader could
+    /// not otherwise reach. Older comics have none and keep the plain title.
+    /// </summary>
+    public static string AltText(string restaurantName, IReadOnlyList<string> captions)
+    {
+        var panels = captions
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select((c, i) => $"Panel {i + 1}: {c.Trim()}")
+            .ToList();
+
+        return panels.Count == 0
+            ? $"Comic strip for {restaurantName}"
+            : $"Comic strip for {restaurantName}. {string.Join(" ", panels)}";
+    }
 
     /// <summary>
     /// How many stacked panels to develop in sequence. Two is the server's cap
@@ -50,27 +89,78 @@
     [Parameter]
     public int StrangenessScore { get; set; }
 
+    /// <summary>Holographic foil that follows the pointer or the phone's tilt. For rare scores.</summary>
+    [Parameter]
+    public bool Holo { get; set; }
+
+    /// <summary>
+    /// Develop the strip top-down as it arrives, rather than showing it whole. For a comic the
+    /// user just waited ten seconds for — not for one opened from a list, which morphs in instead.
+    /// </summary>
+    [Parameter]
+    public bool Develop { get; set; }
+
+    /// <summary>The container, for effects placed over the strip (the skit's speech bubbles).</summary>
+    public ElementReference Container => _container;
+
     private ElementReference _container;
     private ElementReference _image;
     private int _scrubHandle;
+    private int _surfaceHandle;
+    private int _revealHandle;
+    private bool _developed;
+    private bool _loupeOn;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !string.IsNullOrEmpty(PlaceId))
+        if (!firstRender)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(PlaceId))
         {
             _scrubHandle = await Fx.StartPanelScrubAsync(
                 _container, PanelCount, PlaceId, StrangenessScore);
         }
+
+        // Zero below the Lite tier, which also keeps the magnifier button out of the markup.
+        _surfaceHandle = await Fx.StartComicSurfaceAsync(_container, _image, Holo);
+        if (_surfaceHandle != 0)
+        {
+            StateHasChanged();
+        }
     }
 
-    public Task PlayScoreImpactAsync(int score) => Task.CompletedTask;
+    /// <summary>
+    /// The reveal waits for the pixels: developing a strip whose image has not decoded yet would
+    /// spend the whole effect on an empty frame.
+    /// </summary>
+    private async Task OnImageLoadedAsync()
+    {
+        if (Develop && !_developed)
+        {
+            _developed = true;
+            _revealHandle = await Fx.StartComicRevealAsync(_container, PanelCount);
+        }
+    }
+
+    private async Task ToggleLoupeAsync()
+    {
+        // A click is a trusted gesture, so the hum can start here even on a first visit.
+        await Fx.UnlockAudioAsync();
+        _loupeOn = await Fx.ToggleLoupeAsync(_surfaceHandle);
+    }
+
+    /// <summary>The artwork ripples as the score lands, as deep as the score is strange.</summary>
+    public Task PlayScoreImpactAsync(int score) => Fx.WobbleComicAsync(_surfaceHandle, score);
 
     public async ValueTask DisposeAsync()
     {
-        if (_scrubHandle != 0)
-        {
-            await Fx.StopPanelScrubAsync(_scrubHandle);
-            _scrubHandle = 0;
-        }
+        // The reveal first and unconditionally: an abandoned one leaves part of the comic masked.
+        await Fx.FinishComicRevealAsync(_revealHandle);
+        await Fx.StopComicSurfaceAsync(_surfaceHandle);
+        await Fx.StopPanelScrubAsync(_scrubHandle);
+        _revealHandle = _surfaceHandle = _scrubHandle = 0;
     }
 }

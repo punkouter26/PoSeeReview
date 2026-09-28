@@ -1,0 +1,40 @@
+@* Every empty, error and not-found screen in the app.
+
+   There were seven: `.state-card`, the Hall of Fame's `.no-entries` with its own four emoji
+   panels, the comic page's `.error-container`, the layout's `.po-error-panel`, the 404's mini
+   comic, and two `.alert-danger` blocks standing in for full-page failures. Inline notices that
+   sit above live content (a failed search) stay `.alert`; this is for when the state IS the page.
+   `Alert` switches the role so a failure is announced and an empty list is not. *@
+
+<div class="state-card @Class" role="@(Alert ? "alert" : null)">
+    <div class="state-card-icon" aria-hidden="true">@Icon</div>
+    @if (Heading1)
+    {
+        <h1 class="state-card-title">@Title</h1>
+    }
+    else
+    {
+        <h2 class="state-card-title">@Title</h2>
+    }
+    @if (ChildContent is not null)
+    {
+        <div class="state-card-body">@ChildContent</div>
+    }
+    @if (Actions is not null)
+    {
+        <div class="state-card-actions">@Actions</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Icon { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public bool Alert { get; set; }
+
+    /// <summary>For a state that is the whole page (comic route, 404) and so owns the h1.</summary>
+    [Parameter] public bool Heading1 { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+}

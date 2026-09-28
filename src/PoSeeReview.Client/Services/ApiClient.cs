@@ -80,7 +80,7 @@ public class ApiClient
     public async Task<ComicDto> GenerateComicStreamAsync(
         string placeId,
         bool forceRegenerate,
-        IProgress<ComicGenerationPhase> progress,
+        IProgress<ComicGenerationEventDto> progress,
         CancellationToken cancellationToken = default)
     {
         var url = $"/api/comics/{placeId}/stream";
@@ -139,7 +139,7 @@ public class ApiClient
             switch (evt.Kind)
             {
                 case ComicGenerationEventDto.PhaseKind:
-                    progress.Report(evt.Phase);
+                    progress.Report(evt);
                     break;
 
                 case ComicGenerationEventDto.CompleteKind when evt.Comic is not null:
@@ -298,6 +298,30 @@ public class ApiClient
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             await EnsureSuccessAsync(response, "Leaderboard request failed", cancellationToken);
             return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.LeaderboardResponse, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The permanent weekly archive, worldwide. Returns <c>null</c> on failure so the page can
+    /// say so instead of throwing into the renderer.
+    /// </summary>
+    public async Task<HallOfFameResponse?> GetWeeklyHallOfFameAsync(
+        int weeks = 4,
+        int limit = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = await CreateRequestAsync(
+                HttpMethod.Get,
+                $"/api/leaderboard/weekly?weeks={weeks}&limit={limit}");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            await EnsureSuccessAsync(response, "Weekly archive request failed", cancellationToken);
+            return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HallOfFameResponse, cancellationToken);
         }
         catch (HttpRequestException)
         {

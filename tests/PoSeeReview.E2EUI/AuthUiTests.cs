@@ -49,6 +49,7 @@ public sealed class AuthUiTests(PlaywrightFixture fixture)
         await page.GetByRole(AriaRole.Button, new() { NameRegex = new("continue as guest", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).ClickAsync();
         await Assertions.Expect(page.Locator(".nav-user-badge--anon")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
 
+        await page.Locator(".nav-user-zone .nav-user-badge").ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { NameRegex = new("sign out", System.Text.RegularExpressions.RegexOptions.IgnoreCase) }).ClickAsync();
 
         await page.Locator(".login-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });

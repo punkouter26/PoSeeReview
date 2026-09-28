@@ -39,12 +39,14 @@ public sealed class InsightsAndModerationUiTests(PlaywrightFixture fixture)
     /// </summary>
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Insights_RendersItsHeadingAndNeverAnErrorBanner(string viewport)
+    public async Task Insights_RouteLandsOnTheHallOfFameStatsTab(string viewport)
     {
         var page = await SignedInAsync(viewport, "/insights");
 
-        await Assertions.Expect(page.Locator("h1.page-hero-title, h1.page-shell-title"))
-            .ToHaveTextAsync("Insights");
+        // Insights is the Hall of Fame's Stats tab; the old route redirects there.
+        await Assertions.Expect(page.Locator("h1.page-shell-title")).ToHaveTextAsync("Hall of Fame");
+        await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { Name = "Stats", Pressed = true }))
+            .ToBeVisibleAsync(new() { Timeout = RenderTimeout });
 
         await page.Locator(".insights-panel, .state-card").First
             .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
@@ -54,11 +56,13 @@ public sealed class InsightsAndModerationUiTests(PlaywrightFixture fixture)
 
     [Theory]
     [MemberData(nameof(PlaywrightFixture.Viewports), MemberType = typeof(PlaywrightFixture))]
-    public async Task Insights_LinkIsInTheSessionZone_AndPrimaryNavStaysTwoItems(string viewport)
+    public async Task Insights_IsReachedFromTheHallOfFame_AndPrimaryNavStaysTwoItems(string viewport)
     {
-        var page = await SignedInAsync(viewport, "/insights");
+        var page = await SignedInAsync(viewport, "/leaderboard");
 
-        await Assertions.Expect(page.Locator(".nav-user-zone .nav-insights")).ToHaveCountAsync(1);
+        await page.GetByRole(AriaRole.Button, new() { Name = "Stats" }).ClickAsync();
+        await page.Locator(".insights-panel, .state-card").First
+            .WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
 
         // The header contract. A third .nav-item would both break HeaderContractUiTests and
         // dilute a two-destination app.

@@ -21,7 +21,6 @@
 else
 {
 <PageShell Title="System Diagnostics"
-           Subtitle="Real-time health status of all application dependencies"
            Width="PageShell.ShellWidth.Wide"
            Class="diagnostics-container">
 
@@ -120,11 +119,10 @@ else
                 </button>
             </div>
 
-            @* Haptics and the ambient bed both INHERIT the sound preference and can be switched
-               off on their own — never on on their own. Someone who muted the app did not
-               thereby ask to be buzzed, or to be given a drone instead. Each control is hidden
-               where the underlying capability does not exist, because a toggle that cannot do
-               anything is worse than no toggle. *@
+            @* Haptics INHERIT the sound preference and can be switched off on their own — never
+               on on their own. Someone who muted the app did not thereby ask to be buzzed
+               instead. Hidden where the Vibration API does not exist, because a toggle that
+               cannot do anything is worse than no toggle. *@
             @if (_caps.Haptics)
             {
                 <div class="fx-control-row">
@@ -135,25 +133,6 @@ else
                     </button>
                 </div>
             }
-
-            @if (_ambient.Supported)
-            {
-                <div class="fx-control-row">
-                    <span class="fx-control-label">Ambient bed</span>
-                    <button type="button" class="btn @(_ambient.Enabled ? "btn-primary" : "btn-secondary")"
-                            @onclick="ToggleAmbientAsync">
-                        @(_ambient.Enabled ? "On" : "Off")@(_ambient.Explicit ? "" : " (follows sound)")
-                    </button>
-                </div>
-            }
-
-            <div class="fx-control-row">
-                <span class="fx-control-label">Live overlay</span>
-                <button type="button" class="btn @(_perfHudVisible ? "btn-primary" : "btn-secondary")"
-                        @onclick="TogglePerfHudAsync">
-                    @(_perfHudVisible ? "On" : "Off")
-                </button>
-            </div>
 
             <div class="fx-control-row">
                 <button type="button" class="btn btn-secondary" @onclick="ResetStatsAsync">Reset counters</button>
@@ -318,8 +297,6 @@ else
     private FxCapabilities _caps;
     private bool _audioEnabled;
     private FxToggleState _haptics;
-    private FxToggleState _ambient;
-    private bool _perfHudVisible;
     private FxAudioLatency? _audioLatency;
     private System.Threading.Timer? _statsTimer;
 
@@ -332,9 +309,7 @@ else
     {
         _caps = await Fx.GetCapabilitiesAsync();
         _audioEnabled = await Fx.IsAudioEnabledAsync();
-        _perfHudVisible = await Fx.IsPerfHudVisibleAsync();
         _haptics = await Fx.GetHapticsAsync();
-        _ambient = await Fx.GetAmbientAsync();
 
         _statsTimer = new System.Threading.Timer(_ =>
         {
@@ -357,15 +332,6 @@ else
         await Fx.ResetFrameStatsAsync();
     }
 
-    /// <summary>
-    /// The overlay is global, so this only reflects state the user could equally have toggled
-    /// with the keyboard shortcut on any other page.
-    /// </summary>
-    private async Task TogglePerfHudAsync()
-    {
-        _perfHudVisible = await Fx.TogglePerfHudAsync();
-    }
-
     private async Task ToggleAudioAsync()
     {
         _audioEnabled = await Fx.SetAudioEnabledAsync(!_audioEnabled);
@@ -381,22 +347,6 @@ else
     {
         await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
         _haptics = await Fx.GetHapticsAsync();
-    }
-
-    private async Task ToggleAmbientAsync()
-    {
-        await Fx.SetAmbientEnabledAsync(!_ambient.Enabled);
-
-        // Starting it here is the point of the control: this is a real gesture, and without one
-        // the AudioContext never leaves 'suspended', so the switch would report On and produce
-        // nothing. The score is arbitrary on a page with no comic — it only tunes the drone.
-        if (_ambient.Enabled || await Fx.IsAudioEnabledAsync())
-        {
-            await Fx.UnlockAudioAsync();
-            await Fx.StartAmbientAsync(50);
-        }
-
-        _ambient = await Fx.GetAmbientAsync();
     }
 
     public ValueTask DisposeAsync()

@@ -60,4 +60,11 @@ public class ComicDto
     /// </para>
     /// </summary>
     public string[] Palette { get; set; } = [];
+
+    /// <summary>
+    /// The caption drawn onto each panel, in order. The client uses them as the image's alt
+    /// text: they are baked into the pixels, so without this a screen reader gets nothing of the
+    /// strip but its title. Empty on comics drawn before captions were stored.
+    /// </summary>
+    public string[] Captions { get; set; } = [];
 }

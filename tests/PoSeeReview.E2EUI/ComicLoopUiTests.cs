@@ -83,7 +83,7 @@ public sealed class ComicLoopUiTests(PlaywrightFixture fixture)
         {
             // Loss. A recoverable failure (rate limit, dropped stream) must offer a retry;
             // every failure must offer a way back.
-            await Assertions.Expect(page.Locator(".error-actions button").First).ToBeVisibleAsync();
+            await Assertions.Expect(page.Locator(".state-card-actions button").First).ToBeVisibleAsync();
         }
 
         // Loop reset: back on discovery, and the comic's palette must not follow. A win has no

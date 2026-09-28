@@ -27,7 +27,7 @@ public interface IComicGenerationService
     Task<Comic> GenerateComicAsync(
         PlaceId placeId,
         bool forceRegenerate = false,
-        IProgress<ComicGenerationPhase>? progress = null,
+        IProgress<ComicGenerationProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -37,4 +37,17 @@ public interface IComicGenerationService
     /// <param name="cancellationToken">Cancellation token for async operations</param>
     /// <returns>Cached comic entity or null if not found or expired</returns>
     Task<Comic?> GetCachedComicAsync(PlaceId placeId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// One pipeline step, plus what is already known by then. <see cref="Score"/> and
+/// <see cref="Captions"/> ride the <see cref="ComicGenerationPhase.GeneratingArtwork"/> report:
+/// the one chat call has produced both before the image call starts, so the wait for the
+/// artwork can show the strip's words instead of a spinner. Converts from a bare phase so every
+/// other report stays a one-word call.
+/// </summary>
+public sealed record ComicGenerationProgress(
+    ComicGenerationPhase Phase, int? Score = null, IReadOnlyList<string>? Captions = null)
+{
+    public static implicit operator ComicGenerationProgress(ComicGenerationPhase phase) => new(phase);
 }

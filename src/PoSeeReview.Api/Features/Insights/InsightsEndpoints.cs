@@ -1,3 +1,5 @@
+using PoSeeReview.Api.Caching;
+
 namespace PoSeeReview.Api.Features.Insights;
 
 /// <summary>
@@ -14,7 +16,7 @@ internal static class InsightsEndpoints
     {
         var group = app.MapGroup("/api/insights").WithTags("Insights");
 
-        group.MapGet("", GetInsightsAsync);
+        group.MapGet("", GetInsightsAsync).CacheOutput(SharedReadCachePolicy.Name);
 
         return app;
     }

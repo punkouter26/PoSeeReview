@@ -19,6 +19,15 @@ public class ComicGenerationEventDto
     /// <summary>Set when <see cref="Kind"/> is <see cref="PhaseKind"/>.</summary>
     public ComicGenerationPhase Phase { get; set; }
 
+    /// <summary>
+    /// Sent with the <see cref="ComicGenerationPhase.GeneratingArtwork"/> phase: the score and
+    /// captions exist before the image call starts, so the client can storyboard the wait.
+    /// </summary>
+    public int? Score { get; set; }
+
+    /// <inheritdoc cref="Score"/>
+    public List<string>? Captions { get; set; }
+
     /// <summary>Set when <see cref="Kind"/> is <see cref="CompleteKind"/>.</summary>
     public ComicDto? Comic { get; set; }
 

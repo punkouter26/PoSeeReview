@@ -7,10 +7,9 @@
 // decoration is a spectacularly bad trade. Nothing in this file may ever throw into .NET.
 //
 // THIS FILE IS ALSO THE COMPOSITION ROOT for the effects that pair with each other. audio.js
-// does not know haptics exist, haptics.js does not know about the ambient bed, and gradient.js
-// does not know about the analyser. Deciding that a tap should also buzz, or that enabling sound
-// should also start a bed, is a product decision and it is made here — the same reason
-// audio-reactive.js is a separate module rather than a branch inside audio.js.
+// does not know haptics exist, overlays.js does not know stamps make a noise, and
+// comic-surface.js does not know the loupe hums. Deciding that a tap should also buzz, or that a
+// weird page should also drone, is a product decision and it is made here.
 
 import { gfx } from './gfx-core.js';
 import { audio } from './audio.js';
@@ -20,19 +19,8 @@ import * as panelScrub from './panel-scrub.js';
 import * as comicReveal from './comic-reveal.js';
 import * as particles from './particles.js';
 import * as viewTransitions from './view-transitions.js';
-
-// Three modules are NOT imported statically. Each would otherwise put code on the first-load
-// path of every route that never uses it:
-//
-//   shelf.js         — a hand-rolled WebGL2 renderer, used on /leaderboard only.
-//   physics.js       — the Verlet solver, used on the comic page at the score reveal only.
-//   particles-gpu.js — the WebGPU backend, only worth fetching on a device that has WebGPU.
-//
-// SCRIPTS/fx-perf-check.mjs asserts shelf.js is absent on first load and present after
-// /leaderboard; the same reasoning applies to the other two.
-let shelfModule = null;
-let physicsModule = null;
-let particlesGpuModule = null;
+import * as comicSurface from './comic-surface.js';
+import * as overlays from './overlays.js';
 
 function guard(fn, fallback = null) {
     try {
@@ -81,16 +69,16 @@ gfx.onTierChanged(() => {
     }
 });
 
-const backendHandles = new Map();
-let nextCompositeHandle = 1;
-let lastScore = 40;
-let lastPalette = null;
+/** Loupe hums, keyed by comic-surface handle. Sustained, so each must be released. */
+const loupeHums = new Map();
+
+const panForX = (clientX) => Math.max(-0.7, Math.min(0.7, (clientX / (window.innerWidth || 1)) * 1.4 - 0.7));
 
 export const fx = {
     // ── Capability + tier ────────────────────────────────────────────────────────────────
     describe: () => guard(() => ({
         ...gfx.describe(),
-        webgpu: webGpuSupported(),
+        webgpu: typeof navigator !== 'undefined' && 'gpu' in navigator,
         haptics: haptics.describe().supported,
         narration: audio.canNarrate()
     }), {
@@ -100,10 +88,6 @@ export const fx = {
     setTier: (tier) => guard(() => gfx.setTier(tier), 'off'),
     stats: () => guard(() => gfx.stats(), null),
     resetStats: () => guard(() => gfx.resetStats()),
-
-    /** Live performance overlay. Also reachable with Ctrl+Shift+F and ?fx=debug. */
-    togglePerfHud: () => guard(() => togglePerfHud(), false),
-    perfHudVisible: () => guard(() => perfHudVisible(), false),
 
     // ── Audio ────────────────────────────────────────────────────────────────────────────
     audioEnabled: () => guard(() => audio.isEnabled(), false),
@@ -235,102 +219,53 @@ export const fx = {
     // ── Narration ────────────────────────────────────────────────────────────────────────
     canNarrate: () => guard(() => audio.canNarrate(), false),
     narrate: (text) => guard(() => audio.narrate(text), false),
-    stopNarration: () => guard(() => audio.stopNarration()),
-    // The skit rides the same speechSynthesis output and the same stopNarration() stop.
-    playSkit: (json) => guard(() => audio.playSkitJson(json), false),
+    stopNarration: () => guard(() => {
+        audio.stopNarration();
+        overlays.clearBubbles();
+    }),
 
-    // ── Ambient bed ──────────────────────────────────────────────────────────────────────
-    startAmbient: (score) => guardAsync(() => ambient.start(score ?? 50), false),
-    setAmbientScore: (score) => guard(() => ambient.setScore(score)),
-    stopAmbient: () => guard(() => ambient.stop()),
-    ambientDescribe: () => guard(() => ambient.describe(), { supported: false, running: false, enabled: false, explicit: false }),
-    setAmbientEnabled: (enabled) => guard(() => ambient.setEnabled(enabled), false),
+    /**
+     * The skit rides the same speechSynthesis output and the same stopNarration() stop. Each
+     * line pops a bubble over the strip as it starts — the voices get faces — and the bubble
+     * pops from its speaker's side of the stereo field as well as the strip.
+     */
+    playSkit: (json, strip) => guard(() => {
+        const speech = overlays.bubbles(strip, { panels: 2 });
+        return audio.playSkitJson(json, speech ? {
+            onLineStart: (index, total, speaker, slot, text) => guard(() => {
+                const side = speech.show(index, total, speaker, slot, text);
+                audio.bubble(side === 'left' ? -0.45 : 0.45);
+            }),
+            onLineEnd: (index, total) => guard(() => speech.end(index, total))
+        } : {});
+    }, false),
+
+    // ── Generation wait ──────────────────────────────────────────────────────────────────
+    riserStep: (index, total, score) => guard(() => {
+        audio.riserStep(index, total, score ?? 0);
+        haptics.phase();
+    }),
+    riserResolve: () => guard(() => audio.riserResolve()),
+    riserStop: () => guard(() => audio.riserStop()),
 
     // ── Background gradient ──────────────────────────────────────────────────────────────
     startGradient: (canvas, score) => guard(() => gradient.start(canvas, { score }), 0),
-    setGradientScore: (id, score) => guard(() => {
-        lastScore = score ?? lastScore;
-        gradient.setScore(id, score);
-        glass.setScene(lastScore, lastPalette);
-    }),
-    stopGradient: (id) => guard(() => {
-        // A gradient going away takes the tint with it, or the next route inherits the colours
-        // of a comic that is no longer on screen.
-        comicTint.clear();
-        gradient.stop(id);
-    }),
-
-    // ── Comic palette ────────────────────────────────────────────────────────────────────
-    //
-    // Composed here, not in either module, because deciding that a comic's colours reach BOTH
-    // the shader backdrop and the CSS accents is a product decision — the same reason a tap
-    // also buzzes. gradient.js knows nothing about CSS variables and comic-tint.js knows
-    // nothing about WebGL; either alone is a half-tinted page.
+    setGradientScore: (id, score) => guard(() => gradient.setScore(id, score)),
+    stopGradient: (id) => guard(() => gradient.stop(id)),
 
     /**
-     * Dresses the app in a comic's own colours. `palette` is the three hex strings the server
-     * sampled off the finished artwork. Anything else clears back to the brand gradient, which
-     * is what a comic drawn before the extractor existed still gets.
+     * Eases the backdrop to a comic's own colours. `palette` is the three hex strings the server
+     * sampled off the finished artwork; anything else clears back to the brand gradient, which is
+     * what a comic drawn before the extractor existed still gets.
      */
     setComicPalette: (id, palette) => guard(() => {
-        const applied = comicTint.apply(palette);
-        lastPalette = applied ? palette : null;
-        gradient.setPalette(id, palette);
-        // Panes refract INTO the backdrop, so a retint that reached only the backdrop would put
-        // every glass card visibly out of register with the page behind it.
-        glass.setScene(lastScore, palette);
+        const applied = Array.isArray(palette) && palette.length > 0;
+        gradient.setPalette(id, applied ? palette : null);
         return applied;
     }, false),
 
     /** Restores the brand gradient. Called on leaving a comic route. */
-    clearComicPalette: (id) => guard(() => {
-        comicTint.clear();
-        lastPalette = null;
-        gradient.setPalette(id, null);
-        glass.setScene(lastScore, null);
-    }),
-
-    // ── Refractive glass ─────────────────────────────────────────────────────────────────
-
-    /**
-     * Turns the canvas's PARENT into a real glass pane — refraction, edge dispersion, a
-     * travelling highlight. Taking the parent rather than a second element reference is what
-     * keeps the Blazor side to a single component with no id plumbing.
-     *
-     * A new pane is handed the current scene immediately: one mounted after a score landed would
-     * otherwise refract a default-coloured backdrop while the page behind it shows the comic's,
-     * which reads as a rendering bug rather than as glass.
-     */
-    startGlass: (canvas, thickness, tint, sheen) => guard(() => {
-        const target = canvas?.parentElement;
-        if (!target) return 0;
-
-        // THE PANE AND THE BACKDROP ARE A PAIR, and this guard is the reason the pairing is
-        // enforced here rather than inside glass.js.
-        //
-        // A pane refracts the PROCEDURAL backdrop — it recomputes the scene rather than reading
-        // pixels. So if gradient.js is not actually running, what the page is showing is the CSS
-        // fallback on .fx-backdrop, and the pane would faithfully refract a scene that is not on
-        // screen. That is not a subtle degradation: it puts a differently-coloured rectangle in
-        // the middle of the page. (Observed exactly once, when the frame-budget watchdog
-        // downgraded the backdrop to 'lite' while a pane started at 'full'.)
-        //
-        // gradient.js must not learn that glass exists, and glass.js must not learn that the
-        // backdrop has a CSS fallback. Composing them is this file's job.
-        if (gradient.activeIds().length === 0) {
-            return 0;
-        }
-
-        const id = glass.start(canvas, target, { thickness, tint, sheen });
-        if (id) {
-            glass.setScene(lastScore, lastPalette);
-        }
-        return id;
-    }, 0),
-
-    stopGlass: (id) => guard(() => glass.stop(id)),
-
-    glassPanes: () => guard(() => glass.activeCount(), 0),
+    clearComicPalette: (id) => guard(() => gradient.setPalette(id, null)),
 
     /**
      * Viewport width, for callers that need to convert a pointer coordinate into a fraction of
@@ -339,18 +274,64 @@ export const fx = {
      */
     viewportWidth: () => guard(() => window.innerWidth || 1, 1),
 
-    comicTintApplied: () => guard(() => comicTint.isApplied(), false),
+    // ── Ink burst ────────────────────────────────────────────────────────────────────────
+    burstParticles: (canvas, score) => guard(() => particles.burst(canvas, score ?? 50), 0),
+    stopParticles: (id) => guard(() => particles.dispose(id)),
 
-    // ── Comic panel post-process ─────────────────────────────────────────────────────────
-    attachComicFx: (canvas, image) => guard(() => comicFx.attach(canvas, image), 0),
-    detachComicFx: (id) => guard(() => comicFx.detach(id)),
+    // ── The comic as an object ───────────────────────────────────────────────────────────
+
+    /** Foil (when `holo`) and loupe support. The foil glints audibly as it is tilted. */
+    startComicSurface: (container, image, holo) => guard(() => {
+        let id = 0;
+        id = comicSurface.start(container, image, {
+            holo: holo === true,
+            onShimmer: (intensity, pan) => guard(() => audio.shimmer(intensity, pan)),
+            // The hum follows the lens: pitch rises toward the top, pan tracks it across.
+            onLoupeMove: (x, y) => guard(() => loupeHums.get(id)?.glide(140 + (1 - y) * 300, x * 1.4 - 0.7))
+        });
+        return id;
+    }, 0),
+
+    toggleLoupe: (id) => guard(() => {
+        const on = comicSurface.toggleLoupe(id);
+        loupeHums.get(id)?.release(0.2);
+        loupeHums.delete(id);
+        if (on) {
+            const hum = audio.hum();
+            if (hum) loupeHums.set(id, hum);
+        }
+        haptics.tap();
+        return on;
+    }, false),
+
+    wobbleComic: (id, score) => guard(() => comicSurface.wobble(id, score ?? 50)),
+
+    stopComicSurface: (id) => guard(() => {
+        loupeHums.get(id)?.release(0.1);
+        loupeHums.delete(id);
+        comicSurface.stop(id);
+    }),
+
+    /** The page misbehaves, and sounds like it. The drone is part of the same decision. */
+    setWeird: (score) => guard(() => {
+        if (comicSurface.setWeird(score ?? 0)) audio.droneStart(score);
+    }),
+
+    clearWeird: () => guard(() => {
+        comicSurface.clearWeird();
+        audio.droneStop();
+    }),
 
     /**
-     * Fires the shockwave through the panel from the score ring. Origin is 0..1 UV; the ring
-     * sits above the strip, so the caller passes the top edge rather than the centre.
+     * A comic-book sound word. `target` is an element, or a viewport x with `y` beside it.
+     * The thwack is panned to wherever it landed.
      */
-    comicShockwave: (id, score, originX, originY) =>
-        guard(() => comicFx.shockwave(id, score, originX ?? 0.5, originY ?? 0), false),
+    stamp: (word, target, y) => guard(() => {
+        const x = overlays.stamp(word, target, y);
+        if (x === null) return;
+        audio.stamp(panForX(x));
+        haptics.splat(0.4);
+    }),
 
     // ── Ink development ──────────────────────────────────────────────────────────────────
 
@@ -359,9 +340,8 @@ export const fx = {
      * the shader can add its wet-ink boundary on top of the CSS mask; pass 0 and the CSS mask
      * runs alone, which is the common case.
      */
-    startComicReveal: (container, bands, fxHandle) => guard(() => comicReveal.start(container, {
+    startComicReveal: (container, bands) => guard(() => comicReveal.start(container, {
         bands: bands ?? 2,
-        fxHandle: fxHandle ?? 0,
         // Each band gets a cue as it becomes recognisable. Composed here rather than inside
         // comic-reveal.js, which has no business knowing the app makes noise.
         onBand: (index, total) => {
@@ -370,67 +350,7 @@ export const fx = {
         }
     }), 0),
 
-    /**
-     * The reveal, preferring the simulated wet-ink boundary.
-     *
-     * Two genuinely different effects, not two qualities of one. The CSS mask is a function of
-     * POSITION — the boundary looks the way it does because of where it is. The field is a
-     * function of HISTORY: ink wicks along the grain, runs ahead of itself where the paper is
-     * thirsty, and pools at the edge, because each cell reads what its neighbours did last step.
-     * That needs state, and state per cell per frame is what a compute pass is for.
-     *
-     * They are mutually exclusive. The field COVERS the comic in paper and eats the cover away;
-     * running the mask as well would develop the artwork twice, with a visible seam wherever the
-     * two boundaries disagreed. So the mask is suppressed only once a field has actually started.
-     *
-     * Async because the device is acquired on demand. A zero from the field is the ordinary case
-     * — no WebGPU, or below the full tier — and it falls through to exactly what shipped before.
-     */
-    startComicRevealField: (container, canvas, bands, fxHandle) => guardAsync(async () => {
-        const inkField = await loadInkField();
-        const fieldId = inkField ? await inkField.start(canvas) : 0;
-
-        const revealId = comicReveal.start(container, {
-            bands: bands ?? 2,
-            fxHandle: fxHandle ?? 0,
-            suppressMask: fieldId !== 0,
-            onProgress: fieldId ? (progress) => inkField.setProgress(fieldId, progress) : null,
-            onBand: (index, total) => {
-                audio.panelReveal(index, total);
-                haptics.tap();
-            }
-        });
-
-        // A field with no reveal driving it would sit at front = 0 for ever: a comic permanently
-        // covered in blank paper. That is the one failure here a user would actually notice, so
-        // it is torn down rather than left running.
-        if (!revealId && fieldId) {
-            inkField.stop(fieldId);
-            return 0;
-        }
-
-        if (!revealId) return 0;
-
-        const handle = nextCompositeHandle++;
-        backendHandles.set(handle, { kind: 'reveal', id: revealId, fieldId });
-        return handle;
-    }, 0),
-
-    finishComicReveal: (id) => guardAsync(async () => {
-        const entry = backendHandles.get(id);
-        if (!entry) {
-            // A handle from the plain startComicReveal, which returns comic-reveal's own id.
-            comicReveal.finish(id);
-            return;
-        }
-
-        backendHandles.delete(id);
-        comicReveal.finish(entry.id);
-        if (entry.fieldId) {
-            const inkField = await loadInkField();
-            inkField?.stop(entry.fieldId);
-        }
-    }),
+    finishComicReveal: (id) => guard(() => comicReveal.finish(id)),
 
     // ── Reading the strip ────────────────────────────────────────────────────────────────
 
@@ -451,6 +371,36 @@ export const fx = {
     }), 0),
 
     stopPanelScrub: (id) => guard(() => panelScrub.stop(id)),
+
+    // ── Leaderboard ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * Slides each row that moved since last visit from its old slot to its new one, then voices
+     * the move where it happened. Rows are measured, not assumed: a stacked mobile row is three
+     * times the height of a desktop one. Climbers ride above fallers so the winner is never
+     * drawn underneath the row it passed.
+     */
+    animateBoardMoves: (container) => guard(() => {
+        if (!container || !gfx.allows('lite')) return;
+        const rows = [...container.querySelectorAll('[data-delta]')];
+        rows.forEach((row, order) => {
+            const delta = Number(row.dataset.delta);
+            if (!delta) return;
+            const height = row.getBoundingClientRect().height;
+            const delay = 250 + order * 70;
+            const duration = 650 + Math.min(6, Math.abs(delta)) * 70;
+            row.style.zIndex = delta > 0 ? '2' : '1';
+            const animation = row.animate(
+                [{ transform: `translateY(${delta * height}px)` }, { transform: 'none' }],
+                { duration, delay, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
+            animation.finished.then(() => { row.style.zIndex = ''; }).catch(() => { });
+            // The cue lands as the row settles, not as it sets off: the arrival is the news.
+            setTimeout(() => guard(() => {
+                audio.rankDelta(delta, delta > 0 ? 0.4 : -0.4);
+                if (Math.abs(delta) >= 3) haptics.tap();
+            }), delay + duration * 0.7);
+        });
+    }),
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
     /** Called after the destination route renders, to close the open transition. */

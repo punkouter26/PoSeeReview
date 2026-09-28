@@ -39,18 +39,19 @@ public class ShareServiceTests
             .ReturnsAsync("shared");
 
         // Act
-        var result = await _shareService.ShareComicAsync(title, text, url);
+        var result = await _shareService.ShareComicAsync(title, text, url, "place123");
 
-        // Assert
+        // Assert — the place id is what lets the JS side attach the PNG itself.
         Assert.Equal(ShareOutcome.Shared, result);
         _mockJsRuntime.Verify(
             x => x.InvokeAsync<string>(
                 "shareUtils.share",
                 It.Is<object[]>(args =>
-                    args.Length == 3 &&
+                    args.Length == 4 &&
                     args[0].ToString() == title &&
                     args[1].ToString() == text &&
-                    args[2].ToString() == url)),
+                    args[2].ToString() == url &&
+                    args[3].ToString() == "place123")),
             Times.Once);
     }
 

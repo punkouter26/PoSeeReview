@@ -11,7 +11,6 @@
    operator tooling does not belong in a consumer app's primary navigation, and
    HeaderContractUiTests asserts that nav is exactly two items. *@
 <PageShell Title="Moderation"
-           Subtitle="Reported comics, and what has been done about them"
            Width="PageShell.ShellWidth.Wide"
            Class="moderation-page">
 
@@ -19,14 +18,10 @@
         <NotAuthorized>
             @* UI-only. The server enforces the same role on every endpoint below, so this is a
                courtesy that saves a round trip, not the control. *@
-            <div class="state-card">
-                <div class="state-card-icon" aria-hidden="true">🔒</div>
-                <h2 class="state-card-title">Moderators only</h2>
-                <p class="state-card-body">Your account does not hold the moderator role.</p>
-                <div class="state-card-actions">
-                    <a href="/" class="btn btn-primary">Back to PoSeeReview</a>
-                </div>
-            </div>
+            <StateCard Icon="🔒" Title="Moderators only">
+                <ChildContent>Your account does not hold the moderator role.</ChildContent>
+                <Actions><a href="/" class="btn btn-primary">Back to PoSeeReview</a></Actions>
+            </StateCard>
         </NotAuthorized>
 
         <Authorized>
@@ -44,13 +39,9 @@
             }
             else if (_queue.Items.Count == 0)
             {
-                <div class="state-card">
-                    <div class="state-card-icon" aria-hidden="true">✅</div>
-                    <h2 class="state-card-title">Queue is empty</h2>
-                    <p class="state-card-body">
-                        Nothing has been reported or actioned in the last few weeks.
-                    </p>
-                </div>
+                <StateCard Icon="✅" Title="Queue is empty">
+                    Nothing has been reported or actioned in the last few weeks.
+                </StateCard>
             }
             else
             {
