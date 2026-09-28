@@ -50,7 +50,7 @@
                     comics auto-hide at @_queue.AutoHideThreshold independent reports
                 </p>
 
-                <div class="moderation-list cq-list">
+                <div class="moderation-list">
                     @foreach (var item in _queue.Items)
                     {
                         <article class="moderation-row elevation-1 @(item.IsReviewed ? "moderation-row--reviewed" : "")">
@@ -151,7 +151,17 @@
     private string? _confirmingRemoval;
     private bool _isBusy;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    // The queue is only fetched for a moderator — anyone else sees the NotAuthorized card, so
+    // the call could only ever come back 403 and land in the console as an error.
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null && (await AuthState).User.IsInRole("Moderator"))
+        {
+            await LoadAsync();
+        }
+    }
 
     private async Task LoadAsync()
     {

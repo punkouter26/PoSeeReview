@@ -117,8 +117,8 @@ public class LeaderboardService : ILeaderboardService
     }
 
     /// <summary>
-    /// Upserts a leaderboard entry (only if score meets threshold)
-    /// Automatically manages deletion of old entries when score changes
+    /// Upserts the live board row for a place so it always mirrors the place's current comic;
+    /// a redraw below the threshold removes the row.
     /// </summary>
     public async Task UpsertEntryAsync(LeaderboardEntry entry)
     {
@@ -158,34 +158,17 @@ public class LeaderboardService : ILeaderboardService
             throw new ArgumentException("StrangenessScore must be between 0 and 100", nameof(entry));
         }
 
-        // Only add to leaderboard if score meets threshold
-        if (entry.StrangenessScore < _options.MinimumStrangenessScore)
-        {
-            _logger.LogInformation(
-                "Skipping leaderboard entry for {PlaceId} - score {Score} below threshold {Threshold}",
-                entry.PlaceId, entry.StrangenessScore, _options.MinimumStrangenessScore);
-            return;
-        }
-
         try
         {
-            // Hall of Fame tracks the PEAK score ever recorded for a place. A regeneration that
-            // scores lower must not demote or evict the entry — keep the higher score and only
-            // refresh the artwork so the card keeps rendering after old blobs are cleaned up.
-            var existing = await _repository.GetByPlaceIdAsync(entry.PlaceId, entry.Region);
-            if (existing != null && existing.StrangenessScore > entry.StrangenessScore)
+            // The live board mirrors the live comic: a row whose score and thumbnail differ from
+            // the comic it opens is a broken promise. Peaks belong to the weekly archive, which
+            // keeps the higher score on its own.
+            if (entry.StrangenessScore < _options.MinimumStrangenessScore)
             {
-                existing.ComicBlobUrl = entry.ComicBlobUrl;
-                existing.LastUpdated = _timeProvider.GetUtcNow();
-                await _repository.UpsertAsync(existing);
-
+                await _repository.DeleteAsync(entry.PlaceId, entry.Region);
                 _logger.LogInformation(
-                    "Kept peak score {ExistingScore} for {PlaceId} (new comic scored {NewScore}); refreshed artwork only",
-                    existing.StrangenessScore, entry.PlaceId, entry.StrangenessScore);
-
-                // Archive the peak, not the weaker comic that just ran: the week's record is
-                // what this place actually achieved.
-                await ArchiveQuietlyAsync(existing);
+                    "Removed {PlaceId} from the live board - redraw scored {Score}, below threshold {Threshold}",
+                    entry.PlaceId, entry.StrangenessScore, _options.MinimumStrangenessScore);
                 return;
             }
 

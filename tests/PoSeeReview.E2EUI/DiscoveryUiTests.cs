@@ -31,7 +31,7 @@ public sealed class DiscoveryUiTests(PlaywrightFixture fixture)
     {
         var page = await HomeAsync(viewport);
 
-        await Assertions.Expect(page.Locator(".app-header h1")).ToHaveTextAsync("PoSeeReview");
+        await Assertions.Expect(page.Locator(".app-header h1")).ToHaveTextAsync("Turn a restaurant's wildest reviews into a comic");
         await Assertions.Expect(page.Locator(".location-prompt")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
     }
 

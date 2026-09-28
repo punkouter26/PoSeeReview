@@ -3,8 +3,11 @@
 
 .board-scope {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2xs);
+    /* 3xs, not 2xs: at 320px three chips and the refresh button came to 297px in a 296px row,
+       and the refresh button wrapped onto a line of its own. */
+    gap: var(--space-3xs);
 }
 
 /* Medals. Rendered in the row's `Leading` slot, which Blazor scopes to THIS component. */

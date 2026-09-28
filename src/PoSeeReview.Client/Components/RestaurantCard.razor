@@ -7,14 +7,14 @@
    "Ready now" pill beside a "Generate Comic" button on a comic that was already drawn. The button
    now says what the tap does — open a ready comic for free (primary), or spend ~10s and a
    generation on a new one (secondary: the product working, not a hazard, but the costlier tap). Distance and review count share one line; the address gets one. *@
-<RadzenCard class="@($"restaurant-card scroll-enter {GetCardClass()}")"
+<article class="@($"restaurant-card scroll-enter {GetCardClass()}")"
             title="@GetTooltipText()"
             data-testid="restaurant-card"
             data-physics-card
             data-cached="@(IsCached ? "ready" : "new")"
             @onclick="OnClickIfEnabled">
     <div class="card-header">
-        <h3 class="restaurant-name">@Restaurant.Name</h3>
+        <h2 class="restaurant-name">@Restaurant.Name</h2>
         @if (Restaurant.AverageRating > 0)
         {
             <span class="rating-chip" title="@Restaurant.AverageRating.ToString("F1") / 5">
@@ -58,7 +58,7 @@
     {
         <p class="not-enough-hint">No reviews yet — nothing to draw from.</p>
     }
-</RadzenCard>
+</article>
 
 @code {
     [Parameter]

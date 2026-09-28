@@ -278,7 +278,7 @@ public class LeaderboardRepository : ILeaderboardRepository
                 return;
             }
 
-            _logger.LogWarning("Leaderboard entry {PlaceId} not found in {Region}", placeId, region);
+            _logger.LogDebug("Leaderboard entry {PlaceId} not found in {Region}", placeId, region);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)
         {

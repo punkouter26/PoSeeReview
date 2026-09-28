@@ -79,6 +79,9 @@ function throttled(key, minGapMs) {
  */
 function fire(pattern) {
     if (!active()) return false;
+    // Before the first gesture Chrome blocks the call and logs an error; the score reveal on a
+    // freshly opened comic hit that on every load.
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return false;
 
     const runs = [];
     let total = 0;

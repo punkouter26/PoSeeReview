@@ -290,7 +290,7 @@
                --bp-lg: 64rem   (1024px) desktop
                --bp-xl: 80rem   (1280px) wide desktop
 
-           Prefer a container query (see .cq-card below) over a media query for anything that is
+           Prefer a container query (see .comic-rows) over a media query for anything that is
            really about how much room a COMPONENT has rather than how big the screen is. */
         --bp-sm: 40rem;
         --bp-md: 48rem;
@@ -536,10 +536,6 @@
 }
 
 @layer shared {
-    .content {
-        padding-top: var(--space-md);
-    }
-
     /* ── Page shell ──────────────────────────────────────────────────────────────────────────
        One implementation of the page header that five pages used to hand-roll (`.app-header`
        appeared in 5 scoped sheets, `.subtitle` in 2). Used by the PageShell component. */
@@ -547,8 +543,9 @@
         width: 100%;
         max-width: 68rem;
         margin-inline: auto;
-        padding-inline: var(--space-md);
-        padding-block: var(--space-md) var(--space-2xl);
+        /* No inline padding: `.content` already provides the gutter, and stacking both cost a
+           phone 24px a side. */
+        padding-block: 0 var(--space-md);
     }
 
     .page-shell--narrow {
@@ -584,7 +581,9 @@
         justify-content: center;
         gap: var(--space-xs);
         min-height: var(--tap-target);
-        padding: var(--space-sm) var(--space-lg);
+        /* --btn-pad-x is the one knob a scoped sheet may turn: `page` sits below `shared`, so a
+           scoped `padding` can never win, but a custom property this rule reads can. */
+        padding: var(--space-sm) var(--btn-pad-x, var(--space-lg));
         border: none;
         border-radius: var(--radius-pill);
         font-family: var(--font-body);
@@ -614,13 +613,13 @@
 
     .btn-primary {
         background: var(--gradient-brand);
-        color: #ffffff;
-        box-shadow: 0 4px 16px rgba(124, 58, 237, 0.3);
+        color: var(--color-on-dark);
+        box-shadow: 0 4px 16px var(--brand-a35);
     }
 
     .btn-primary:hover {
-        color: #ffffff;
-        box-shadow: 0 8px 24px rgba(124, 58, 237, 0.45);
+        color: var(--color-on-dark);
+        box-shadow: 0 8px 24px color-mix(in srgb, var(--color-brand) 45%, transparent);
     }
 
     .btn-secondary {
@@ -638,11 +637,15 @@
     /* ── Icon button ─────────────────────────────────────────────────────────────────────────
        Small glyph controls (a chip's ×, a dismiss) still need a 44px hit area. The visual box
        stays small; the target is expanded with a pseudo-element so layout is unaffected. */
+    /* Always paired with `.btn`, whose pill padding made every glyph button ~70px wide — enough
+       to crush a phone's list row and the comic's action bar. Square at the tap target instead. */
     .btn-icon {
         position: relative;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        min-width: var(--tap-target);
+        padding: 0;
         border-radius: var(--radius-pill);
         color: var(--color-text-secondary);
         line-height: 1;
@@ -685,8 +688,17 @@
         font-size: var(--text-sm);
         font-weight: 600;
         line-height: 1.2;
+        white-space: nowrap;
         cursor: pointer;
         transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    /* On touch the pseudo-element hit area overlaps the neighbouring chip, so the chip itself
+       grows to the full target instead. A mouse keeps the compact chip. */
+    @media (pointer: coarse) {
+        .chip-toggle {
+            min-height: var(--tap-target);
+        }
     }
 
     /* Restores a full tap target without inflating the chip itself. */
@@ -863,6 +875,7 @@
         gap: var(--space-xs);
         list-style: none;
         padding: 0;
+        container-type: inline-size;
     }
 
     @media (min-width: 64rem) {
@@ -901,9 +914,26 @@
         background: var(--color-surface-alt);
     }
 
-    @media (max-width: 40rem) {
+    /* A narrow LIST, not a narrow viewport: the two-column desktop board and a phone ask the same
+       question. At 320px the medal, thumbnail and share button left the name ~50px ("La'Ca j…"),
+       so the medal moves onto the thumbnail's corner and the name gets the width. */
+    @container (max-width: 30rem) {
+        .comic-row {
+            gap: var(--space-xs);
+        }
+
         .comic-row .comic-thumbnail {
             width: 3.5rem;
+        }
+
+        .comic-row .rank-badge {
+            position: absolute;
+            top: var(--space-3xs);
+            left: var(--space-3xs);
+            z-index: 1;
+            width: 1.75rem;
+            height: 1.75rem;
+            font-size: var(--text-sm);
         }
     }
 
@@ -951,10 +981,6 @@
         inset: 0;
         z-index: 1;
         border-radius: inherit;
-    }
-
-    .comic-row-name:focus-visible {
-        outline: none;
     }
 
     .comic-row-meta {
@@ -1176,7 +1202,13 @@
         outline: 3px solid var(--color-brand);
         outline-offset: 2px;
         box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.85);
-        border-radius: var(--radius-sm);
+    }
+
+    /* The row draws the ring (`.comic-row:has(...)`); the stretched link inside it must not draw
+       a second one. Lives here because a `shared` rule cannot outrank the ring above. */
+    .comic-row-name:focus-visible {
+        outline: none;
+        box-shadow: none;
     }
 
     :root[data-theme="dark"] :focus-visible {
@@ -1187,20 +1219,6 @@
         :root:not([data-theme="light"]) :focus-visible {
             box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.75);
         }
-    }
-
-    /* Container-query host. Put this on a card's wrapper and the card can size itself from the
-       space it is actually given rather than from the viewport — the same component then works
-       in the discovery grid, the leaderboard column, and a full-width slot without three sets of
-       media queries. */
-    .cq-card {
-        container-type: inline-size;
-        container-name: card;
-    }
-
-    .cq-list {
-        container-type: inline-size;
-        container-name: list;
     }
 
     /* ── Background gradient canvas (FX #2) ──────────────────────────────────────────────── */
@@ -1698,40 +1716,8 @@
         color: var(--color-text-muted);
     }
 
-    /* ── Paper ageing ─────────────────────────────────────────────────────────────────────
-       The desaturation above says "older". This says "on paper, and it is going" — grain, uneven
-       foxing, and a curl at the corner.
-
-       The texture is one small tileable PNG built once by js/paper.js and handed over as
-       --paper-grain. That is the whole reason this is affordable on a grid: after the property is
-       set there is no rAF task, no observer and nothing registered with the shared scheduler —
-       it is `background-image` and `mix-blend-mode`, which is painting the browser was doing
-       anyway. An feTurbulence filter would be re-evaluated on every paint of the thumbnails,
-       which are the heaviest elements on the page.
-
-       Every rule resolves `var(--paper-grain, none)`, so a browser where the texture could not be
-       built simply keeps the desaturation. Nothing here is load-bearing. */
-    [data-freshness="fading"] .comic-thumbnail::after,
-    [data-freshness="expired"] .comic-thumbnail::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        border-radius: inherit;
-        background-image: var(--paper-grain, none);
-        background-repeat: repeat;
-        /* Multiply so the grain darkens what is under it instead of laying a grey film over it.
-           The texture is black-with-varying-alpha precisely so this works over either theme. */
-        mix-blend-mode: multiply;
-        opacity: 0.55;
-    }
-
-    [data-freshness="expired"] .comic-thumbnail::after {
-        opacity: 0.85;
-    }
-
-    /* The thumb has to be a containing block for the overlay above, and the anchor is not
-       positioned by default. */
+    /* Aged thumbnails: a corner lifting off the page. The thumb is the containing block for it,
+       and the anchor is not positioned by default. */
     [data-freshness="fading"] .comic-thumbnail,
     [data-freshness="expired"] .comic-thumbnail {
         position: relative;
@@ -1753,86 +1739,6 @@
             var(--color-surface-alt) 0%,
             color-mix(in srgb, var(--color-surface-alt) 60%, transparent) 42%,
             transparent 52%);
-    }
-
-    @media (hover: hover) {
-        /* Hover clears the grain along with the desaturation. The decay is a status indicator,
-           not a punishment, and not being able to see the thing you are deciding about would be
-           the wrong trade — the same reasoning as the filter rule above, and they have to agree
-           or hovering half-restores a card. */
-        [data-freshness="fading"]:hover .comic-thumbnail::after {
-            opacity: 0;
-            transition: opacity var(--duration-slow) var(--ease-out);
-        }
-    }
-}
-
-/* ============================================================================================
-   COMIC TINT — the page wears the comic's own colours
-
-   Three hex values sampled from the finished artwork on the SERVER (ComicPaletteExtractor) and
-   published here by js/comic-tint.js as --comic-tint-1..3. Not sampled in the browser: the comic
-   blob is served without CORS headers, so a canvas that has drawn it is tainted and cannot be
-   read back — the same constraint that stops comic-fx.js attaching for most visitors.
-
-   WHAT THE TINT MAY TOUCH IS DELIBERATELY A SHORT LIST: accents only — ring stroke, ring glow,
-   card rim, reaction chip edge. Never a text colour and never a text background. Every readable
-   pair in this app is measured against WCAG by ColorContrastTests, which parses the real token
-   values out of this file; a colour invented at runtime by an image model is exactly what that
-   test cannot cover. So the tint decorates edges that carry no information on their own, and
-   every pair a reader has to read stays on the audited tokens.
-
-   `shared`, not `page`, on purpose: the score ring lives in a scoped sheet, and `page` sits
-   BELOW `shared` in the layer order — so these win without a single !important, which is the
-   whole reason that order exists.
-   ============================================================================================ */
-
-@layer shared {
-    /* The SVG gradient the ring is stroked with. `stop-color` is a real CSS property, so var()
-       resolves here — unlike an SVG presentation *attribute*, which does not, and which is why
-       the Insights charts have to resolve their colours through theme-tokens.js instead. The
-       fallbacks are the brand stops the markup already carries, so a comic with no palette is
-       byte-identical to what shipped before. */
-    :root[data-comic-tint] .strangeness-ring linearGradient stop:first-child {
-        stop-color: var(--comic-tint-3, #7C3AED);
-    }
-
-    :root[data-comic-tint] .strangeness-ring linearGradient stop:last-child {
-        stop-color: var(--comic-tint-2, #f5576c);
-    }
-
-    /* A transition on the stroke rather than a swap. The palette lands at the same moment the
-       score does, and the backdrop underneath is easing over roughly a second — a ring that
-       snapped would be the one element out of step with it. */
-    :root[data-comic-tint] .ring-fill {
-        transition: stroke-dasharray var(--duration-base) var(--ease-out),
-                    filter var(--duration-deliberate) var(--ease-out);
-        filter: drop-shadow(0 0 6px color-mix(in srgb, var(--comic-tint-3) 55%, transparent));
-    }
-
-    /* The comic card takes the artwork's rim. Kept to the border and a wash of shadow: the card
-       is a text surface, so its background stays on --color-card and the contrast tokens hold. */
-    :root[data-comic-tint] .comic-container {
-        border-color: color-mix(in srgb, var(--comic-tint-3) 42%, var(--color-border));
-        box-shadow:
-            0 1px 0 0 color-mix(in srgb, var(--comic-tint-3) 20%, transparent) inset,
-            0 10px 40px color-mix(in srgb, var(--comic-tint-1) 30%, transparent);
-        transition: border-color var(--duration-deliberate) var(--ease-out),
-                    box-shadow var(--duration-deliberate) var(--ease-out);
-    }
-
-    /* Reaction chips pick up the edge only. The "mine" state keeps its own token fill, because
-       that one is a state a user has to be able to read at a glance and an arbitrary colour
-       would make it unreliable. */
-    :root[data-comic-tint] .reaction:not(.reaction--mine) {
-        border-color: color-mix(in srgb, var(--comic-tint-3) 38%, var(--color-border));
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        :root[data-comic-tint] .ring-fill,
-        :root[data-comic-tint] .comic-container {
-            transition: none;
-        }
     }
 }
 
@@ -1934,62 +1840,6 @@
     /* The sweep occupies the first fifth of the period; the rest is the card sitting still. */
     22%  { transform: translateX(350%); }
     100% { transform: translateX(350%); }
-}
-
-/* ============================================================================================
-   REFRACTIVE GLASS (js/glass.js)
-
-   The pane canvas sits behind its card's content and standing in for the CSS `.glass` material,
-   which it replaces only once the shader has actually started. That handshake is the whole
-   safety of this feature: js/glass.js sets `data-glass-pane` on the parent AFTER a successful
-   compile, and clears it unconditionally on teardown, so every path that does not produce a
-   running shader leaves the blur exactly as it was.
-
-   Note what is NOT here: no fallback, no @supports, no reduced-motion rule of its own. There is
-   nothing to fall back to — the absence of the attribute IS the fallback, and the shader refuses
-   to start under reduced motion or below the `full` tier before any of this is reached.
-   ============================================================================================ */
-
-@layer shared {
-    .fx-glass-canvas {
-        /* Behind the card's own content but above its background. Everything else in the card
-           establishes no stacking context of its own, so a single negative-free z-index here is
-           enough — and `isolation` on the card keeps that local. */
-        z-index: 0;
-    }
-
-    .glass:has(> .fx-glass-canvas) {
-        isolation: isolate;
-    }
-
-    .glass:has(> .fx-glass-canvas) > *:not(.fx-glass-canvas) {
-        position: relative;
-        z-index: 1;
-    }
-
-    /* Once a pane is running, the CSS material stands down. Both halves matter: the blur is the
-       expensive one (it is why scroll-guard.js exists), and leaving the translucent tint on top
-       of a pane that is already transmitting the backdrop double-tints it into mud. */
-    @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-        :root[data-fx-tier="full"] .glass[data-glass-pane="on"] {
-            -webkit-backdrop-filter: none;
-            backdrop-filter: none;
-            background: transparent;
-        }
-
-        /* The CSS rim would sit on top of the shader's own, which draws a real specular edge
-           from the SDF gradient. Two rims read as a double border. */
-        :root[data-fx-tier="full"] .glass[data-glass-pane="on"]::before {
-            display: none;
-        }
-
-        /* And the scroll guard has nothing to switch off any more — a shader pass does not get
-           cheaper by being told the page is moving, and dropping the background here would flash
-           an opaque card in mid-scroll. */
-        .is-scrolling .glass[data-glass-pane="on"] {
-            background: transparent;
-        }
-    }
 }
 
 /* ============================================================================================

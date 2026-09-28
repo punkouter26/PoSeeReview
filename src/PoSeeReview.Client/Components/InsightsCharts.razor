@@ -39,15 +39,27 @@
             </div>
         }
 
+        @if (AllChartsEmpty)
+        {
+            @* Four identical "needs more data" panels, each with its own button, said one thing
+               four times. The per-chart empties still apply once any chart has enough. *@
+            <StateCard Icon="📊" Title="Not enough comics to chart yet">
+                <ChildContent>
+                    Charts need 10 scored restaurants, 2 regions or 3 weeks of scores. You have
+                    @_data.Summary.ScoredRestaurants restaurant@(_data.Summary.ScoredRestaurants == 1 ? "" : "s")
+                    across @_data.Summary.RegionCount region@(_data.Summary.RegionCount == 1 ? "" : "s")
+                    and @_data.Summary.WeekCount week@(_data.Summary.WeekCount == 1 ? "" : "s").
+                </ChildContent>
+                <Actions><a href="/" class="btn btn-primary">Draw another comic</a></Actions>
+            </StateCard>
+        }
+        else
+        {
         <div class="insights-grid">
-            <section class="insights-panel cq-card elevation-1 scroll-enter">
+            <section class="insights-panel elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Strangeness vs star rating</h2>
-                    <button type="button" class="btn btn-icon insights-listen"
-                            @onclick="() => PlayChartAsync(ScatterSeries)"
-                            title="Hear this chart" aria-label="Hear the strangeness against star rating">
-                        <span aria-hidden="true">🎧</span>
-                    </button>
+                    @ListenButton(ScatterSeries, "Hear the strangeness against star rating")
                 </header>
 
                 @if (_scatter.Count == 0)
@@ -76,14 +88,10 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1 scroll-enter">
+            <section class="insights-panel elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Score distribution</h2>
-                    <button type="button" class="btn btn-icon insights-listen"
-                            @onclick="() => PlayChartAsync(BucketSeries)"
-                            title="Hear this chart" aria-label="Hear the score distribution">
-                        <span aria-hidden="true">🎧</span>
-                    </button>
+                    @ListenButton(BucketSeries, "Hear the score distribution")
                 </header>
 
                 @if (_buckets.Count == 0)
@@ -111,14 +119,10 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1 scroll-enter">
+            <section class="insights-panel elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Region comparison</h2>
-                    <button type="button" class="btn btn-icon insights-listen"
-                            @onclick="() => PlayChartAsync(RegionSeries)"
-                            title="Hear this chart" aria-label="Hear the region comparison">
-                        <span aria-hidden="true">🎧</span>
-                    </button>
+                    @ListenButton(RegionSeries, "Hear the region comparison")
                 </header>
 
                 @if (_data.Regions.Count == 0)
@@ -143,14 +147,10 @@
                 }
             </section>
 
-            <section class="insights-panel cq-card elevation-1 scroll-enter">
+            <section class="insights-panel elevation-1 scroll-enter">
                 <header class="insights-panel-head">
                     <h2 class="insights-panel-title">Weekly trend</h2>
-                    <button type="button" class="btn btn-icon insights-listen"
-                            @onclick="() => PlayChartAsync(WeeklySeries)"
-                            title="Hear this chart" aria-label="Hear the weekly trend">
-                        <span aria-hidden="true">🎧</span>
-                    </button>
+                    @ListenButton(WeeklySeries, "Hear the weekly trend")
                 </header>
 
                 @if (_data.WeeklyTrend.Count == 0)
@@ -184,6 +184,8 @@
                 }
             </section>
         </div>
+
+        }
 
         <footer class="insights-scope">
             <p>
@@ -373,8 +375,22 @@
         <div class="insights-empty">
             <p class="insights-empty-title">Needs at least @requirement.</p>
             <p class="insights-empty-body">You have @current so far.</p>
-            <a href="/" class="btn btn-secondary">Draw another comic</a>
         </div>
+    };
+
+    private bool AllChartsEmpty =>
+        _scatter.Count == 0 && _buckets.Count == 0 && _data is { Regions.Count: 0, WeeklyTrend.Count: 0 };
+
+    /// <summary>Only on a chart that has data: a listen button over an empty panel plays nothing.</summary>
+    private RenderFragment ListenButton(IReadOnlyList<double> series, string label) => __builder =>
+    {
+        if (series.Count > 0)
+        {
+            <button type="button" class="btn btn-icon insights-listen"
+                    @onclick="() => PlayChartAsync(series)" title="Hear this chart" aria-label="@label">
+                <span aria-hidden="true">🎧</span>
+            </button>
+        }
     };
 
     /// <summary>Chart-facing shapes. Radzen resolves its bindings by reflection over properties.</summary>

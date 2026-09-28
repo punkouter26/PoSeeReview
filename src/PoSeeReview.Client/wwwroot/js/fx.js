@@ -107,14 +107,6 @@ export const fx = {
 
     audioLatency: () => guard(() => audio.latency(), null),
 
-    /**
-     * `element` is optional and pans the click to wherever the control actually is. Callers that
-     * pass nothing get the old centred behaviour, so no existing call site had to change.
-     */
-    playTap: (element) => guard(() => {
-        audio.tap(element ?? null);
-        haptics.tap();
-    }),
     /** Pans the click to a viewport x coordinate — see audio.tapAt. */
     playTapAt: (clientX) => guard(() => {
         audio.tapAt(clientX);
@@ -158,10 +150,6 @@ export const fx = {
         audio.scoreLand(score);
         haptics.scoreLand(score);
     }),
-    playPhase: (index, total) => guard(() => {
-        audio.phase(index, total);
-        haptics.phase();
-    }),
     playSplat: (intensity) => guard(() => {
         audio.splat(intensity);
         haptics.splat(intensity);
@@ -199,15 +187,6 @@ export const fx = {
      * not, before a single row has been read.
      */
     playBoardChord: (entries) => guard(() => audio.boardChord(entries ?? [])),
-
-    /**
-     * A row that moved since this visitor last saw the board. Panned to the row, and small: this
-     * plays while someone is reading, so it must be a detail being pointed at.
-     */
-    playRankDelta: (delta, pan) => guard(() => {
-        audio.rankDelta(delta ?? 0, pan ?? 0);
-        if (Math.abs(delta ?? 0) >= 3) haptics.tap();
-    }),
 
     /** Plays a numeric series as pitch. Used by /insights to make a chart's shape audible. */
     playSeries: (values, options) => guard(() => audio.sonify(values ?? [], options ?? {})),
@@ -266,13 +245,6 @@ export const fx = {
 
     /** Restores the brand gradient. Called on leaving a comic route. */
     clearComicPalette: (id) => guard(() => gradient.setPalette(id, null)),
-
-    /**
-     * Viewport width, for callers that need to convert a pointer coordinate into a fraction of
-     * a full-width canvas. Here rather than as a raw JS eval on the .NET side so it goes through
-     * the same guard as everything else and cannot throw into interop.
-     */
-    viewportWidth: () => guard(() => window.innerWidth || 1, 1),
 
     // ── Ink burst ────────────────────────────────────────────────────────────────────────
     burstParticles: (canvas, score) => guard(() => particles.burst(canvas, score ?? 50), 0),
@@ -394,11 +366,8 @@ export const fx = {
                 [{ transform: `translateY(${delta * height}px)` }, { transform: 'none' }],
                 { duration, delay, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
             animation.finished.then(() => { row.style.zIndex = ''; }).catch(() => { });
-            // The cue lands as the row settles, not as it sets off: the arrival is the news.
-            setTimeout(() => guard(() => {
-                audio.rankDelta(delta, delta > 0 ? 0.4 : -0.4);
-                if (Math.abs(delta) >= 3) haptics.tap();
-            }), delay + duration * 0.7);
+            // The buzz lands as the row settles, not as it sets off: the arrival is the news.
+            if (Math.abs(delta) >= 3) setTimeout(() => guard(() => haptics.tap()), delay + duration * 0.7);
         });
     }),
 

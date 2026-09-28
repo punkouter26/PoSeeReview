@@ -232,7 +232,6 @@ function autoDowngrade() {
     state.tier = next;
     state.tierWasAutoDowngraded = true;
     state.overBudgetStreak = 0;
-    state.stats.worstFrameMs = 0;
 
     // Deliberately NOT persisted. A downgrade caused by one heavy page or a background tab
     // stealing the GPU should not silently become the user's permanent setting.

@@ -5,6 +5,7 @@
 
 .comic-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: var(--space-xs);
     margin-top: var(--space-md);
@@ -12,8 +13,7 @@
 
 /* Share is the point of the whole screen, so it takes the room when there is any to take. */
 .action-share {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 1 0 auto;
 }
 
 /* A phone keeps the whole bar on one row by dropping Save's word; the disk glyph and the
@@ -21,5 +21,10 @@
 @media (max-width: 40rem) {
     .action-label {
         display: none;
+    }
+
+    /* The pill's desktop padding clipped Share to "Sha" at 320px. */
+    .comic-actions {
+        --btn-pad-x: var(--space-sm);
     }
 }

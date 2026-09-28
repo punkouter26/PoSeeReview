@@ -835,34 +835,6 @@ export const audio = {
     },
 
     /**
-     * A row that moved since the visitor last saw this board. Up is a rising pair, down a
-     * falling one, and the interval widens with the size of the move.
-     *
-     * Small on purpose, and panned to the row. This plays while someone is reading a list, so it
-     * has to be the sound of a detail being pointed at, not an announcement — several of these
-     * land in sequence as the board renders.
-     */
-    rankDelta(delta, pan = 0) {
-        if (!canPlay() || !delta) return;
-
-        const up = delta > 0;
-        const size = Math.min(6, Math.abs(delta));
-        // Two to seven semitones. Beyond a fifth the interval stops reading as "moved" and starts
-        // reading as a different event entirely.
-        const interval = Math.pow(SEMITONE, 2 + size);
-        const base = 587.33;
-
-        voice({
-            type: 'sine', freq: up ? base : base * interval,
-            attack: 0.003, decay: 0.07, peak: 0.13, pan, send: 0.18
-        });
-        voice({
-            type: 'sine', freq: up ? base * interval : base,
-            attack: 0.003, decay: 0.12, peak: 0.12, delay: 0.055, pan, send: 0.22
-        });
-    },
-
-    /**
      * Moving between routes. Rises going deeper, falls coming back, and sweeps across the stereo
      * field in the direction of travel.
      *

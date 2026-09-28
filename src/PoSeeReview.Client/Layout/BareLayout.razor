@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+
+@* For pages that are the whole screen — Login. MainLayout's nav offered Home and Hall of Fame
+   there, and both only bounced back to the login page. The boundary is kept: without it a
+   login-page exception shows the framework's red strip instead of a way forward. *@
+<main id="main-content">
+    <ErrorBoundary>
+        <ChildContent>@Body</ChildContent>
+        <ErrorContent>
+            <StateCard Class="po-error-panel" Icon="⚠️" Title="Something went wrong" Alert="true" Heading1="true">
+                This page hit an unexpected error. Reload the page to try again.
+            </StateCard>
+        </ErrorContent>
+    </ErrorBoundary>
+</main>

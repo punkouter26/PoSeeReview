@@ -84,6 +84,33 @@ public sealed class LeaderboardServiceComicVisibilityTests
         Assert.Equal(10, result[^1].Rank);
     }
 
+    [Fact]
+    public async Task UpsertEntryAsync_LowerRedrawReplacesTheLiveRow()
+    {
+        var repo = new Mock<ILeaderboardRepository>();
+        var saved = default(LeaderboardEntry);
+        repo.Setup(r => r.UpsertAsync(It.IsAny<LeaderboardEntry>()))
+            .Callback<LeaderboardEntry>(e => saved = e).Returns(Task.CompletedTask);
+
+        await CreateService(repo, new Mock<IBlobStorageService>())
+            .UpsertEntryAsync(Entry(0, "p", 30, "https://blob.example/new.png"));
+
+        Assert.Equal(30, saved!.StrangenessScore);
+        Assert.Equal("https://blob.example/new.png", saved.ComicBlobUrl);
+    }
+
+    [Fact]
+    public async Task UpsertEntryAsync_RedrawBelowThresholdRemovesTheLiveRow()
+    {
+        var repo = new Mock<ILeaderboardRepository>();
+
+        await CreateService(repo, new Mock<IBlobStorageService>())
+            .UpsertEntryAsync(Entry(0, "p", 18, "https://blob.example/new.png"));
+
+        repo.Verify(r => r.DeleteAsync(PlaceId.From("p"), RegionCode.From("US")), Times.Once);
+        repo.Verify(r => r.UpsertAsync(It.IsAny<LeaderboardEntry>()), Times.Never);
+    }
+
     private static LeaderboardService CreateService(
         Mock<ILeaderboardRepository> repo,
         Mock<IBlobStorageService> blobs) =>

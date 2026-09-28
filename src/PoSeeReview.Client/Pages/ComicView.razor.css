@@ -1,81 +1,65 @@
-.comic-view {
-    /* dvh, not vh: the mobile URL bar makes 100vh taller than the visible viewport, which is a
-       scrollbar of dead space at the bottom of every page. The rest of the app already uses dvh. */
-    min-height: 100dvh;
-    padding: clamp(0.75rem, 3vw, 1.25rem);
-    background:
-        radial-gradient(circle at top, color-mix(in srgb, var(--color-brand) 8%, transparent), transparent 40%),
-        var(--color-surface);
-}
+/* No min-height, padding or background of its own. The 100dvh floor under a sticky nav made the
+   page scroll by the nav's height, and the opaque surface hid the backdrop that this very page
+   retunes to the comic's score and palette. `.content` owns the gutter. */
 
-/* ::deep, and it is load-bearing: `.comic-container` is passed to <RadzenCard> via its `class`
-   parameter, so the div carrying it is rendered by RadzenCard — and Blazor only stamps the
-   CSS-isolation attribute onto elements in THIS component's markup. */
-::deep .comic-container {
+.comic-container {
     max-width: 980px;
     margin: 0 auto;
     background: var(--color-card);
     border-radius: var(--radius-lg);
-    padding: clamp(1rem, 3vw, 2rem);
+    padding: clamp(0.75rem, 3vw, 2rem);
     box-shadow: 0 4px 32px var(--brand-a12), var(--shadow-xs);
     border: 1px solid var(--brand-a08);
     animation: fadeSlideUp 0.4s ease-out both;
 }
 
 /* ── Desktop: one screen, two columns ─────────────────────────────────────────────────────────
-   At 1780x946 the single column measured 1128px wide inside a 1765px main (36% of the width
-   unused) AND 1854px tall — wasting horizontal room while forcing a vertical scroll, on the
-   page whose whole payoff is one image. Past 64rem the story and the strip sit side by side and
-   the strip is capped to what is left of the viewport, so the comic and its context, actions
-   and score all land without scrolling.
+   The strip owns the left column; the title, score, actions and story stack in the right one.
+   The title used to span a full-width row of its own, which cost the strip ~130px of height and
+   left the right column empty below a short narrative. The last row is 1fr so a strip taller
+   than the text does not spread the right column's items apart.
 
-   Every child below is either a child COMPONENT's root (hence ::deep) or an element of this
-   component; there is no third case, and `:nth-child` is not usable here for exactly that
-   reason — the child roots carry their own components' scope attributes, not this one's. */
+   Children of child COMPONENTS (the strip's tilt wrapper, the action bar) need ::deep; this
+   component's own elements do not. */
 @media (min-width: 64rem) {
-    ::deep .comic-container {
+    .comic-container {
         max-width: 1180px;
         display: grid;
         grid-template-columns: minmax(0, 1.3fr) minmax(18rem, 1fr);
+        grid-template-rows: repeat(5, auto) 1fr;
         align-items: start;
         column-gap: clamp(1rem, 2.5vw, 2rem);
         row-gap: var(--space-md);
     }
 
-    /* The name and the score ring are the page's title block, so they span the full width. */
     .comic-header {
-        grid-column: 1 / -1;
+        grid-column: 2;
         margin-bottom: 0;
     }
 
-    /* The strip owns the left column for the whole height of the row that follows it. Placed on
-       the tilt wrapper, which is the grid item; the container inside it only drops its margin. */
-    ::deep .comic-container .comic-strip-tilt {
+    .comic-container ::deep .comic-strip-tilt {
         grid-column: 1;
-        grid-row: 2 / span 5;
+        grid-row: 1 / -1;
     }
 
-    ::deep .comic-container .comic-strip-container {
+    .comic-container ::deep .comic-strip-container {
         margin: 0;
     }
 
-    ::deep .comic-container .comic-actions,
+    .comic-container ::deep .comic-actions,
     .skit-status,
     .comic-narrative,
     .comic-disclosure {
         grid-column: 2;
-        /* The grid's row-gap is the spacing here. Each of these carries its own top margin for
-           the single-column layout, and stacked on the gap it double-spaced the column. */
         margin-top: 0;
     }
 
-    /* Fit the strip to the space left after the shell header and the card's own padding instead
-       of letting a near-square image set the document height. width:auto + max-height is what
-       keeps the aspect ratio; width:100% with a max-height would letterbox inside the box. */
-    ::deep .comic-container .comic-strip-image {
+    /* Fit the strip to what the nav, the gutter and the card's own padding leave of the viewport.
+       width:auto + max-height keeps the aspect ratio; width:100% would letterbox. */
+    .comic-container ::deep .comic-strip-image {
         width: auto;
         max-width: 100%;
-        max-height: calc(100dvh - 15rem);
+        max-height: calc(100dvh - 12rem);
         margin-inline: auto;
     }
 }
@@ -98,7 +82,7 @@
 }
 
 .comic-header h1 {
-    font-family: var(--font-display, 'Bangers', cursive);
+    font-family: var(--font-display);
     /* --text-2xl rather than a bespoke clamp: the old one topped out at 3rem, which on a desktop
        spent a fifth of the viewport on the restaurant name alone. This is the same ramp the other
        page headings use. */
@@ -146,14 +130,14 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: var(--gradient-brand, linear-gradient(135deg, #7C3AED 0%, #4F1D96 100%));
+    background: var(--gradient-brand);
     border-radius: 50%;
     margin: 10%;
     box-shadow: 0 4px 16px var(--brand-a35);
 }
 
 .ring-score {
-    font-family: var(--font-display, 'Bangers', cursive);
+    font-family: var(--font-display);
     font-size: var(--text-xl);
     color: var(--color-on-dark);
     line-height: 1;
@@ -161,14 +145,14 @@
 }
 
 .ring-text {
-    font-size: clamp(0.55rem, 1vw, 0.65rem);
+    font-size: var(--text-2xs);
     text-transform: uppercase;
     letter-spacing: 0.15em;
     color: var(--color-on-dark-secondary);
 }
 
 /* The ring stays beside the name on a phone; stacking it put a 84px dial on a row of its own. */
-@media (max-width: 600px) {
+@media (max-width: 40rem) {
     .strangeness-ring-wrap {
         width: 72px;
         height: 72px;
@@ -177,7 +161,7 @@
 
 
 @media (prefers-reduced-motion: reduce) {
-    ::deep .comic-container,
+    .comic-container,
     .ring-fill {
         animation: none;
     }
@@ -262,20 +246,6 @@
    the score out of the ring, onto the top of the strip. */
 .ring-label {
     z-index: 1;
-}
-
-/* The shatter canvas deliberately extends well past the ring. `.fx-overlay` pins an overlay to
-   its parent's box, which for the ring wrap is about 110px — pieces would hit the floor before
-   they had visibly left the ring, and a shatter that lands immediately reads as a glitch. Giving
-   it room below is what lets the pieces fall.
-
-   Wider than tall on purpose: horizontal spread is what makes it read as breaking rather than
-   as dripping. */
-.fx-shatter-canvas {
-    inset: -40% -60% -240% -60%;
-    width: auto;
-    height: auto;
-    z-index: 2;
 }
 
 /* The ring gradient's stops. `stop-color` is set from CSS rather than as a presentation attribute

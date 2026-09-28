@@ -71,11 +71,9 @@
 
     /// <summary>
     /// How many stacked panels to develop in sequence. Two is the server's cap
-    /// (<c>ComicTextOverlayService.GetPanelBounds</c> stacks two panels vertically); it is a
-    /// parameter so that if PanelCount ever reaches ComicDto the caller can pass the real number.
+    /// (<c>ComicTextOverlayService.GetPanelBounds</c> stacks two panels vertically).
     /// </summary>
-    [Parameter]
-    public int PanelCount { get; set; } = 2;
+    private const int PanelCount = 2;
 
     /// <summary>
     /// Place id, used to seed the per-panel notes so scrolling the strip replays this comic's own

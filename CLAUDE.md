@@ -353,7 +353,13 @@ themes — `color: white` there was never a bug, just unnamed. Translucent brand
 
 Scales: 8-step spacing (`--space-*`), 7-step fluid type (`--text-*`), `--tap-target` (44px), and
 exactly four breakpoints (`40/48/64/80rem`) — there were 13 before. Prefer a **container query**
-(`.cq-card`, `.cq-list`) over a media query when the question is how much room a *component* has.
+over a media query when the question is how much room a *component* has — `.comic-rows` is the
+live example: a narrow *list* (phone, or one column of the desktop board) moves the medal onto the
+thumbnail. The old `.cq-card`/`.cq-list` hosts were declared and never queried; they are gone.
+
+`page` sits below `shared`, so a scoped sheet **cannot** change a `.btn`'s padding — the rule just
+loses. `.btn` reads `--btn-pad-x` for exactly that; set the property on a container instead.
+`.btn-icon` is square at `--tap-target` with no padding (the pill padding made glyphs ~70px wide).
 
 **Motion** is a scale too: `--duration-instant/fast/base/slow/deliberate` and
 `--ease-out/in/in-out/spring`. Duration tracks distance travelled, not importance — a 4px chip
@@ -922,6 +928,9 @@ principal, so the 409 is the duplicate check), and only ever writes a row.
 board churns with them, so nothing accumulated and there was no reason to return. Entries are
 promoted as scores are recorded and outlive the comic — which is why `ImageExpired` exists, and
 why a takedown must purge the archive too (it is the copy that survives everything else).
+The archive keeps each place's **peak**; the live board does not. A live row mirrors the live
+comic, and a redraw below `MinimumStrangenessScore` deletes it — it used to keep the old peak and
+image, so the board advertised a 65 whose tap opened an 18.
 
 **Funnel analytics (`Features/Diagnostics`, `FunnelEndpoints`).** The PRD sets targets the app never measured; the
 server only tracked `ComicGenerated`, which cannot see a denied location or an abandoned

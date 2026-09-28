@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
 using PoSeeReview.Shared.Dtos;
 
@@ -23,11 +24,15 @@ public sealed class BffAuthenticationStateProvider(HttpClient http) : Authentica
     private async Task<AuthenticationState> FetchAuthenticationStateAsync()
     {
         AuthStateDto? state;
+        // This task is cached for the session and gates every AuthorizeView, so it must always
+        // complete: a stalled request would hold the page on "Authorizing..." for HttpClient's
+        // 100s default, and a timeout or a non-JSON body (a proxy error page) would fault it for good.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         try
         {
-            state = await http.GetFromJsonAsync("auth/me", AppJsonContext.Default.AuthStateDto);
+            state = await http.GetFromJsonAsync("auth/me", AppJsonContext.Default.AuthStateDto, timeout.Token);
         }
-        catch (HttpRequestException)
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or JsonException or NotSupportedException)
         {
             return Anonymous;
         }

@@ -1,8 +1,8 @@
+/* No width, gutter or min-height of its own: `.content` owns the gutter, and a 100dvh floor
+   below the sticky nav made an empty landing page scroll by the nav's height. */
 .index-container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: clamp(0.75rem, 3vw, 1.5rem);
-    min-height: 100dvh;
+    display: grid;
+    gap: var(--space-sm);
 }
 
 /* ── Hero ─────────────────────────────────────────────────────────────────────────────────── */
@@ -10,8 +10,7 @@
     position: relative;
     overflow: hidden;
     isolation: isolate;
-    margin-bottom: var(--space-sm);
-    padding: clamp(1rem, 2.5vw, 1.75rem) clamp(1rem, 3vw, 2rem);
+    padding: var(--space-md);
     text-align: center;
     background: var(--gradient-hero);
     color: var(--color-on-dark);
@@ -44,26 +43,19 @@
 }
 
 .app-header h1 {
-    margin: 0 0 var(--space-2xs);
+    margin: 0;
     font-family: var(--font-display);
-    font-size: clamp(1.75rem, 4.5vw, 2.75rem);
+    font-size: var(--text-2xl);
     font-weight: 400;
     letter-spacing: 0.06em;
     line-height: 1.1;
     text-shadow: var(--text-shadow-on-dark);
 }
 
-.tagline {
-    margin: 0;
-    font-size: var(--text-md);
-    line-height: 1.5;
-    opacity: 0.92;
-}
-
 /* ── Search bar ───────────────────────────────────────────────────────────────────────────── */
 .location-prompt {
-    max-width: 44rem;
-    margin: 0 auto var(--space-md);
+    width: min(44rem, 100%);
+    margin-inline: auto;
     padding: var(--space-sm);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-card);
@@ -77,6 +69,7 @@
 
 .search-row {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-xs);
     align-items: stretch;
 }
@@ -86,9 +79,8 @@
     padding-inline: var(--space-md);
 }
 
-/* The field has to be allowed to grow, or it sits at its intrinsic width between the buttons.
-   Radzen's RadzenTextBox renders a real <input>, so ::deep reaches it directly. */
-.search-row ::deep .search-field {
+/* The field has to be allowed to grow, or it sits at its intrinsic width between the buttons. */
+.search-field {
     flex: 1 1 auto;
     min-width: 0;
     min-height: var(--tap-target);
@@ -100,21 +92,47 @@
     font-size: var(--text-md);
 }
 
-.search-row ::deep .search-field:focus {
+.search-field:focus {
     border-color: var(--color-brand);
     outline: none;
 }
 
-/* On a phone the pin keeps only its icon: three controls fit one row at 320px that way. */
+/* On a phone the field takes its own row and the two buttons share the next, so "Near me"
+   keeps its label — an unlabelled pin was the page's primary action. */
 @media (max-width: 40rem) {
-    .location-btn {
-        width: var(--tap-target);
-        padding: 0;
+    .search-field {
+        flex-basis: 100%;
+        order: -1;
     }
 
-    .location-btn-label {
-        display: none;
+    .search-row {
+        --btn-pad-x: var(--space-sm);
     }
+
+    .search-row > .btn {
+        flex: 1;
+        white-space: nowrap;
+    }
+
+    .app-header h1 {
+        font-size: var(--text-xl);
+    }
+}
+
+/* ── Landing board ────────────────────────────────────────────────────────────────────────── */
+.landing-board-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+}
+
+.landing-board-head a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap-target);
+    font-size: var(--text-sm);
+    font-weight: 600;
 }
 
 .denied-alert {
@@ -129,7 +147,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-sm);
-    max-width: 44rem;
+    width: min(44rem, 100%);
     margin-inline: auto;
 }
 

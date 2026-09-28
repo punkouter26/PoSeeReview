@@ -175,11 +175,11 @@ public sealed class FxService(IJSRuntime js)
 
     // ── Capabilities ─────────────────────────────────────────────────────────────────────
 
-    public async Task<FxCapabilities> GetCapabilitiesAsync()
+    public async Task<FxCapabilities> GetCapabilitiesAsync(bool refresh = false)
     {
-        // Memoised: this is read on nearly every page, and the underlying detection does not
-        // change unless the tier changes (which goes through SetTierAsync).
-        if (_capabilities is { } cached)
+        // Memoised: this is read on nearly every page. The tier also changes without going
+        // through SetTierAsync — the frame watchdog downgrades it — so a live readout passes refresh.
+        if (!refresh && _capabilities is { } cached)
         {
             return cached;
         }
@@ -223,16 +223,6 @@ public sealed class FxService(IJSRuntime js)
     public Task<FxAudioLatency?> GetAudioLatencyAsync() =>
         SafeAsync<FxAudioLatency?>("poseeFx.audioLatency", null);
 
-    public Task PlayTapAsync() => SafeVoidAsync("poseeFx.playTap");
-
-    /// <summary>
-    /// Click panned to where the control actually is on screen. Prefer this over
-    /// <see cref="PlayTapAsync()"/> wherever an <see cref="ElementReference"/> is already to hand:
-    /// a tap that sounds from the side of the screen it happened on is the cheapest spatial cue
-    /// the app has.
-    /// </summary>
-    public Task PlayTapAsync(ElementReference element) => SafeVoidAsync("poseeFx.playTap", element);
-
     /// <summary>
     /// Click panned to where the pointer was. The practical form for repeated lists: a click
     /// handler already receives <see cref="Microsoft.AspNetCore.Components.Web.MouseEventArgs"/>,
@@ -271,7 +261,6 @@ public sealed class FxService(IJSRuntime js)
 
     public Task PlayScoreTickAsync(int value, int target) => SafeVoidAsync("poseeFx.playScoreTick", value, target);
     public Task PlayScoreLandAsync(int score) => SafeVoidAsync("poseeFx.playScoreLand", score);
-    public Task PlayPhaseAsync(int index, int total) => SafeVoidAsync("poseeFx.playPhase", index, total);
     public Task PlaySplatAsync(double intensity) => SafeVoidAsync("poseeFx.playSplat", intensity);
     public Task PlayShareStingerAsync() => SafeVoidAsync("poseeFx.playShareStinger");
     public Task PlayErrorAsync() => SafeVoidAsync("poseeFx.playError");
@@ -309,13 +298,6 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task PlayBoardChordAsync(IReadOnlyList<FxMotif> entries) =>
         SafeVoidAsync("poseeFx.playBoardChord", entries);
-
-    /// <summary>
-    /// A row that moved since this visitor last saw the board. Positive is a climb.
-    /// </summary>
-    /// <param name="pan">-1..1, so the cue comes from where the row is on screen.</param>
-    public Task PlayRankDeltaAsync(int delta, double pan) =>
-        SafeVoidAsync("poseeFx.playRankDelta", delta, pan);
 
     /// <summary>
     /// Plays a numeric series as pitch, sweeping left to right. Long series are decimated on the
@@ -396,13 +378,6 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task ClearComicPaletteAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.clearComicPalette", handle);
-
-    /// <summary>
-    /// Viewport width, for converting a pointer coordinate into a fraction of a full-width
-    /// canvas. Falls back to 1, which every caller clamps against — a bad width places an effect
-    /// in the wrong spot, never off the canvas.
-    /// </summary>
-    public Task<double> GetViewportWidthAsync() => SafeAsync("poseeFx.viewportWidth", 1d);
 
     // ── Ink development ──────────────────────────────────────────────────────────────────
 

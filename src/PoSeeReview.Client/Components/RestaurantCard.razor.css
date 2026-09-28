@@ -1,7 +1,4 @@
-/* Modern container query support */
-::deep .restaurant-card {
-    container-type: inline-size;
-    container-name: card;
+.restaurant-card {
     padding: var(--space-sm) var(--space-md);
     cursor: default;
     transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
@@ -9,11 +6,6 @@
     grid-template-rows: auto auto 1fr auto;
     gap: var(--space-2xs);
 
-    /* No `!important` here, and none is needed. `::deep .restaurant-card` compiles to
-       `[b-*] .restaurant-card` and this sheet lands in `page`, which is declared after `vendor`
-       — layer order beats specificity, so these already outrank Radzen's `.rz-card` defaults.
-       The four `!important`s were fighting an order that was already on our side, and they
-       would have silently defeated any later page-level override of the same properties. */
     border: 1px solid var(--brand-a12);
     border-left: 3px solid var(--card-accent, color-mix(in srgb, var(--color-brand) 15%, transparent));
     border-radius: var(--radius-card);
@@ -22,17 +14,17 @@
     box-shadow: var(--shadow-sm);
 }
 
-::deep .restaurant-card:not(.disabled) {
+.restaurant-card:not(.disabled) {
     cursor: pointer;
 }
 
-::deep .restaurant-card:not(.disabled):hover {
+.restaurant-card:not(.disabled):hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 24px var(--brand-a18), var(--shadow-sm);
 }
 
 /* Disabled state for restaurants with no reviews at all */
-::deep .restaurant-card.disabled {
+.restaurant-card.disabled {
     opacity: 0.65;
     background: var(--color-surface-alt);
 }
@@ -41,10 +33,10 @@
    theme-aware. These are the design tokens, not lookalikes: the low tier used to hardcode
    #ef4444, which is a *different red* from --color-danger (#D72536) and therefore the only
    red in the app that did not move when the danger token was retuned for contrast. */
-::deep .restaurant-card.tier-high   { --card-accent: var(--color-success); }
-::deep .restaurant-card.tier-mid    { --card-accent: var(--color-accent); }
-::deep .restaurant-card.tier-low    { --card-accent: var(--color-danger); }
-::deep .restaurant-card.disabled    { --card-accent: var(--color-border); }
+.restaurant-card.tier-high   { --card-accent: var(--color-success); }
+.restaurant-card.tier-mid    { --card-accent: var(--color-accent); }
+.restaurant-card.tier-low    { --card-accent: var(--color-danger); }
+.restaurant-card.disabled    { --card-accent: var(--color-border); }
 
 @keyframes cardSlideIn {
     from { opacity: 0; transform: translateY(20px); }

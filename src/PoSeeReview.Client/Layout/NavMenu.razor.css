@@ -1,13 +1,14 @@
 .top-row {
     background: var(--surface-inverse-veil);
     border-bottom: 1px solid var(--border-on-dark-subtle);
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-on-dark) 5%, transparent), 0 4px 24px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-on-dark) 5%, transparent), var(--elevation-2-shadow);
 }
 
 .nav-shell {
-    width: min(1200px, 100%);
+    /* Same width and gutter as `.content`, so the brand lines up with the page below it. */
+    width: min(84rem, 100%);
     margin: 0 auto;
-    padding: 0 1.25rem;
+    padding: 0 var(--space-md);
     height: 3.5rem;
     display: flex;
     align-items: center;
@@ -28,12 +29,12 @@
 
 .brand-icon {
     flex-shrink: 0;
-    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
+    color: var(--color-on-dark);
 }
 
 .brand-name {
-    font-family: var(--font-display, 'Bangers', cursive);
-    font-size: 1.4rem;
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
     letter-spacing: 0.05em;
     color: var(--color-on-dark);
     line-height: 1;
@@ -48,8 +49,8 @@
     display: inline-block;
     margin-left: 0.5rem;
     padding: 0.15rem 0.5rem;
-    font-family: var(--font-body, 'DM Sans', sans-serif);
-    font-size: 0.6rem;
+    font-family: var(--font-body);
+    font-size: var(--text-2xs);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -144,13 +145,15 @@
     font-weight: 600;
     color: var(--color-on-dark-muted);
     max-width: 180px;
-    overflow: hidden;
     white-space: nowrap;
 }
 
-.nav-user-badge--anon {
-    border-color: var(--status-on-dark-ok-border);
-    color: var(--status-on-dark-ok);
+/* The badge is 32px (28px on a phone); the target is the full 44px at every width. It used to
+   be expanded only on a phone, leaving desktop and tablet 12px short. */
+.nav-user-badge::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
 }
 
 .nav-user-badge--user {
@@ -168,6 +171,7 @@
 }
 
 .nav-user-email {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -186,12 +190,6 @@
     transition: background 0.15s, border-color 0.15s;
     white-space: nowrap;
     letter-spacing: 0.02em;
-}
-
-.nav-logout-btn:hover {
-    background: var(--status-on-dark-danger-surface);
-    border-color: var(--status-on-dark-danger);
-    color: var(--color-on-dark);
 }
 
 @media (max-width: 40rem) {
@@ -260,8 +258,7 @@
         display: none;
     }
 
-    .nav-user-badge--user .nav-user-dot,
-    .nav-user-badge--anon .nav-user-dot {
+    .nav-user-badge--user .nav-user-dot {
         display: inline-block;
     }
 
@@ -271,8 +268,7 @@
         background: transparent;
     }
 
-    .nav-user-badge--user,
-    .nav-user-badge--anon {
+    .nav-user-badge--user {
         width: 28px;
         height: 28px;
         min-height: 28px;
@@ -280,13 +276,6 @@
         justify-content: center;
         border-radius: 50%;
         border: 1.5px solid currentColor;
-    }
-
-    /* 28px visual, 44px target. Shrinking the visual and the target are different things. */
-    .nav-user-badge::after {
-        content: "";
-        position: absolute;
-        inset: -8px;
     }
 }
 
@@ -296,7 +285,7 @@
 .nav-account-menu {
     inset: auto;
     top: 3.75rem;
-    right: max(0.75rem, calc((100vw - 1200px) / 2 + 1.25rem));
+    right: max(var(--space-sm), calc((100vw - 84rem) / 2 + var(--space-md)));
     margin: 0;
     min-width: 13rem;
     max-width: calc(100vw - 1.5rem);
@@ -344,4 +333,12 @@
 
 .nav-account-menu .nav-logout-btn {
     width: 100%;
+}
+
+/* The bar is 3.25rem on a phone, not 3.5rem; the menu hung half a rem below it. After the base
+   rule on purpose — same specificity, so source order decides. */
+@media (max-width: 40rem) {
+    .nav-account-menu {
+        top: 3.5rem;
+    }
 }

@@ -166,7 +166,7 @@
     /// charts over every score ever recorded.</summary>
     private enum BoardScope { Live, Weekly, Stats }
 
-    /// <summary>`?view=stats` opens the Stats tab — it is where the old /insights route lands.</summary>
+    /// <summary>`?view=stats|week` opens that tab — /insights lands on stats.</summary>
     [SupplyParameterFromQuery(Name = "view")]
     public string? View { get; set; }
 
@@ -213,13 +213,14 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (string.Equals(View, "stats", StringComparison.OrdinalIgnoreCase))
+        _scope = View?.ToLowerInvariant() switch
         {
-            _scope = BoardScope.Stats;
-        }
+            "stats" => BoardScope.Stats,
+            "week" => BoardScope.Weekly,
+            _ => BoardScope.Live
+        };
 
-        await LoadLeaderboardAsync();
-
+        await (_scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync());
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -242,9 +243,21 @@
         _scope = scope;
         errorMessage = null;
 
+        // In the URL so refresh and Back keep the tab. replace: a tab is not a page visit.
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("view", scope switch
+        {
+            BoardScope.Stats => "stats",
+            BoardScope.Weekly => "week",
+            _ => null
+        }), replace: true);
+
         if (scope == BoardScope.Weekly && _archive is null)
         {
             await LoadArchiveAsync();
+        }
+        else if (scope == BoardScope.Live && leaderboardEntries is null)
+        {
+            await LoadLeaderboardAsync();
         }
     }
 

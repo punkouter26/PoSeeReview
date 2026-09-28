@@ -10,19 +10,16 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 @inject AnalyticsService Analytics
-@implements IDisposable
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
 <div class="index-container">
-    @* The hero is the landing page's identity, and only the landing page needs it: with results
-       on screen it would be a band of gradient restating the wordmark the nav already carries.
-       The page keeps a top-level heading either way — invisibly once results are showing. *@
+    @* One line of hero, and it says what the app does — the nav already carries the wordmark.
+       Hidden once results are showing; the page keeps its h1 either way. *@
     @if (_restaurants.Count == 0)
     {
         <header class="app-header">
-            <h1>PoSeeReview</h1>
-            <p class="tagline">Find a place, tap once, and turn its wildest reviews into a comic.</p>
+            <h1>Turn a restaurant's wildest reviews into a comic</h1>
         </header>
     }
     else
@@ -60,7 +57,8 @@
                     </button>
                 }
                 <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
-                <RadzenTextBox id="city-search-input" @bind-Value="_searchQuery" Placeholder="@_searchPlaceholder" @oninput="HandleSearchInput" @onkeydown="HandleSearchKeyDown" aria-label="Search city, address, or ZIP code" class="search-field" />
+                <input id="city-search-input" class="search-field" type="search" autocomplete="off" enterkeyhint="search"
+                       @bind="_searchQuery" @bind:event="oninput" placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
                 <button type="button" class="btn btn-secondary"
                         @onclick="SearchByLocationAsync"
                         disabled="@string.IsNullOrWhiteSpace(_searchQuery)"
@@ -80,8 +78,8 @@
 
     @if (_flowState == LocationFlowState.Loading)
     {
-        <p class="results-info">@_loadingMessage</p>
-        <div class="restaurants-grid">
+        <p class="results-info" role="status">@_loadingMessage</p>
+        <div class="restaurants-grid" aria-hidden="true">
             @for (var i = 0; i < 6; i++)
             {
                 <div class="skeleton-card">
@@ -108,15 +106,35 @@
         <div class="restaurants-grid">
             @foreach (var restaurant in _restaurants)
             {
-                <div class="cq-card">
-                    <RestaurantCard
-                        Restaurant="restaurant"
-                        IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
-                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
-                        OnRestaurantClick="HandleRestaurantClick" />
-                </div>
+                <RestaurantCard
+                    Restaurant="restaurant"
+                    IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
+                    IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                    OnRestaurantClick="HandleRestaurantClick" />
             }
         </div>
+    }
+
+    @* The fold used to be blank below the search bar. The live top three show a first-time
+       visitor what the app makes before they have to share a location. *@
+    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied && _topComics is { Count: > 0 })
+    {
+        <section class="landing-board" aria-labelledby="landing-board-title">
+            <div class="landing-board-head">
+                <h2 id="landing-board-title" class="comic-rows-heading">Strangest right now</h2>
+                <a href="/leaderboard">Hall of Fame →</a>
+            </div>
+            <ol class="comic-rows">
+                @foreach (var entry in _topComics)
+                {
+                    <ComicRow Href="@($"/comic/{entry.PlaceId}")"
+                              Name="@entry.RestaurantName"
+                              Score="@((int)Math.Round(entry.StrangenessScore))"
+                              ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
+                              Meta="@entry.Address" />
+                }
+            </ol>
+        </section>
     }
 </div>
 
@@ -138,6 +156,7 @@
     private string? _activeComicPlaceId;
 
     private HashSet<string> _cachedPlaceIds = [];
+    private List<LeaderboardEntryDto>? _topComics;
 
     /// <summary>
     /// Asks which of the current results are already drawn.
@@ -153,13 +172,23 @@
             : await ApiClient.GetCachedPlaceIdsAsync(_restaurants.Select(r => r.PlaceId));
     }
 
-    public void Dispose()
+    /// <summary>Best-effort: the landing page works without it, so a failure just hides it.</summary>
+    private async Task LoadTopComicsAsync()
     {
+        try
+        {
+            var board = await ApiClient.GetLeaderboardAsync(string.Empty, 3);
+            _topComics = board?.Entries.Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl)).ToList();
+            StateHasChanged();
+        }
+        catch (Exception)
+        {
+            _topComics = null;
+        }
     }
 
     private const string LastSearchKey = "posee_last_search";
     private const string DiscoveryModeKey = "posee_discovery_mode";
-    private const string LegacyLocationEnabledKey = "posee_location_enabled";
     private const string GeoMode = "geo";
     private const string ZipMode = "zip";
 
@@ -172,6 +201,7 @@
     protected override async Task OnInitializedAsync()
     {
         Analytics.Track(FunnelSteps.AppOpened);
+        _ = LoadTopComicsAsync();
 
         var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", LastSearchKey);
         if (!string.IsNullOrWhiteSpace(lastLocation))
@@ -179,7 +209,7 @@
             _searchPlaceholder = $"Last: {lastLocation}";
         }
 
-        switch (await ResolveDiscoveryModeAsync())
+        switch (await JS.InvokeAsync<string?>("localStorage.getItem", DiscoveryModeKey))
         {
             case ZipMode when !string.IsNullOrWhiteSpace(lastLocation):
                 _searchQuery = lastLocation!;
@@ -189,29 +219,6 @@
                 await RequestLocationAsync();
                 break;
         }
-    }
-
-    /// <summary>
-    /// Reads the remembered entry point, migrating the older <c>posee_location_enabled</c> boolean
-    /// forward. That flag could only express "auto-request geolocation", so a user who granted
-    /// location once and then switched to typing a ZIP still got the browser location prompt on
-    /// every visit, while their ZIP survived only as greyed-out placeholder text to retype.
-    /// </summary>
-    private async Task<string?> ResolveDiscoveryModeAsync()
-    {
-        var mode = await JS.InvokeAsync<string?>("localStorage.getItem", DiscoveryModeKey);
-        if (!string.IsNullOrWhiteSpace(mode))
-        {
-            return mode;
-        }
-
-        if (await JS.InvokeAsync<string?>("localStorage.getItem", LegacyLocationEnabledKey) != "true")
-        {
-            return null;
-        }
-
-        await JS.InvokeVoidAsync("localStorage.setItem", DiscoveryModeKey, GeoMode);
-        return GeoMode;
     }
 
     private Task RememberDiscoveryModeAsync(string mode) =>
@@ -229,9 +236,6 @@
         {
             await JS.InvokeVoidAsync("localStorage.removeItem", DiscoveryModeKey);
         }
-
-        // The legacy boolean has to go as well, or the migration above re-arms geolocation.
-        await JS.InvokeVoidAsync("localStorage.removeItem", LegacyLocationEnabledKey);
     }
 
     private string RetryLabel => _lastAttempt == DiscoveryAttempt.Search
@@ -462,12 +466,6 @@
         };
 
 
-    // Radzen's TextBox commits @bind-Value on change (blur), so the Search button's Disabled
-    // state stayed true while the user was still typing — it read as "nothing entered yet".
-    // Mirroring the raw input event keeps the button in step with what is on screen.
-    private void HandleSearchInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
-        => _searchQuery = e.Value?.ToString() ?? string.Empty;
-
     private async Task HandleSearchKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
     {
         if (e.Key == "Enter")
@@ -486,7 +484,7 @@
         Analytics.Track(FunnelSteps.RestaurantTapped);
         _isNavigatingToComic = true;
         _activeComicPlaceId = restaurant.PlaceId;
-        await Fx.PlayTapAsync();
+        // No tap cue here: RestaurantCard already played one, panned to where the tap landed.
         StateHasChanged();
 
         await Task.Yield();

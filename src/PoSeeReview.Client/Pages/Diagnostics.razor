@@ -13,10 +13,10 @@
 
 @if (HostEnvironment.Environment != "Development")
 {
-    <PageShell Title="Diagnostics" Width="PageShell.ShellWidth.Narrow" Class="diagnostics-container">
-        <p>This page is only available in development environments.</p>
-        <a href="/" class="btn btn-secondary">← Back to Home</a>
-    </PageShell>
+    <StateCard Icon="🔒" Title="Development only" Heading1="true">
+        <ChildContent>This page is only available in development environments.</ChildContent>
+        <Actions><a href="/" class="btn btn-secondary">Back to home</a></Actions>
+    </StateCard>
 }
 else
 {
@@ -141,26 +141,10 @@ else
 
         <ul class="fx-notes">
             <li>WebGL2: <strong>@(_caps.WebGl2 ? "available" : "unavailable")</strong></li>
-            @* Not a tier. The WebGL2 particle burst is a complete effect, not a degraded one —
-               it simulates in the vertex shader from immutable seeds, so it is stateless and
-               fades out mid-air. The compute version writes state back, so the ink lands. *@
-            <li>
-                WebGPU: <strong>@(_caps.WebGpu ? "available" : "unavailable")</strong> —
-                @(_caps.WebGpu
-                    ? "the ink burst runs as a compute shader and the drops settle."
-                    : "the ink burst falls back to the stateless WebGL2 sim.")
-            </li>
+            <li>WebGPU: <strong>@(_caps.WebGpu ? "available" : "unavailable")</strong></li>
             <li>
                 Vibration API: <strong>@(_caps.Haptics ? "available" : "unavailable")</strong> ·
                 speechSynthesis: <strong>@(_caps.Narration ? "available" : "unavailable")</strong>
-            </li>
-            @* The overlay is the instrument that matters, because this page is not the page that
-               is slow. It draws from inside the same rAF loop the effects run on, so it measures
-               the frames it is part of rather than polling across interop like this grid does. *@
-            <li>
-                The live overlay works on <em>every</em> page — toggle it with
-                <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, or append <code>?fx=debug</code> to any URL.
-                Watch it on the comic page, not here: this one runs no effects.
             </li>
             @if (_audioLatency is { } latency)
             {
@@ -191,18 +175,14 @@ else
 
     @if (isLoading)
     {
-        <div class="loading">
-            <div class="spinner"></div>
-            <p>Checking system health...</p>
-        </div>
+        <LoadingIndicator Message="Checking system health..." />
     }
     else if (healthStatus == null)
     {
-        <div class="alert alert-danger">
-            <h3>Unable to retrieve health status</h3>
-            <p>@errorMessage</p>
-            <button class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button>
-        </div>
+        <StateCard Icon="⚠️" Title="Unable to retrieve health status" Alert="true">
+            <ChildContent>@errorMessage</ChildContent>
+            <Actions><button type="button" class="btn btn-secondary" @onclick="LoadHealthStatus">Retry</button></Actions>
+        </StateCard>
     }
     else
     {
@@ -245,18 +225,18 @@ else
 
         @if (diagnosticsSnapshot != null)
         {
-            <div class="diagnostics-section">
-                <h3>Runtime Snapshot</h3>
+            <details class="diagnostics-section">
+                <summary><h3>Runtime Snapshot</h3></summary>
                 <div class="key-grid">
                     <div class="key-card"><div class="key-name">Environment</div><div class="key-value">@diagnosticsSnapshot.Environment</div></div>
                     <div class="key-card"><div class="key-name">Machine</div><div class="key-value">@diagnosticsSnapshot.MachineName</div></div>
                     <div class="key-card"><div class="key-name">.NET</div><div class="key-value">@diagnosticsSnapshot.DotNetVersion</div></div>
                     <div class="key-card"><div class="key-name">OS</div><div class="key-value">@diagnosticsSnapshot.OsVersion</div></div>
                 </div>
-            </div>
+            </details>
 
-            <div class="diagnostics-section">
-                <h3>Critical Keys</h3>
+            <details class="diagnostics-section">
+                <summary><h3>Critical Keys</h3></summary>
                 <div class="key-grid">
                     @foreach (var key in diagnosticsSnapshot.KeyStatus)
                     {
@@ -266,10 +246,10 @@ else
                         </div>
                     }
                 </div>
-            </div>
+            </details>
 
-            <div class="diagnostics-section">
-                <h3>Configuration Values</h3>
+            <details class="diagnostics-section">
+                <summary><h3>Configuration Values</h3></summary>
                 <div class="config-table">
                     @foreach (var item in diagnosticsSnapshot.Config)
                     {
@@ -279,7 +259,7 @@ else
                         </div>
                     }
                 </div>
-            </div>
+            </details>
         }
 
         <div class="actions">
@@ -316,7 +296,7 @@ else
             InvokeAsync(async () =>
             {
                 _stats = await Fx.GetFrameStatsAsync();
-                _caps = await Fx.GetCapabilitiesAsync();
+                _caps = await Fx.GetCapabilitiesAsync(refresh: true);
                 _audioLatency = await Fx.GetAudioLatencyAsync();
                 StateHasChanged();
             });

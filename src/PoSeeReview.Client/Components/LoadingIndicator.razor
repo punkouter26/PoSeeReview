@@ -1,6 +1,3 @@
-@using Radzen
-@using Radzen.Blazor
-
 @* One loading display for the whole app, carrying role="status" + aria-busy so a screen reader
    is told a wait is happening.
 
@@ -19,7 +16,7 @@
     }
     else
     {
-        <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Medium" aria-hidden="true" />
+        <span class="spinner" aria-hidden="true"></span>
         <p class="loading-message">@Message</p>
     }
 </div>
