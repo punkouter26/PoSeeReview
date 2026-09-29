@@ -47,7 +47,6 @@
     }
 
     .comic-container ::deep .comic-actions,
-    .skit-status,
     .comic-narrative,
     .comic-disclosure {
         grid-column: 2;
@@ -172,25 +171,6 @@
 }
 
 
-/* === Ink-splatter burst (FX #4) ===
-   Sized well beyond the ring so particles can fly clear of it. overflow must not be clipped by
-   .strangeness-ring-wrap, which is already position:relative. */
-.fx-burst-canvas {
-    position: absolute;
-    left: -150%;
-    top: -150%;
-    width: 400%;
-    height: 400%;
-    pointer-events: none;
-    z-index: 2;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .fx-burst-canvas {
-        display: none;
-    }
-}
-
 /* ── Narrative + disclosure ──────────────────────────────────────────────────────────────── */
 
 /* The narrative was already on the DTO and rendered nowhere. It is the one piece of writing the
@@ -258,8 +238,3 @@
     stop-color: var(--color-brand-alt);
 }
 
-.skit-status {
-    margin-top: var(--space-xs);
-    font-size: var(--text-xs);
-    color: var(--color-text-muted);
-}

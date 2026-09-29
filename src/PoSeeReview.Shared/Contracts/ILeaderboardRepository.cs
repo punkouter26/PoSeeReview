@@ -19,8 +19,7 @@ public interface ILeaderboardRepository
 
     /// <summary>
     /// Retrieves the top N entries across every region. A cross-partition scan, honest at this
-    /// app's volume and capped well below anything that could timeout — the same posture as the
-    /// Insights slice's reads.
+    /// app's volume and capped well below anything that could timeout.
     /// </summary>
     /// <param name="limit">Maximum number of entries to return</param>
     /// <returns>List of leaderboard entries sorted by score (highest first)</returns>

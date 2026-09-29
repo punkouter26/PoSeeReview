@@ -28,7 +28,6 @@ builder.Services.AddScoped<FxService>();
 builder.Services.AddScoped<PwaService>();
 builder.Services.AddScoped<BoardMemoryService>();
 builder.Services.AddScoped<ComicHistoryService>();
-builder.Services.AddScoped<InsightsClient>();
 builder.Services.AddScoped<ModerationClient>();
 // Scoped, not singleton: it holds the in-flight generation timestamp, which belongs to the
 // user's session rather than the process.

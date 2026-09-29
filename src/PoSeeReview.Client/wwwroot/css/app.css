@@ -261,7 +261,7 @@
            Four steps, matching the four things this app actually stacks:
              1  resting cards in a list
              2  a raised or hovered card
-             3  popovers, the install nudge, the toast
+             3  popovers, the toast
              4  modal dialogs
 
            Light mode: surfaces stay the same and shadows deepen. */
@@ -1232,16 +1232,6 @@
         background: linear-gradient(160deg, var(--color-surface) 0%, var(--color-brand-surface) 100%);
     }
 
-    /* ── Overlay canvases (FX #3, #4, #7) ────────────────────────────────────────────────── */
-    .fx-overlay {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        border-radius: inherit;
-    }
-
     @media (prefers-reduced-motion: reduce) {
         .btn:hover {
             transform: none;
@@ -1264,8 +1254,7 @@
             transform: none;
         }
 
-        .fx-backdrop,
-        .fx-overlay {
+        .fx-backdrop {
             display: none;
         }
 
@@ -1468,27 +1457,6 @@
     initial-value: 0px;
 }
 
-/* Where the light sits on the foil, written by js/comic-surface.js. 50% is the resting glint,
-   so foil that never receives a pointer still looks like foil. Inherited so the .holo-foil child
-   reads what the container was given. Typed so the return to rest after pointerleave eases. */
-@property --foil-x {
-    syntax: "<percentage>";
-    inherits: true;
-    initial-value: 50%;
-}
-
-@property --foil-y {
-    syntax: "<percentage>";
-    inherits: true;
-    initial-value: 50%;
-}
-
-@property --foil-angle {
-    syntax: "<angle>";
-    inherits: false;
-    initial-value: 0deg;
-}
-
 /* ============================================================================================
    INK DEVELOPMENT (the comic reveal)
 
@@ -1624,7 +1592,7 @@
 
    `@starting-style` plus `transition-behavior: allow-discrete` is the first way to animate an
    element that is being ADDED to the DOM without a JS mount hook — which matters here because
-   Blazor adds and removes the toast, the report dialog and the install nudge by re-rendering,
+   Blazor adds and removes the toast and the report dialog by re-rendering,
    and there is no lifecycle point in between to hang a class on.
 
    Both halves are needed. `@starting-style` supplies the "before" frame; allow-discrete lets
@@ -1652,8 +1620,7 @@
 
             /* The dialog settles DOWN into place rather than up: it is modal, so it should read
                as something placed in front of the page rather than emitted by it. */
-            .report-dialog-panel,
-            .install-prompt {
+            .report-dialog-panel {
                 transition:
                     opacity var(--duration-base) var(--ease-out),
                     transform var(--duration-base) var(--ease-out),
@@ -1664,11 +1631,6 @@
                 .report-dialog-panel {
                     opacity: 0;
                     transform: translateY(-0.5rem) scale(0.98);
-                }
-
-                .install-prompt {
-                    opacity: 0;
-                    transform: translateY(0.75rem);
                 }
             }
         }
@@ -1998,15 +1960,7 @@
 }
 
 /* ============================================================================================
-   THE COMIC AS AN OBJECT — foil, loupe, ripple, scroll tilt, speech bubbles, stamps, weirdness
-
-   All of it is CSS drawing; js/comic-surface.js and js/overlays.js only write custom properties
-   and attributes. That is not an aesthetic preference. The comic blob is cross-origin with no
-   CORS headers, so no shader can sample it — but a background-image, a mask and an SVG filter
-   all draw it without ever handing its pixels to script.
-
-   Stacking inside .comic-strip-container: image, panel-scrub light (3), foil (2, blended into
-   the art below the light), loupe (4), speech bubbles (5), the loupe button (6).
+   THE COMIC AS AN OBJECT — scroll tilt
    ============================================================================================ */
 
 @layer shared {
@@ -2027,312 +1981,6 @@
             }
         }
     }
-
-    /* ── Holographic foil ─────────────────────────────────────────────────────────────────
-       A spectrum band plus a hotspot, both centred on where the light is, dodged into the art.
-       The spectrum is built from the palette tokens, so it follows the theme like every other
-       colour here. The card tilts away from the light on the individual `rotate` property,
-       which composes with — rather than fights — the entrance animation's `transform`. */
-    .holo-foil {
-        display: none;
-        position: absolute;
-        inset: 0;
-        z-index: 2;
-        pointer-events: none;
-        border-radius: inherit;
-        background:
-            radial-gradient(circle at var(--foil-x) var(--foil-y),
-                color-mix(in srgb, var(--color-on-dark) 80%, transparent) 0%,
-                transparent 40%),
-            repeating-linear-gradient(115deg,
-                color-mix(in srgb, var(--color-danger) 55%, transparent) 0%,
-                color-mix(in srgb, var(--color-accent) 55%, transparent) 5%,
-                color-mix(in srgb, var(--color-success) 55%, transparent) 10%,
-                color-mix(in srgb, var(--color-brand-alt) 55%, transparent) 15%,
-                color-mix(in srgb, var(--color-brand) 55%, transparent) 20%,
-                color-mix(in srgb, var(--color-danger) 55%, transparent) 25%);
-        background-size: 100% 100%, 300% 300%;
-        background-position: center, var(--foil-x) var(--foil-y);
-        mix-blend-mode: color-dodge;
-        opacity: 0.6;
-        transition: --foil-x 140ms linear, --foil-y 140ms linear;
-    }
-
-    .comic-strip-container[data-foil="on"] .holo-foil {
-        display: block;
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-        .comic-strip-container[data-foil="on"] {
-            rotate: var(--foil-ax, 1) var(--foil-ay, 0) 0 var(--foil-angle);
-            transition: rotate var(--duration-fast) var(--ease-out);
-        }
-    }
-
-    /* Rare cards on the board glint too, so what glints in the list glints when opened. A
-       transform sweep on a pseudo-element, not a background-position one — ten thumbnails
-       repainting every frame is the cost the cached-card sheen already refused. */
-    .comic-thumbnail[data-rarity="holo"] {
-        position: relative;
-        overflow: clip;
-    }
-
-    .comic-thumbnail[data-rarity="holo"]::after {
-        content: "";
-        position: absolute;
-        inset: 0 -100%;
-        pointer-events: none;
-        background: linear-gradient(105deg,
-            transparent 30%,
-            color-mix(in srgb, var(--color-accent) 50%, transparent) 42%,
-            color-mix(in srgb, var(--color-brand-alt) 50%, transparent) 50%,
-            color-mix(in srgb, var(--color-success) 45%, transparent) 58%,
-            transparent 70%);
-        mix-blend-mode: color-dodge;
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-        :root:not([data-fx-tier="off"]) .comic-thumbnail[data-rarity="holo"]::after {
-            animation: posee-foil-sweep 5.5s var(--ease-in-out) infinite;
-        }
-    }
-
-    /* ── Loupe ────────────────────────────────────────────────────────────────────────────
-       The comic's own URL as a background, scaled and offset under a lens, with a halftone
-       screen over it — at magnification the strip should look like print, not like pixels. */
-    .comic-loupe {
-        display: none;
-        position: absolute;
-        left: 0;
-        top: 0;
-        z-index: 4;
-        width: 9rem;
-        height: 9rem;
-        border-radius: 50%;
-        pointer-events: none;
-        transform: translate(var(--loupe-x, 0), var(--loupe-y, 0));
-        background-color: var(--color-card);
-        background-image: var(--loupe-src, none);
-        background-position: var(--loupe-bx, 0) var(--loupe-by, 0);
-        background-size: var(--loupe-bw, 100%) var(--loupe-bh, 100%);
-        background-repeat: no-repeat;
-        border: 3px solid var(--color-comic-ink);
-        box-shadow: var(--elevation-3-shadow);
-    }
-
-    .comic-loupe::after {
-        content: "";
-        position: absolute;
-        inset: 0;
-        border-radius: inherit;
-        background: radial-gradient(circle,
-            color-mix(in srgb, var(--color-comic-ink) 22%, transparent) 30%,
-            transparent 34%) 0 0 / 5px 5px;
-        mix-blend-mode: multiply;
-    }
-
-    .comic-strip-container[data-loupe="on"] {
-        cursor: crosshair;
-        /* The lens follows a finger instead of the page scrolling under it. Only while the loupe
-           is on — the button is the way out, so the page is never trapped. */
-        touch-action: none;
-    }
-
-    .comic-strip-container[data-loupe="on"] .comic-loupe {
-        display: block;
-    }
-
-    /* Bottom corner: the captions are lettered along the top of each panel. */
-    .loupe-toggle {
-        position: absolute;
-        bottom: var(--space-xs);
-        right: var(--space-xs);
-        z-index: 6;
-        display: grid;
-        place-items: center;
-        width: var(--tap-target);
-        height: var(--tap-target);
-        border-radius: 50%;
-        border: 2px solid var(--color-comic-ink);
-        background: color-mix(in srgb, var(--color-card) 88%, transparent);
-        font-size: var(--text-md);
-        cursor: pointer;
-        opacity: 0.8;
-        transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-    }
-
-    .loupe-toggle:hover,
-    .loupe-toggle:focus-visible,
-    .loupe-toggle[aria-pressed="true"] {
-        opacity: 1;
-    }
-
-    .loupe-toggle[aria-pressed="true"] {
-        background: var(--color-accent);
-        transform: scale(1.06);
-    }
-
-    /* ── Score ripple ─────────────────────────────────────────────────────────────────────
-       Attached only for the second it runs: an idle displacement filter would still be
-       re-evaluated on every paint of the heaviest element on the page. */
-    .comic-strip-container[data-wobble="on"] .comic-strip-image {
-        filter: url(#posee-wobble);
-    }
-
-    .fx-defs {
-        position: absolute;
-        width: 0;
-        height: 0;
-        overflow: hidden;
-    }
-
-    /* ── Speech bubbles ───────────────────────────────────────────────────────────────────
-       One per skit line, on its speaker's side, over the panel the line falls in. Measured
-       tokens only: text-primary and brand-ink on the card surface. */
-    .skit-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 5;
-        pointer-events: none;
-    }
-
-    .skit-bubble {
-        position: absolute;
-        top: var(--bubble-top, 8%);
-        max-width: min(72%, 22rem);
-        padding: var(--space-xs) var(--space-sm);
-        background: var(--color-card);
-        color: var(--color-text-primary);
-        border: 3px solid var(--color-comic-ink);
-        border-radius: 1.25rem;
-        box-shadow: var(--elevation-3-shadow);
-        font-size: var(--text-sm);
-        line-height: 1.35;
-        animation: posee-bubble-in var(--duration-base) var(--ease-spring) both;
-    }
-
-    .skit-bubble[data-side="left"] {
-        left: 4%;
-        transform-origin: 1.5rem 100%;
-    }
-
-    .skit-bubble[data-side="right"] {
-        right: 4%;
-        transform-origin: calc(100% - 1.5rem) 100%;
-    }
-
-    /* The tail: a square turned 45deg, showing only the two edges that face down. */
-    .skit-bubble::after {
-        content: "";
-        position: absolute;
-        bottom: -0.6rem;
-        left: 1.4rem;
-        width: 1rem;
-        height: 1rem;
-        background: var(--color-card);
-        border-right: 3px solid var(--color-comic-ink);
-        border-bottom: 3px solid var(--color-comic-ink);
-        transform: rotate(45deg);
-    }
-
-    .skit-bubble[data-side="right"]::after {
-        left: auto;
-        right: 1.4rem;
-    }
-
-    .skit-bubble strong {
-        display: block;
-        font-family: var(--font-display);
-        font-size: var(--text-xs);
-        letter-spacing: 0.04em;
-        color: var(--color-brand-ink);
-    }
-
-    .skit-bubble[data-leaving] {
-        animation: posee-bubble-out var(--duration-fast) var(--ease-in) forwards;
-    }
-
-    /* ── Sound-word stamps ────────────────────────────────────────────────────────────────
-       A fixed layer on <body>. Word on accent is the measured on-accent pair (7.64:1). */
-    .fx-stamp-layer {
-        position: fixed;
-        inset: 0;
-        z-index: 1000;
-        pointer-events: none;
-        overflow: hidden;
-    }
-
-    .fx-stamp {
-        position: absolute;
-        left: var(--stamp-x);
-        top: var(--stamp-y);
-        width: 8.5rem;
-        height: 8.5rem;
-        margin: -4.25rem 0 0 -4.25rem;
-        display: grid;
-        place-items: center;
-        animation:
-            posee-stamp-in 380ms var(--ease-spring) both,
-            posee-stamp-out 280ms var(--ease-in) 950ms forwards;
-    }
-
-    .fx-stamp-burst {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        overflow: visible;
-    }
-
-    .fx-stamp-burst polygon {
-        fill: var(--color-accent);
-        stroke: var(--color-comic-ink);
-        stroke-width: 3;
-        stroke-linejoin: round;
-    }
-
-    .fx-stamp-word {
-        position: relative;
-        font-family: var(--font-display);
-        font-size: var(--text-xl);
-        letter-spacing: 0.02em;
-        color: var(--color-on-accent);
-    }
-
-    /* ── Weirdness ────────────────────────────────────────────────────────────────────────
-       Only above a score of 85, stamped on <html> as data-weird. Brief twitches on long
-       periods rather than a constant wobble: a page that is always moving reads as broken,
-       one that occasionally flinches reads as haunted. */
-    @media (prefers-reduced-motion: no-preference) {
-        :root[data-weird="on"] .nav-links {
-            animation: posee-twitch 3.7s steps(1, end) infinite;
-        }
-
-        :root[data-weird="on"] .comic-header h1 {
-            animation: posee-split 2.9s steps(1, end) infinite;
-        }
-    }
-
-    .ink-trail-layer {
-        position: fixed;
-        inset: 0;
-        z-index: 999;
-        pointer-events: none;
-        overflow: hidden;
-    }
-
-    .ink-trail-drop {
-        position: absolute;
-        left: var(--drop-x);
-        top: var(--drop-y);
-        width: var(--drop-size);
-        height: var(--drop-size);
-        margin: calc(var(--drop-size) / -2) 0 0 calc(var(--drop-size) / -2);
-        border-radius: 50%;
-        background: var(--color-comic-ink);
-        opacity: 0.5;
-        animation: posee-ink-drop 900ms var(--ease-out) forwards;
-    }
 }
 
 @keyframes posee-strip-tilt {
@@ -2342,51 +1990,3 @@
     exit 100%  { transform: rotateX(-12deg) scale(0.96); }
 }
 
-@keyframes posee-foil-sweep {
-    0%, 55% { transform: translateX(-35%); }
-    100%    { transform: translateX(35%); }
-}
-
-@keyframes posee-bubble-in {
-    from { opacity: 0; transform: scale(0.4) translateY(0.5rem); }
-    to   { opacity: 1; transform: none; }
-}
-
-@keyframes posee-bubble-out {
-    to { opacity: 0; transform: scale(0.85) translateY(-0.4rem); }
-}
-
-@keyframes posee-stamp-in {
-    from { opacity: 0; transform: scale(0.1) rotate(calc(var(--stamp-rot) * -2)); }
-    60%  { opacity: 1; transform: scale(1.18) rotate(var(--stamp-rot)); }
-    to   { opacity: 1; transform: scale(1) rotate(var(--stamp-rot)); }
-}
-
-@keyframes posee-stamp-out {
-    to { opacity: 0; transform: scale(1.35) rotate(var(--stamp-rot)); }
-}
-
-@keyframes posee-twitch {
-    0%, 91%, 100% { transform: none; }
-    92% { transform: translate(2px, -1px) skewX(-3deg); }
-    94% { transform: translate(-3px, 1px); }
-    96% { transform: translate(1px, 0) skewX(2deg); }
-}
-
-@keyframes posee-split {
-    0%, 88%, 100% { text-shadow: none; }
-    89% {
-        text-shadow:
-            -3px 0 color-mix(in srgb, var(--color-danger) 70%, transparent),
-            3px 0 color-mix(in srgb, var(--color-brand) 70%, transparent);
-    }
-    93% {
-        text-shadow:
-            2px 1px color-mix(in srgb, var(--color-danger) 70%, transparent),
-            -2px -1px color-mix(in srgb, var(--color-brand) 70%, transparent);
-    }
-}
-
-@keyframes posee-ink-drop {
-    to { opacity: 0; transform: scale(0.2) translateY(14px); }
-}

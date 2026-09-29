@@ -14,18 +14,11 @@ namespace PoSeeReview.Shared.Enums;
 /// hundred words of review text, the other is a diffusion model. They have different costs,
 /// different latencies, different failure modes, and they belong in different tiers.
 /// </para>
-/// <para>
-/// When <c>Ai:ChatProvider</c> is absent the value is derived from <c>Ai:ImageProvider</c>, so
-/// every existing deployment keeps the exact pairing it had before this type existed.
-/// </para>
 /// </summary>
 public enum AiChatProvider
 {
     /// <summary>Azure AI Foundry deployment. The default, and the only paid chat backend.</summary>
     AzureOpenAI = 0,
-
-    /// <summary>HuggingFace router (OpenAI-wire compatible), e.g. Qwen2.5-7B-Instruct.</summary>
-    HuggingFace = 1,
 
     /// <summary>
     /// Local Ollama runtime. Zero marginal token cost, no key, no network egress.

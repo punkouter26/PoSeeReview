@@ -39,33 +39,11 @@ public class ComicEntity : ITableEntity
     public string RequestedByUserId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Comma-joined palette sampled from the artwork. One column rather than three, and simply
-    /// absent on rows written before it existed — Table Storage is schemaless per row, so those
-    /// read back as an empty palette and need no migration.
-    /// </summary>
-    public string PaletteHex { get; set; } = string.Empty;
-
-    /// <summary>
     /// The prompt version the comic was drawn under, and part of the cache key. Absent on older
     /// rows, which reads back as 0 and therefore never matches a configured version — so a row
     /// written before versioning loses the cache exactly once, and regenerates.
     /// </summary>
     public int PromptVersion { get; set; }
-
-    /// <summary>
-    /// The narrative vector, little-endian packed. <c>byte[]</c> is a native Table type
-    /// (<c>Edm.Binary</c>), which is why the vector is packed rather than stored as a JSON array
-    /// — a 768-dimension vector is 3 KB this way and roughly 9 KB as text.
-    /// </summary>
-    public byte[] EmbeddingBytes { get; set; } = [];
-
-    /// <summary>
-    /// Serialised <c>ComicAudioSkit</c>, generated lazily on demand by
-    /// <c>POST /api/comics/{placeId}/audio</c> and persisted on the comic row so the second
-    /// tap of the same comic never re-bills the chat model. Empty until generated; the endpoint
-    /// refuses to read it without first calling the chat service to fill it.
-    /// </summary>
-    public string AudioSkitJson { get; set; } = string.Empty;
 
     /// <summary>
     /// Panel captions as a JSON array. JSON rather than a joined string because a caption is
@@ -92,10 +70,7 @@ public class ComicEntity : ITableEntity
             ExpiresAt = comic.ExpiresAt,
             CreatedAt = comic.CreatedAt,
             RequestedByUserId = comic.RequestedByUserId.Value,
-            PaletteHex = ComicPaletteExtractor.Join(comic.Palette),
             PromptVersion = comic.PromptVersion,
-            EmbeddingBytes = VectorMath.ToBytes(comic.Embedding),
-            AudioSkitJson = comic.AudioSkitJson,
             CaptionsJson = comic.Captions.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Captions)
         };
     }
@@ -116,10 +91,7 @@ public class ComicEntity : ITableEntity
             ExpiresAt = ExpiresAt,
             CreatedAt = CreatedAt,
             RequestedByUserId = UserId.From(RequestedByUserId),
-            Palette = ComicPaletteExtractor.Split(PaletteHex),
             PromptVersion = PromptVersion,
-            Embedding = VectorMath.FromBytes(EmbeddingBytes),
-            AudioSkitJson = AudioSkitJson,
             Captions = ReadCaptions(CaptionsJson),
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated

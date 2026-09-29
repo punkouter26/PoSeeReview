@@ -60,14 +60,6 @@ public class Comic
     public UserId RequestedByUserId { get; set; } = UserId.Anonymous;
 
     /// <summary>
-    /// Three hex colours sampled from the finished artwork, so the client can tint itself to
-    /// this comic. Empty for anything drawn before the extractor existed, and for any image it
-    /// could not read — both render with the brand gradient, which is what every comic did
-    /// before this field.
-    /// </summary>
-    public string[] Palette { get; set; } = [];
-
-    /// <summary>
     /// The <c>Comics:PromptVersion</c> in force when this comic was drawn.
     /// <para>
     /// Part of the cache key, not just a record. The cache is keyed by place and age, so without
@@ -80,25 +72,9 @@ public class Comic
     public int PromptVersion { get; set; }
 
     /// <summary>
-    /// Vector of the narrative, used to find comics about the same kind of strangeness. Empty
-    /// when embeddings are switched off, when the backend was unreachable, or on any row written
-    /// before the feature existed — all three mean "not a candidate", which is what the empty
-    /// array says. Never used for display.
-    /// </summary>
-    public float[] Embedding { get; set; } = [];
-
-    /// <summary>
     /// The narrator caption drawn onto each panel, in panel order. Kept because the captions
     /// otherwise exist only as pixels, which a screen reader cannot read. Empty on rows written
     /// before they were persisted.
     /// </summary>
     public string[] Captions { get; set; } = [];
-
-    /// <summary>
-    /// Cached serialised <c>ComicAudioSkit</c>, written by <c>POST /api/comics/{placeId}/audio</c>
-    /// the first time the skit is requested for this comic, and round-tripped on subsequent
-    /// requests so the chat call is paid for once. Empty for comics drawn before the feature
-    /// existed, and for comics that have never had a skit request.
-    /// </summary>
-    public string AudioSkitJson { get; set; } = string.Empty;
 }

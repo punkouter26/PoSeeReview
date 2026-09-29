@@ -11,8 +11,8 @@
 //     default to quiet"). The cues are part of the product rather than a garnish, and a switch
 //     nobody finds is not much of an opt-out. What keeps it honest is rule 1: a context cannot
 //     start before a gesture, so nothing is heard until the user has tapped something. Haptics
-//     and the ambient bed inherit this preference, all three keep switches on /diagnostics, and
-//     an explicit reduced-motion request still forces silence.
+//     inherit this preference, both keep switches on /diagnostics, and an explicit
+//     reduced-motion request still forces silence.
 
 import { gfx } from './gfx-core.js';
 
@@ -23,13 +23,11 @@ const RESUME_GRACE_MS = 200;
 
 const state = {
     ctx: null,
-    master: null,      // Final trim. Everything meets here before the analyser.
+    master: null,      // Final trim. Everything meets here.
     dry: null,         // Panned, unreverberated signal.
     reverbSend: null,  // Shared send bus into the convolver.
     convolver: null,
     wet: null,
-    analyser: null,    // Tap for audio-reactive visuals; see analyse().
-    analyserBins: null,
     enabled: true,
     unlocked: false,
     // Guards against a burst of identical sounds (a fast count-up) stacking into clipping.
@@ -96,16 +94,7 @@ function ensureContext() {
         // at unity gain clips hard.
         state.master.gain.value = 0.22;
 
-        // Analyser sits between the trim and the speakers, so what drives the visuals is exactly
-        // what the user hears — including the reverb tail, which is most of the visible motion
-        // after a transient.
-        state.analyser = ctx.createAnalyser();
-        state.analyser.fftSize = 256;
-        state.analyser.smoothingTimeConstant = 0.72;
-        state.analyserBins = new Uint8Array(state.analyser.frequencyBinCount);
-
-        state.master.connect(state.analyser);
-        state.analyser.connect(ctx.destination);
+        state.master.connect(ctx.destination);
 
         // Dry path: every voice pans into here.
         state.dry = ctx.createGain();
@@ -215,10 +204,6 @@ function voice({ type = 'sine', freq, startFreq, endFreq, attack = 0.005, decay 
     osc.connect(gain);
     gain.connect(output.node);
 
-    // Tells the ambient bed to get out of the way. Fired on schedule rather than on start, so a
-    // delayed voice in a chord ducks when it sounds rather than when it was queued.
-    notifyVoice(peak);
-
     osc.start(t0);
     osc.stop(t0 + attack + decay + 0.02);
     osc.onended = () => {
@@ -259,8 +244,6 @@ function noise({ duration = 0.12, peak = 0.5, filterHz = 1800, filterType = 'low
     filter.connect(gain);
     gain.connect(output.node);
 
-    notifyVoice(peak);
-
     source.start(t0);
     source.onended = () => {
         source.disconnect();
@@ -271,74 +254,6 @@ function noise({ duration = 0.12, peak = 0.5, filterHz = 1800, filterType = 'low
 }
 
 /**
- * A voice with no scheduled end: the riser, the loupe hum and the weirdness drone. Every other
- * sound here is a transient whose envelope reaches zero on its own; these are released by their
- * owner, so every live one is tracked and muting the app releases them all — a drone left
- * running under a muted, suspended context would resume the moment sound came back on.
- */
-const sustained = new Set();
-
-function sustain({ type = 'sine', freq, detune = 0, peak = 0.05, attack = 0.4, pan = 0, send = 0.3 }) {
-    if (!canPlay()) return null;
-    const ctx = state.ctx;
-    const t0 = ctx.currentTime;
-
-    const osc = ctx.createOscillator();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, t0);
-    osc.detune.value = detune;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t0);
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), t0 + attack);
-
-    const output = makeOutput(pan, send);
-    osc.connect(gain);
-    gain.connect(output.node);
-    osc.start(t0);
-
-    let released = false;
-    const handle = {
-        /** Glides pitch and position rather than jumping: a stepped hum reads as a glitch. */
-        glide(nextFreq, nextPan = null, seconds = 0.08) {
-            if (released) return;
-            const t = ctx.currentTime;
-            osc.frequency.setTargetAtTime(Math.max(20, nextFreq), t, seconds / 3);
-            if (nextPan !== null && output.node.pan) {
-                output.node.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, nextPan)), t, seconds / 3);
-            }
-        },
-        release(seconds = 0.3) {
-            if (released) return;
-            released = true;
-            sustained.delete(handle);
-            const t = ctx.currentTime;
-            gain.gain.cancelScheduledValues(t);
-            gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), t);
-            gain.gain.exponentialRampToValueAtTime(0.0001, t + seconds);
-            osc.stop(t + seconds + 0.02);
-            osc.onended = () => {
-                osc.disconnect();
-                gain.disconnect();
-                output.dispose();
-            };
-        }
-    };
-    sustained.add(handle);
-    return handle;
-}
-
-function releaseAllSustained() {
-    for (const handle of [...sustained]) handle.release(0.05);
-}
-
-/** The generation riser: one sustained voice per pipeline phase, stacked. */
-let riserVoices = [];
-
-/** The weirdness drone, a detuned pair. Empty when not running. */
-let droneVoices = [];
-
-/**
  * Maps a screen x coordinate to a stereo position. Clamped to ±0.85 rather than ±1: a sound
  * hard-panned to one channel disappears entirely on a phone held with one speaker covered, and
  * on headphones it sits outside the head rather than in the scene.
@@ -347,17 +262,6 @@ function panForClientX(clientX) {
     const width = window.innerWidth || 1;
     const normalised = (clientX / width) * 2 - 1;
     return Math.max(-0.85, Math.min(0.85, normalised));
-}
-
-/** Stereo position of an element's centre. Returns 0 for anything unmeasurable. */
-function panForElement(element) {
-    try {
-        const rect = element?.getBoundingClientRect?.();
-        if (!rect || rect.width === 0) return 0;
-        return panForClientX(rect.left + rect.width / 2);
-    } catch {
-        return 0;
-    }
 }
 
 // A pentatonic set, so any combination of these is consonant. The score count-up plays notes in
@@ -409,19 +313,11 @@ const SCALES = [
 const SEMITONE = Math.pow(2, 1 / 12);
 
 /**
- * A restaurant's four-note figure. The body of `signature`, lifted out so the leaderboard can
- * voice several at once without going through the throttle that exists to stop ONE of these
- * retriggering on a re-render.
- *
- * The seed picks the notes and the contour; the SCORE picks the scale, the tempo and the timbre —
- * so two restaurants sound different from each other, and a strange one sounds strange rather
- * than merely different.
- *
- * @param {{pan?: number, delay?: number, gain?: number, notes?: number}} options
- *        `pan` overrides the per-note random spread with a fixed position, which is what lets
- *        three of these be placed as a chord rather than scattered on top of each other.
+ * A restaurant's four-note figure. The seed picks the notes and the contour; the SCORE picks the
+ * scale, the tempo and the timbre — so two restaurants sound different from each other, and a
+ * strange one sounds strange rather than merely different.
  */
-function motif(seed, score = 50, options = {}) {
+function motif(seed, score = 50) {
     const strange = Math.min(1, Math.max(0, score / 100));
     const random = seededRandom(hashString(seed));
 
@@ -438,9 +334,7 @@ function motif(seed, score = 50, options = {}) {
     // Timbre tracks strangeness too: a sine is inoffensive, a sawtooth is not.
     const type = strange < 0.33 ? 'sine' : strange < 0.66 ? 'triangle' : 'sawtooth';
 
-    const gain = options.gain ?? 1;
-    const offset = options.delay ?? 0;
-    const noteCount = Math.max(1, Math.min(6, options.notes ?? 4));
+    const noteCount = 4;
 
     for (let i = 0; i < noteCount; i++) {
         const degree = Math.floor(random() * scale.length);
@@ -454,30 +348,14 @@ function motif(seed, score = 50, options = {}) {
             freq,
             attack: 0.006,
             decay: beat * (i === noteCount - 1 ? 3.2 : 1.5),
-            peak: (0.20 - i * 0.015) * gain,
-            delay: offset + i * beat,
+            peak: 0.20 - i * 0.015,
+            delay: i * beat,
             // Slight detune that grows with strangeness: at the top of the range the motif is
             // audibly out of tune with itself.
             detune: (random() - 0.5) * strange * 34,
-            // A fixed pan keeps a motif in one place, which is what a chord needs; the random
-            // spread is right for a motif heard alone, where it gives the figure width.
-            pan: options.pan ?? (random() - 0.5) * 1.2,
+            pan: (random() - 0.5) * 1.2,
             send: 0.2 + strange * 0.4
         });
-    }
-}
-
-/** Listeners fired whenever a voice starts, so the ambient bed can duck under it. */
-const voiceListeners = new Set();
-
-function notifyVoice(peak) {
-    if (voiceListeners.size === 0) return;
-    for (const listener of voiceListeners) {
-        try {
-            listener(peak);
-        } catch {
-            // A misbehaving listener must not stop a sound from playing.
-        }
     }
 }
 
@@ -540,9 +418,6 @@ export const audio = {
             // Narration is a separate output that does not pass through the context, so
             // suspending the graph would leave a voice mid-sentence talking over a muted app.
             this.stopNarration();
-            releaseAllSustained();
-            riserVoices = [];
-            droneVoices = [];
 
             if (state.ctx && state.ctx.state === 'running') {
                 try {
@@ -555,20 +430,6 @@ export const audio = {
         }
 
         return state.enabled;
-    },
-
-    /**
-     * Soft click for buttons and card taps. Pans to wherever the control actually is: a tap on
-     * a card in the right-hand column of the discovery grid clicks from the right. This is the
-     * cheapest spatial cue in the app and the one users notice without being able to name.
-     */
-    tap(element = null) {
-        if (!canPlay() || throttled('tap', 40)) return;
-        voice({
-            type: 'triangle', freq: 660, attack: 0.002, decay: 0.05, peak: 0.35,
-            pan: element ? panForElement(element) : 0,
-            send: 0.14   // A UI click in a big reverb sounds like a mistake, not a room.
-        });
     },
 
     /**
@@ -632,48 +493,6 @@ export const audio = {
         });
     },
 
-    /**
-     * One step of the generation pipeline completed. Rising scale degree per phase, so five
-     * phases sound like ascent rather than five identical beeps.
-     */
-    phase(index, total) {
-        if (!canPlay() || throttled('phase', 120)) return;
-
-        const clamped = Math.min(Math.max(index, 0), Math.max(0, total - 1));
-        const note = PENTATONIC[clamped % PENTATONIC.length];
-
-        // Phases sweep left to right across the pipeline, matching the stepper the user is
-        // watching. With a single phase there is nowhere to sweep to, so it stays centred.
-        const span = Math.max(1, total - 1);
-        const pan = total > 1 ? ((clamped / span) * 2 - 1) * 0.65 : 0;
-
-        voice({ type: 'triangle', freq: note * 0.5, attack: 0.006, decay: 0.22, peak: 0.30, pan, send: 0.3 });
-        voice({ type: 'sine', freq: note, attack: 0.006, decay: 0.16, peak: 0.16, delay: 0.02, pan, send: 0.3 });
-    },
-
-    /**
-     * Ink-splatter texture to accompany the particle burst. Three noise bursts at spread
-     * positions rather than one in the middle: ink thrown at a page lands in several places, and
-     * the particles the user is watching are spread across the whole canvas.
-     */
-    splat(intensity = 0.5) {
-        if (!canPlay() || throttled('splat', 200)) return;
-        const strength = Math.min(1, Math.max(0, intensity));
-
-        for (const [pan, delay, scale] of [[0, 0, 1], [-0.62, 0.035, 0.7], [0.55, 0.06, 0.6]]) {
-            noise({
-                duration: (0.18 + strength * 0.2) * scale,
-                peak: (0.16 + strength * 0.16) * scale,
-                filterHz: 500 + strength * 1500,
-                delay,
-                pan,
-                send: 0.3 + strength * 0.25
-            });
-        }
-        // The body thump stays centred — a panned sub just sounds like a broken speaker.
-        voice({ type: 'sine', startFreq: 180, endFreq: 40, attack: 0.004, decay: 0.24, peak: 0.28, pan: 0, send: 0.1 });
-    },
-
     /** Short rising stinger on a completed share. Rises in pitch and travels left to right. */
     shareStinger() {
         if (!canPlay() || throttled('share', 800)) return;
@@ -692,9 +511,6 @@ export const audio = {
         voice({ type: 'sawtooth', freq: 311.13, attack: 0.006, decay: 0.18, peak: 0.22, pan: 0, send: 0.05 });
         voice({ type: 'sawtooth', freq: 233.08, attack: 0.006, decay: 0.34, peak: 0.24, delay: 0.11, pan: 0, send: 0.05 });
     },
-
-    /** Stereo position for a DOM element, exposed so callers can pan a sound to a control. */
-    panForElement,
 
     /**
      * Click panned to a raw viewport x coordinate. This is the form Blazor call sites can
@@ -889,33 +705,6 @@ export const audio = {
     },
 
     /**
-     * Moderation outcome, graded by severity. Hide is reversible and sounds like it; suppress is
-     * a door closing; remove is the only cue in the app that ends below where it started and
-     * does not resolve. A moderator running a queue hears which action they took without
-     * reading the confirmation, which is the point — the three are one mis-tap apart.
-     */
-    severity(level) {
-        if (!canPlay() || throttled('severity', 250)) return;
-
-        switch (level) {
-            case 'remove':
-                voice({ type: 'sawtooth', freq: 174.61, attack: 0.008, decay: 0.5, peak: 0.26, pan: 0, send: 0.08 });
-                voice({ type: 'sine', startFreq: 130, endFreq: 46, attack: 0.006, decay: 0.7, peak: 0.30, delay: 0.06, pan: 0, send: 0.1 });
-                noise({ duration: 0.4, peak: 0.10, filterHz: 380, delay: 0.02, send: 0.12 });
-                break;
-
-            case 'suppress':
-                voice({ type: 'square', freq: 261.63, attack: 0.005, decay: 0.22, peak: 0.20, pan: -0.25, send: 0.12 });
-                voice({ type: 'square', freq: 196.00, attack: 0.005, decay: 0.34, peak: 0.22, delay: 0.09, pan: 0.25, send: 0.12 });
-                break;
-
-            default: // hide — reversible, so it stays light and does not descend.
-                voice({ type: 'triangle', freq: 440, attack: 0.004, decay: 0.14, peak: 0.20, pan: 0, send: 0.18 });
-                break;
-        }
-    },
-
-    /**
      * A comic's own motif, derived from its place id and its score.
      *
      * WHY THIS IS NOT DECORATION. Every restaurant now sounds like itself, deterministically and
@@ -933,201 +722,10 @@ export const audio = {
         motif(seed, score);
     },
 
-    /**
-     * A whole leaderboard, heard at once.
-     *
-     * Three motifs are not three sounds played together — they are one chord in which each voice
-     * is a specific restaurant. Because a motif is deterministic from its place id, the top of
-     * the board becomes something a returning user recognises by ear, and a board that has
-     * CHANGED sounds different before they have read a single row.
-     *
-     * Spread across the stereo field in rank order and staggered, so they arrive as an arpeggio
-     * rather than a cluster — three four-note figures starting on the same beat is mud.
-     * Attenuated, because three simultaneous motifs at full level is three times the peak of
-     * anything else the app plays.
-     *
-     * @param {{seed: string, score: number}[]} entries top of the board, best first
-     */
-    boardChord(entries) {
-        if (!canPlay() || !Array.isArray(entries) || entries.length === 0) return;
-        if (throttled('boardChord', 1500)) return;
-
-        const picked = entries.slice(0, 3);
-
-        picked.forEach((entry, i) => {
-            motif(entry.seed, entry.score, {
-                // #1 in the centre, the others out to the sides — the same reasoning as
-                // shelf.js's fanSlot: rank order along a line puts the winner at an edge.
-                pan: picked.length === 1 ? 0 : (i === 0 ? 0 : (i === 1 ? -0.65 : 0.65)),
-                delay: i * 0.28,
-                gain: 0.55 - i * 0.08,
-                // A shorter figure. Four notes each is twelve notes of arpeggio, which stops
-                // being a chord and becomes a tune.
-                notes: 3
-            });
-        });
-    },
-
-    /**
-     * Plays a numeric series as pitch — the shape of a chart, heard.
-     *
-     * The Insights page draws four charts over every score the app has recorded and spends
-     * nothing to do it. This spends nothing either, and it answers a question a static chart
-     * cannot: whether a distribution is flat, humped or bimodal is instantly obvious as a
-     * contour, including to someone who cannot see the SVG at all.
-     *
-     * Long series are DECIMATED, not truncated. Firing an oscillator per row of a 500-point
-     * series would be 500 nodes and several seconds of noise; picking evenly across the whole
-     * range preserves the shape, which is the only thing being communicated.
-     */
-    sonify(values, options = {}) {
-        if (!canPlay() || !Array.isArray(values) || values.length === 0) return;
-        if (throttled('sonify', 400)) return;
-
-        const maxNotes = Math.min(options.maxNotes ?? 32, 48);
-        const stride = Math.max(1, Math.ceil(values.length / maxNotes));
-
-        const picked = [];
-        for (let i = 0; i < values.length; i += stride) {
-            const value = Number(values[i]);
-            if (Number.isFinite(value)) picked.push(value);
-        }
-        if (picked.length === 0) return;
-
-        const min = options.min ?? Math.min(...picked);
-        const max = options.max ?? Math.max(...picked);
-        const span = max - min;
-
-        const totalMs = Math.min(options.durationMs ?? 1800, 4000);
-        const step = (totalMs / 1000) / picked.length;
-
-        picked.forEach((value, i) => {
-            // A flat series maps everything to the middle of the range rather than dividing by
-            // zero — and a flat line SHOULD sound flat.
-            const normalised = span > 0 ? (value - min) / span : 0.5;
-
-            // Two octaves of pentatonic, so an arbitrary series is always consonant with itself.
-            const index = Math.min(PENTATONIC.length * 2 - 1,
-                Math.floor(normalised * PENTATONIC.length * 2));
-            const freq = PENTATONIC[index % PENTATONIC.length]
-                * (index >= PENTATONIC.length ? 2 : 1)
-                * 0.5;
-
-            voice({
-                type: 'sine',
-                freq,
-                attack: 0.004,
-                decay: Math.max(0.08, step * 1.6),
-                peak: 0.13,
-                delay: i * step,
-                // Sweeps left to right across the series, so position in the sequence is audible
-                // as well as position in the pitch range. Without it a hump and a dip are the
-                // same set of notes in a different order, which the ear does not reliably parse.
-                pan: ((i / Math.max(1, picked.length - 1)) * 2 - 1) * 0.75,
-                send: 0.22
-            });
-        });
-    },
-
-    // ── The generation wait ──────────────────────────────────────────────────────────────
-
-    /**
-     * One pipeline phase: the phase blip, plus one sustained voice stacked on the riser. Each
-     * phase adds a higher partial of the same root, so the wait audibly builds toward something
-     * rather than repeating itself. Once the analysis has a score, a strange one detunes the new
-     * voices against the old — the unease arrives before the number does.
-     */
-    riserStep(index, total, score = 0) {
-        this.phase(index, total);
-        if (!canPlay() || riserVoices.length >= 6) return;
-
-        const partials = [1, 1.5, 2, 3, 4, 6];
-        const step = Math.min(riserVoices.length, partials.length - 1);
-        const strange = Math.max(0, (score - 60) / 40);
-        const pan = total > 1 ? ((index / Math.max(1, total - 1)) * 2 - 1) * 0.5 : 0;
-
-        const voiceHandle = sustain({
-            type: step === 0 ? 'triangle' : 'sine',
-            freq: 110 * partials[step],
-            detune: (step % 2 ? 1 : -1) * strange * 18,
-            // Higher partials quieter, so the stack thickens rather than getting shrill.
-            peak: 0.045 / (1 + step * 0.35),
-            attack: 0.9,
-            pan,
-            send: 0.45
-        });
-        if (voiceHandle) riserVoices.push(voiceHandle);
-    },
-
-    /** The comic arrived: the stack rings out rather than cutting, so the reveal lands on it. */
-    riserResolve() {
-        for (const v of riserVoices) v.release(0.9);
-        riserVoices = [];
-    },
-
-    /** Failure or teardown: gone quickly, because nothing is being resolved. */
-    riserStop() {
-        for (const v of riserVoices) v.release(0.08);
-        riserVoices = [];
-    },
-
-    // ── The comic as an object ───────────────────────────────────────────────────────────
-
-    /**
-     * Foil catching the light. A high, short sparkle panned to where the light is, louder the
-     * faster the card is tilted — a card held still does not glint.
-     */
-    shimmer(intensity = 0.5, pan = 0) {
-        if (!canPlay() || throttled('shimmer', 70)) return;
-        const strength = Math.min(1, Math.max(0, intensity));
-        const note = PENTATONIC[Math.floor(Math.random() * PENTATONIC.length)] * 4;
-        voice({ type: 'sine', freq: note, attack: 0.002, decay: 0.12 + strength * 0.1, peak: 0.02 + strength * 0.05, pan, send: 0.6 });
-    },
-
-    /** Starts the loupe's hum. The caller glides it with the lens and releases it. */
-    hum() {
-        return sustain({ type: 'triangle', freq: 180, peak: 0.035, attack: 0.15, send: 0.35 });
-    },
-
-    /**
-     * A detuned pair a fifth apart, low and wide. Only for a score the app treats as absurd, so
-     * the page sounds wrong in the same breath as it starts to look wrong.
-     */
-    droneStart(score = 90) {
-        if (droneVoices.length > 0) return;
-        const beat = 4 + Math.max(0, score - 85) * 0.8;
-        droneVoices = [
-            sustain({ type: 'triangle', freq: 55, detune: -beat, peak: 0.03, attack: 2.5, pan: -0.35, send: 0.55 }),
-            sustain({ type: 'triangle', freq: 82.41, detune: beat, peak: 0.022, attack: 3.2, pan: 0.35, send: 0.55 })
-        ].filter(Boolean);
-    },
-
-    droneStop() {
-        for (const v of droneVoices) v.release(0.6);
-        droneVoices = [];
-    },
-
-    /**
-     * The comic-book sound word landing: a thwack (filtered noise), a body thump, and a short
-     * upward "boing" so it reads as cartoon impact rather than as an error or a drop.
-     */
-    stamp(pan = 0) {
-        if (!canPlay() || throttled('stamp', 150)) return;
-        noise({ duration: 0.09, peak: 0.32, filterHz: 1400, pan, send: 0.2 });
-        voice({ type: 'sine', startFreq: 220, endFreq: 70, attack: 0.003, decay: 0.16, peak: 0.3, pan: 0, send: 0.1 });
-        voice({ type: 'triangle', startFreq: 480, endFreq: 820, attack: 0.004, decay: 0.12, peak: 0.12, delay: 0.05, pan, send: 0.3 });
-    },
-
-    /** A speech bubble appearing — a soft upward pop from its side of the strip. */
-    bubble(pan = 0) {
-        if (!canPlay() || throttled('bubble', 60)) return;
-        voice({ type: 'sine', startFreq: 380, endFreq: 920, attack: 0.003, decay: 0.07, peak: 0.1, pan, send: 0.25 });
-    },
-
     // ── Narration ────────────────────────────────────────────────────────────────────────
     //
     // speechSynthesis is a separate output from the AudioContext — it does not pass through the
-    // graph, the analyser or the master trim, and it works even before unlock. So it is gated on
+    // graph or the master trim, and it works even before unlock. So it is gated on
     // the enabled preference alone, and it is cancelled rather than mixed: two voices reading
     // over each other is worse than either.
 
@@ -1170,160 +768,6 @@ export const audio = {
     stopNarration() {
         try { window.speechSynthesis?.cancel(); } catch { /* nothing speaking */ }
     },
-
-    /**
-     * Plays the comic's invented conversation. Each line is its own utterance, and speak()
-     * ENQUEUES rather than interrupts — which is normally the bug the narrate() cancel-first
-     * guards against, and here it is the whole feature: the browser walks the dialogue at its
-     * own pace, and stopNarration() still stops it dead with one cancel().
-     *
-     * Takes the skit as a JSON STRING, not an object: the .NET side serializes it with its
-     * source-generated context, and parsing here keeps complex types out of the interop
-     * boundary, where reflection-based serialization would fight the trimmer.
-     *
-     * Speakers are differentiated by pitch slot in order of first appearance, so the same
-     * character keeps the same voice for the whole skit and a two-hander reads as two people.
-     */
-    playSkitJson(json, callbacks = {}) {
-        if (!state.enabled || !this.canNarrate()) return false;
-
-        let lines;
-        try {
-            const parsed = JSON.parse(String(json ?? '[]'));
-            // The .NET client serializes the whole skit object ({ title, lines }), so the
-            // array lives one level down; accept a bare array too, because both are a
-            // reasonable thing for a caller to reach for and only one of them is documented.
-            lines = Array.isArray(parsed) ? parsed
-                : Array.isArray(parsed?.lines) ? parsed.lines
-                : null;
-        } catch { return false; }
-        if (!Array.isArray(lines) || lines.length === 0) return false;
-
-        try {
-            // One cancel before the queue is built. Cancelling BETWEEN lines would work, but
-            // there is no between: the queue is constructed in this one synchronous pass.
-            window.speechSynthesis.cancel();
-
-            const slots = new Map();
-            const spoken = lines
-                .map(line => ({
-                    text: String(line?.text ?? '').trim(),
-                    speaker: String(line?.speaker ?? '').trim() || 'Voice'
-                }))
-                .filter(line => line.text);
-
-            spoken.forEach(({ text, speaker }, index) => {
-                if (!slots.has(speaker)) slots.set(speaker, slots.size);
-                const slot = slots.get(speaker);
-
-                const utterance = new SpeechSynthesisUtterance(text.slice(0, 300));
-                // Pitch slots walk 0.75 → 1.05 → 1.35 for three speakers, then wrap — distinct
-                // without sliding into cartoon ranges, and deterministic per speaker.
-                utterance.pitch = 0.75 + (slot % 3) * 0.3;
-                utterance.rate = 1.02;
-                utterance.volume = 0.9;
-                // Per-utterance start/end rather than `boundary`: the queue is still built in one
-                // pass, and these only tell a caller which line is audible right now.
-                utterance.onstart = () => callbacks.onLineStart?.(index, spoken.length, speaker, slot, text);
-                utterance.onend = () => callbacks.onLineEnd?.(index, spoken.length);
-                window.speechSynthesis.speak(utterance);
-            });
-            return slots.size > 0;
-        } catch {
-            return false;
-        }
-    },
-
-    // ── Hooks for composed modules ───────────────────────────────────────────────────────
-
-    /** The live AudioContext, or null before unlock. Used by ambient.js to host its worklet. */
-    context: () => state.ctx,
-
-    /**
-     * A panned, reverb-sent output stage, for a module that generates its own signal. This is the
-     * same stage every built-in voice uses, exposed so the ambient bed sits in the same room as
-     * everything else rather than beside it.
-     */
-    createBus(options = {}) {
-        if (!state.ctx) return null;
-        return makeOutput(options.pan ?? 0, options.send ?? 0.25);
-    },
-
-    /**
-     * Fires whenever a voice is scheduled, with its peak gain. The ambient bed subscribes so it
-     * can duck; the coupling points one way, exactly as audio-reactive.js does for the gradient.
-     */
-    onVoice(listener) {
-        voiceListeners.add(listener);
-        return () => voiceListeners.delete(listener);
-    },
-
-    /**
-     * Spectrum snapshot for audio-reactive visuals: overall level plus three bands. Returns
-     * silence when nothing is playing, so a caller can drive a shader uniform unconditionally
-     * without branching on whether sound is even enabled.
-     */
-    analyse() {
-        if (!state.analyser || !canPlay()) {
-            return { level: 0, bass: 0, mid: 0, treble: 0 };
-        }
-
-        try {
-            state.analyser.getByteFrequencyData(state.analyserBins);
-        } catch {
-            return { level: 0, bass: 0, mid: 0, treble: 0 };
-        }
-
-        const bins = state.analyserBins;
-        const count = bins.length;
-        // Band edges as fractions of the bin range. The FFT is linear in frequency and hearing
-        // is not, so "bass" is a small slice of bins and "treble" a large one.
-        const bassEnd = Math.max(1, Math.floor(count * 0.08));
-        const midEnd = Math.max(bassEnd + 1, Math.floor(count * 0.35));
-
-        let bass = 0, mid = 0, treble = 0, total = 0;
-        for (let i = 0; i < count; i++) {
-            const value = bins[i] / 255;
-            total += value;
-            if (i < bassEnd) bass += value;
-            else if (i < midEnd) mid += value;
-            else treble += value;
-        }
-
-        return {
-            level: total / count,
-            bass: bass / bassEnd,
-            mid: mid / (midEnd - bassEnd),
-            treble: treble / Math.max(1, count - midEnd)
-        };
-    },
-
-    /** Output latency, for the diagnostics overlay. Null when there is no context yet. */
-    latency() {
-        if (!state.ctx) return null;
-        return {
-            baseMs: (state.ctx.baseLatency ?? 0) * 1000,
-            outputMs: (state.ctx.outputLatency ?? 0) * 1000,
-            sampleRate: state.ctx.sampleRate,
-            contextState: state.ctx.state
-        };
-    },
-
-    dispose() {
-        if (state.ctx) {
-            try { state.ctx.close(); } catch { /* already closing */ }
-        }
-        state.ctx = null;
-        state.master = null;
-        state.dry = null;
-        state.reverbSend = null;
-        state.convolver = null;
-        state.wet = null;
-        state.analyser = null;
-        state.analyserBins = null;
-        state.unlocked = false;
-        state.lastPlayedAt.clear();
-    }
 };
 
 // Audio is independent of the GPU tier by design: it stays available at 'lite' and 'off',
@@ -1335,4 +779,3 @@ gfx.onTierChanged(() => {
     }
 });
 
-window.poseeAudio = audio;

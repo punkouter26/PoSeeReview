@@ -199,23 +199,8 @@
 
             await task;
 
-            // Graded confirmation, played only once the call has actually landed. A moderator
-            // working a queue hears which of three one-tap-apart actions they took without
-            // re-reading the row. Restore is the odd one out and gets the plain confirmation
-            // cue: it is the only action here that puts something back.
-            if (action == ModerationAction.Restore)
-            {
-                await Fx.PlayConfirmAsync();
-            }
-            else
-            {
-                await Fx.PlaySeverityAsync(action switch
-                {
-                    ModerationAction.Remove => FxSeverity.Remove,
-                    ModerationAction.Suppress => FxSeverity.Suppress,
-                    _ => FxSeverity.Hide
-                });
-            }
+            // Played only once the call has actually landed.
+            await Fx.PlayConfirmAsync();
 
             await LoadAsync();
         }

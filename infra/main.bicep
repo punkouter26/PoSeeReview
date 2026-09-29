@@ -27,9 +27,6 @@ param regionCode string = 'wus2'
 @description('Email addresses for budget alerts')
 param budgetContactEmails array = []
 
-// Service names
-param apiServiceName string = 'api'
-
 // App Service Plan SKU
 @description('App Service Plan SKU (F1 Free tier per NET_RULES 5.2, B1 Basic for production)')
 param appServicePlanSku string = 'F1'
@@ -75,17 +72,13 @@ module storage './modules/storage.bicep' = {
   }
 }
 
-// Key Vault - Secrets Management (created first without access policies)
-module keyVault './modules/keyvault.bicep' = {
-  name: 'keyvault'
-  scope: rg
-  params: {
-    location: location
-    tags: tags
-    resourceToken: resourceToken
-    principalId: '' // Will be updated after API is created
-  }
-}
+// Secrets live in the shared vault kv-poshared (RG PoShared) under the PoSeeReview-- prefix; this
+// template never creates or writes a vault, it only grants the app's identity read access.
+@description('Shared Key Vault the app reads its secrets from.')
+param sharedKeyVaultName string = 'kv-poshared'
+
+@description('Resource group holding the shared Key Vault.')
+param sharedResourceGroupName string = 'PoShared'
 
 // App Service — the only hosting target. Matches .github/workflows/deploy.yml.
 module apiAppService './modules/appservice.bicep' = {
@@ -96,7 +89,7 @@ module apiAppService './modules/appservice.bicep' = {
     tags: tags
     appName: 'app-${resourceToken}'
     skuName: appServicePlanSku
-    keyVaultEndpoint: keyVault.outputs.endpoint
+    keyVaultEndpoint: 'https://${sharedKeyVaultName}${environment().suffixes.keyvaultDns}/'
     storageTableEndpoint: storage.outputs.tableEndpoint
     storageBlobEndpoint: storage.outputs.blobEndpoint
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
@@ -104,29 +97,13 @@ module apiAppService './modules/appservice.bicep' = {
   }
 }
 
-// Key Vault Access - Grant API managed identity access to Key Vault
+// Key Vault Access - grant the API's managed identity read access to the shared vault
 module keyVaultAccess './modules/keyvaultaccess.bicep' = {
   name: 'keyvaultaccess'
-  scope: rg
+  scope: resourceGroup(sharedResourceGroupName)
   params: {
-    keyVaultName: keyVault.outputs.name
+    keyVaultName: sharedKeyVaultName
     principalId: apiAppService.outputs.identityPrincipalId
-  }
-}
-
-// Optional app-prefixed Google Maps key. Set via `azd env set poSeeReviewGoogleMapsApiKey <key>`
-// then `azd provision` — the secret lands in kv-poshared under PoSeeReview--GoogleMaps--ApiKey.
-// Empty by default so existing dev/test envs are not forced to provide it.
-@secure()
-param poSeeReviewGoogleMapsApiKey string = ''
-
-// Store secrets in Key Vault (placeholders - update via CLI or Portal)
-module secrets './modules/secrets.bicep' = {
-  name: 'secrets'
-  scope: rg
-  params: {
-    keyVaultName: keyVault.outputs.name
-    poSeeReviewGoogleMapsApiKey: poSeeReviewGoogleMapsApiKey
   }
 }
 
@@ -151,5 +128,4 @@ output APPLICATION_INSIGHTS_CONNECTION_STRING string = monitoring.outputs.applic
 output APPLICATION_INSIGHTS_INSTRUMENTATION_KEY string = monitoring.outputs.applicationInsightsInstrumentationKey
 
 output STORAGE_ACCOUNT_NAME string = storage.outputs.name
-output KEY_VAULT_NAME string = keyVault.outputs.name
-output KEY_VAULT_ENDPOINT string = keyVault.outputs.endpoint
+output KEY_VAULT_NAME string = sharedKeyVaultName

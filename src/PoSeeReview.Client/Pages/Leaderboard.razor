@@ -32,11 +32,6 @@
                     @onclick="() => SwitchScopeAsync(BoardScope.Weekly)">
                 By week
             </button>
-            <button type="button" class="chip-toggle @(_scope == BoardScope.Stats ? "chip-toggle--active" : "")"
-                    aria-pressed="@(_scope == BoardScope.Stats ? "true" : "false")"
-                    @onclick="() => SwitchScopeAsync(BoardScope.Stats)">
-                Stats
-            </button>
             @if (_scope == BoardScope.Live)
             {
                 <button type="button" class="btn btn-icon" @onclick="LoadLeaderboardAsync" disabled="@isLoading"
@@ -48,12 +43,6 @@
     </Header>
 
     <ChildContent>
-    @if (_scope == BoardScope.Stats)
-    {
-        <InsightsCharts />
-    }
-    else
-    {
     <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
     @if (isLoading && (_scope == BoardScope.Weekly
                        ? _archive is null
@@ -118,8 +107,6 @@
                           Score="@((int)Math.Round(entry.StrangenessScore))"
                           ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
                           Meta="@entry.Address"
-                          Holo="@(entry.StrangenessScore >= HoloThreshold)"
-                          OnPreview="() => PreviewSignatureAsync(entry)"
                           data-move="@MoveStateFor(entry.PlaceId)"
                           data-delta="@delta">
                     <Leading>
@@ -147,7 +134,6 @@
         </ol>
     }
     </div>
-    }
     @* Outside the results live region on purpose: this is already role="status", and nesting
        two live regions makes a share confirmation announce twice. *@
     @if (shareToast != null)
@@ -162,11 +148,10 @@
     private const string LeaderboardResultsId = "leaderboard-results";
     private const int TopTen = 10;
 
-    /// <summary>Which view is showing — the churning live board, the permanent archive, or the
-    /// charts over every score ever recorded.</summary>
-    private enum BoardScope { Live, Weekly, Stats }
+    /// <summary>Which view is showing — the churning live board or the permanent archive.</summary>
+    private enum BoardScope { Live, Weekly }
 
-    /// <summary>`?view=stats|week` opens that tab — /insights lands on stats.</summary>
+    /// <summary>`?view=week` opens the archive tab.</summary>
     [SupplyParameterFromQuery(Name = "view")]
     public string? View { get; set; }
 
@@ -188,12 +173,6 @@
     /// </summary>
     private Dictionary<string, int> _deltas = [];
 
-    /// <summary>Guards the arrival chord so a re-render cannot replay it.</summary>
-    private bool _chordPlayed;
-
-    /// <summary>Mirrors ComicView.HoloThreshold.</summary>
-    private const int HoloThreshold = 80;
-
     private ElementReference _stage;
 
     /// <summary>
@@ -201,9 +180,6 @@
     /// that puts them in the DOM — the slide needs real rows to measure.
     /// </summary>
     private bool _movesPending;
-
-    /// <summary>Last place whose motif was previewed, so a jittery pointer does not retrigger.</summary>
-    private string? _previewedPlaceId;
 
     public ValueTask DisposeAsync()
     {
@@ -213,12 +189,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _scope = View?.ToLowerInvariant() switch
-        {
-            "stats" => BoardScope.Stats,
-            "week" => BoardScope.Weekly,
-            _ => BoardScope.Live
-        };
+        _scope = string.Equals(View, "week", StringComparison.OrdinalIgnoreCase) ? BoardScope.Weekly : BoardScope.Live;
 
         await (_scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync());
     }
@@ -244,12 +215,7 @@
         errorMessage = null;
 
         // In the URL so refresh and Back keep the tab. replace: a tab is not a page visit.
-        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("view", scope switch
-        {
-            BoardScope.Stats => "stats",
-            BoardScope.Weekly => "week",
-            _ => null
-        }), replace: true);
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("view", scope == BoardScope.Weekly ? "week" : null), replace: true);
 
         if (scope == BoardScope.Weekly && _archive is null)
         {
@@ -349,7 +315,7 @@
     };
 
     /// <summary>
-    /// Works out what moved, sounds the board, then records the current standings.
+    /// Works out what moved, then records the current standings.
     /// <para>
     /// Order matters and is easy to get wrong: saving before comparing would compare the board
     /// against itself and report every row as unchanged, for ever.
@@ -383,38 +349,7 @@
         await BoardMemory.SaveAsync("GLOBAL", entries.Select(e => (e.PlaceId, e.Rank)));
         _movesPending = _deltas.Count > 0;
 
-        // The chord is the board heard at once — each voice one restaurant's own motif, seeded
-        // from its place id. It plays only if audio is already unlocked, which on this route means
-        // the visitor turned sound on earlier in the session; nothing here can unlock it, because
-        // rendering a list is not a user gesture.
-        if (!_chordPlayed)
-        {
-            _chordPlayed = true;
-            await Fx.PlayBoardChordAsync(
-                [.. entries.Take(3).Select(e => new FxMotif(e.PlaceId, e.StrangenessScore))]);
-        }
-
         StateHasChanged();
-    }
-
-    /// <summary>
-    /// Plays a row's own motif on hover or keyboard focus.
-    /// <para>
-    /// This is what makes the board recognisable by ear rather than merely noisy: the figure is
-    /// deterministic from the place id, so the same restaurant always sounds the same. Guarded
-    /// against the same row retriggering, because a pointer crossing a card generates a stream of
-    /// enter events and the motif is nearly a second long.
-    /// </para>
-    /// </summary>
-    private async Task PreviewSignatureAsync(LeaderboardEntryDto entry)
-    {
-        if (_previewedPlaceId == entry.PlaceId)
-        {
-            return;
-        }
-
-        _previewedPlaceId = entry.PlaceId;
-        await Fx.PlaySignatureAsync(entry.PlaceId, (int)Math.Round(entry.StrangenessScore));
     }
 
     // Rank 1 is gold — it carries .medal-gold styling, so a party popper read as a mismatch
@@ -473,6 +408,4 @@
             InvokeAsync(StateHasChanged);
         }, null, 3000, System.Threading.Timeout.Infinite);
     }
-
-
 }

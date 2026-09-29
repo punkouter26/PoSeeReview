@@ -4,40 +4,18 @@
 @inject FxService Fx
 
 @*
-    The <img> is deliberately still the real element. Everything layered over it — foil, loupe,
-    speech bubbles — is aria-hidden and pointer-events:none, so the image stays the accessible
-    element and stays saveable: long-press on mobile and right-click save-image on desktop both
-    keep working on the app's single most shareable artifact.
-
-    The layers are rendered here, empty, and only ever STYLED from js/comic-surface.js and
-    js/overlays.js — so Blazor's diff never meets a node it did not create.
+    The <img> is the real element, so it stays accessible and saveable (long-press on mobile,
+    right-click save-image on desktop).
 
     The tilt wrapper exists because the container's own entrance animation fills `transform`
     for good; the scroll-driven tilt needs an element whose transform nobody else owns.
 *@
 <div class="comic-strip-tilt">
     <div @ref="_container" class="comic-strip-container">
-        <img @ref="_image"
-             src="@ImageUrl"
+        <img src="@ImageUrl"
              alt="@AltText(RestaurantName, Captions)"
              class="comic-strip-image"
              @onload="OnImageLoadedAsync" />
-        @if (Holo)
-        {
-            <div class="holo-foil" aria-hidden="true"></div>
-        }
-        <div class="comic-loupe" aria-hidden="true"></div>
-        <div class="skit-layer" aria-hidden="true"></div>
-        @if (_surfaceHandle != 0)
-        {
-            <button type="button" class="loupe-toggle"
-                    aria-pressed="@(_loupeOn ? "true" : "false")"
-                    title="@(_loupeOn ? "Put the magnifier away" : "Magnify the comic")"
-                    aria-label="@(_loupeOn ? "Turn off the magnifier" : "Turn on the magnifier")"
-                    @onclick="ToggleLoupeAsync">
-                <span aria-hidden="true">🔍</span>
-            </button>
-        }
     </div>
 </div>
 
@@ -87,10 +65,6 @@
     [Parameter]
     public int StrangenessScore { get; set; }
 
-    /// <summary>Holographic foil that follows the pointer or the phone's tilt. For rare scores.</summary>
-    [Parameter]
-    public bool Holo { get; set; }
-
     /// <summary>
     /// Develop the strip top-down as it arrives, rather than showing it whole. For a comic the
     /// user just waited ten seconds for — not for one opened from a list, which morphs in instead.
@@ -98,35 +72,17 @@
     [Parameter]
     public bool Develop { get; set; }
 
-    /// <summary>The container, for effects placed over the strip (the skit's speech bubbles).</summary>
-    public ElementReference Container => _container;
-
     private ElementReference _container;
-    private ElementReference _image;
     private int _scrubHandle;
-    private int _surfaceHandle;
     private int _revealHandle;
     private bool _developed;
-    private bool _loupeOn;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
-        {
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(PlaceId))
+        if (firstRender && !string.IsNullOrEmpty(PlaceId))
         {
             _scrubHandle = await Fx.StartPanelScrubAsync(
                 _container, PanelCount, PlaceId, StrangenessScore);
-        }
-
-        // Zero below the Lite tier, which also keeps the magnifier button out of the markup.
-        _surfaceHandle = await Fx.StartComicSurfaceAsync(_container, _image, Holo);
-        if (_surfaceHandle != 0)
-        {
-            StateHasChanged();
         }
     }
 
@@ -143,22 +99,11 @@
         }
     }
 
-    private async Task ToggleLoupeAsync()
-    {
-        // A click is a trusted gesture, so the hum can start here even on a first visit.
-        await Fx.UnlockAudioAsync();
-        _loupeOn = await Fx.ToggleLoupeAsync(_surfaceHandle);
-    }
-
-    /// <summary>The artwork ripples as the score lands, as deep as the score is strange.</summary>
-    public Task PlayScoreImpactAsync(int score) => Fx.WobbleComicAsync(_surfaceHandle, score);
-
     public async ValueTask DisposeAsync()
     {
         // The reveal first and unconditionally: an abandoned one leaves part of the comic masked.
         await Fx.FinishComicRevealAsync(_revealHandle);
-        await Fx.StopComicSurfaceAsync(_surfaceHandle);
         await Fx.StopPanelScrubAsync(_scrubHandle);
-        _revealHandle = _surfaceHandle = _scrubHandle = 0;
+        _revealHandle = _scrubHandle = 0;
     }
 }

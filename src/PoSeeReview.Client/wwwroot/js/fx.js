@@ -7,9 +7,8 @@
 // decoration is a spectacularly bad trade. Nothing in this file may ever throw into .NET.
 //
 // THIS FILE IS ALSO THE COMPOSITION ROOT for the effects that pair with each other. audio.js
-// does not know haptics exist, overlays.js does not know stamps make a noise, and
-// comic-surface.js does not know the loupe hums. Deciding that a tap should also buzz, or that a
-// weird page should also drone, is a product decision and it is made here.
+// does not know haptics exist and comic-reveal.js does not know the app makes noise. Deciding
+// that a tap should also buzz is a product decision and it is made here.
 
 import { gfx } from './gfx-core.js';
 import { audio } from './audio.js';
@@ -17,10 +16,7 @@ import { haptics } from './haptics.js';
 import * as gradient from './gradient.js';
 import * as panelScrub from './panel-scrub.js';
 import * as comicReveal from './comic-reveal.js';
-import * as particles from './particles.js';
 import * as viewTransitions from './view-transitions.js';
-import * as comicSurface from './comic-surface.js';
-import * as overlays from './overlays.js';
 
 function guard(fn, fallback = null) {
     try {
@@ -69,21 +65,15 @@ gfx.onTierChanged(() => {
     }
 });
 
-/** Loupe hums, keyed by comic-surface handle. Sustained, so each must be released. */
-const loupeHums = new Map();
-
-const panForX = (clientX) => Math.max(-0.7, Math.min(0.7, (clientX / (window.innerWidth || 1)) * 1.4 - 0.7));
-
 export const fx = {
     // ── Capability + tier ────────────────────────────────────────────────────────────────
     describe: () => guard(() => ({
         ...gfx.describe(),
-        webgpu: typeof navigator !== 'undefined' && 'gpu' in navigator,
         haptics: haptics.describe().supported,
         narration: audio.canNarrate()
     }), {
         tier: 'off', reducedMotion: true, webgl2: false, autoDowngraded: false,
-        webgpu: false, haptics: false, narration: false
+        haptics: false, narration: false
     }),
     setTier: (tier) => guard(() => gfx.setTier(tier), 'off'),
     stats: () => guard(() => gfx.stats(), null),
@@ -105,8 +95,6 @@ export const fx = {
         return unlocked;
     }, false),
 
-    audioLatency: () => guard(() => audio.latency(), null),
-
     /** Pans the click to a viewport x coordinate — see audio.tapAt. */
     playTapAt: (clientX) => guard(() => {
         audio.tapAt(clientX);
@@ -120,11 +108,11 @@ export const fx = {
      */
     playLocating: () => guard(() => {
         audio.locating();
-        haptics.locating();
+        haptics.tap();
     }),
     playArrival: (count) => guard(() => {
         audio.arrival(count ?? 0);
-        haptics.arrival(count ?? 0);
+        haptics.confirm();
     }),
     /** Zero results. Not an error cue: an empty answer is an answer. */
     playEmpty: () => guard(() => audio.empty()),
@@ -141,22 +129,18 @@ export const fx = {
             haptics.tap();
         } else {
             audio.tapUncached(clientX);
-            haptics.tapUncached();
+            haptics.tap();
         }
     }),
 
     playScoreTick: (value, target) => guard(() => audio.scoreTick(value, target)),
     playScoreLand: (score) => guard(() => {
         audio.scoreLand(score);
-        haptics.scoreLand(score);
-    }),
-    playSplat: (intensity) => guard(() => {
-        audio.splat(intensity);
-        haptics.splat(intensity);
+        haptics.confirm();
     }),
     playShareStinger: () => guard(() => {
         audio.shareStinger();
-        haptics.shareStinger();
+        haptics.confirm();
     }),
     playError: () => guard(() => {
         audio.error();
@@ -166,30 +150,11 @@ export const fx = {
         audio.confirm();
         haptics.confirm();
     }),
-    playSeverity: (level) => guard(() => {
-        audio.severity(level);
-        // Remove is irreversible, so it is the one moderation action that is also felt. Hide and
-        // suppress are both undoable and get sound only.
-        if (level === 'remove') haptics.error();
-    }),
-
     /**
      * The comic's own motif, seeded from its place id. Deterministic: the same restaurant always
      * plays the same figure, which is what makes it an identity rather than a flourish.
      */
     playSignature: (seed, score) => guard(() => audio.signature(seed, score)),
-
-    /**
-     * The top of the leaderboard as a chord — each voice one restaurant's own motif.
-     *
-     * `/leaderboard` had a 3D shelf and not one sound on it. Because a motif is deterministic
-     * from its place id, this makes a board that has CHANGED audibly different from one that has
-     * not, before a single row has been read.
-     */
-    playBoardChord: (entries) => guard(() => audio.boardChord(entries ?? [])),
-
-    /** Plays a numeric series as pitch. Used by /insights to make a chart's shape audible. */
-    playSeries: (values, options) => guard(() => audio.sonify(values ?? [], options ?? {})),
 
     // ── Haptics ──────────────────────────────────────────────────────────────────────────
     hapticsDescribe: () => guard(() => haptics.describe(), { supported: false, enabled: false, explicit: false }),
@@ -198,120 +163,16 @@ export const fx = {
     // ── Narration ────────────────────────────────────────────────────────────────────────
     canNarrate: () => guard(() => audio.canNarrate(), false),
     narrate: (text) => guard(() => audio.narrate(text), false),
-    stopNarration: () => guard(() => {
-        audio.stopNarration();
-        overlays.clearBubbles();
-    }),
-
-    /**
-     * The skit rides the same speechSynthesis output and the same stopNarration() stop. Each
-     * line pops a bubble over the strip as it starts — the voices get faces — and the bubble
-     * pops from its speaker's side of the stereo field as well as the strip.
-     */
-    playSkit: (json, strip) => guard(() => {
-        const speech = overlays.bubbles(strip, { panels: 2 });
-        return audio.playSkitJson(json, speech ? {
-            onLineStart: (index, total, speaker, slot, text) => guard(() => {
-                const side = speech.show(index, total, speaker, slot, text);
-                audio.bubble(side === 'left' ? -0.45 : 0.45);
-            }),
-            onLineEnd: (index, total) => guard(() => speech.end(index, total))
-        } : {});
-    }, false),
-
-    // ── Generation wait ──────────────────────────────────────────────────────────────────
-    riserStep: (index, total, score) => guard(() => {
-        audio.riserStep(index, total, score ?? 0);
-        haptics.phase();
-    }),
-    riserResolve: () => guard(() => audio.riserResolve()),
-    riserStop: () => guard(() => audio.riserStop()),
+    stopNarration: () => guard(() => audio.stopNarration()),
 
     // ── Background gradient ──────────────────────────────────────────────────────────────
     startGradient: (canvas, score) => guard(() => gradient.start(canvas, { score }), 0),
     setGradientScore: (id, score) => guard(() => gradient.setScore(id, score)),
     stopGradient: (id) => guard(() => gradient.stop(id)),
 
-    /**
-     * Eases the backdrop to a comic's own colours. `palette` is the three hex strings the server
-     * sampled off the finished artwork; anything else clears back to the brand gradient, which is
-     * what a comic drawn before the extractor existed still gets.
-     */
-    setComicPalette: (id, palette) => guard(() => {
-        const applied = Array.isArray(palette) && palette.length > 0;
-        gradient.setPalette(id, applied ? palette : null);
-        return applied;
-    }, false),
-
-    /** Restores the brand gradient. Called on leaving a comic route. */
-    clearComicPalette: (id) => guard(() => gradient.setPalette(id, null)),
-
-    // ── Ink burst ────────────────────────────────────────────────────────────────────────
-    burstParticles: (canvas, score) => guard(() => particles.burst(canvas, score ?? 50), 0),
-    stopParticles: (id) => guard(() => particles.dispose(id)),
-
-    // ── The comic as an object ───────────────────────────────────────────────────────────
-
-    /** Foil (when `holo`) and loupe support. The foil glints audibly as it is tilted. */
-    startComicSurface: (container, image, holo) => guard(() => {
-        let id = 0;
-        id = comicSurface.start(container, image, {
-            holo: holo === true,
-            onShimmer: (intensity, pan) => guard(() => audio.shimmer(intensity, pan)),
-            // The hum follows the lens: pitch rises toward the top, pan tracks it across.
-            onLoupeMove: (x, y) => guard(() => loupeHums.get(id)?.glide(140 + (1 - y) * 300, x * 1.4 - 0.7))
-        });
-        return id;
-    }, 0),
-
-    toggleLoupe: (id) => guard(() => {
-        const on = comicSurface.toggleLoupe(id);
-        loupeHums.get(id)?.release(0.2);
-        loupeHums.delete(id);
-        if (on) {
-            const hum = audio.hum();
-            if (hum) loupeHums.set(id, hum);
-        }
-        haptics.tap();
-        return on;
-    }, false),
-
-    wobbleComic: (id, score) => guard(() => comicSurface.wobble(id, score ?? 50)),
-
-    stopComicSurface: (id) => guard(() => {
-        loupeHums.get(id)?.release(0.1);
-        loupeHums.delete(id);
-        comicSurface.stop(id);
-    }),
-
-    /** The page misbehaves, and sounds like it. The drone is part of the same decision. */
-    setWeird: (score) => guard(() => {
-        if (comicSurface.setWeird(score ?? 0)) audio.droneStart(score);
-    }),
-
-    clearWeird: () => guard(() => {
-        comicSurface.clearWeird();
-        audio.droneStop();
-    }),
-
-    /**
-     * A comic-book sound word. `target` is an element, or a viewport x with `y` beside it.
-     * The thwack is panned to wherever it landed.
-     */
-    stamp: (word, target, y) => guard(() => {
-        const x = overlays.stamp(word, target, y);
-        if (x === null) return;
-        audio.stamp(panForX(x));
-        haptics.splat(0.4);
-    }),
-
     // ── Ink development ──────────────────────────────────────────────────────────────────
 
-    /**
-     * Develops the comic onto the page. `fxHandle` is the comic-fx handle when one attached, so
-     * the shader can add its wet-ink boundary on top of the CSS mask; pass 0 and the CSS mask
-     * runs alone, which is the common case.
-     */
+    /** Develops the comic onto the page with a CSS mask. */
     startComicReveal: (container, bands) => guard(() => comicReveal.start(container, {
         bands: bands ?? 2,
         // Each band gets a cue as it becomes recognisable. Composed here rather than inside

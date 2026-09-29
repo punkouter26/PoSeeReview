@@ -41,41 +41,9 @@ public class ApiClient
     }
 
     /// <summary>
-    /// Generates a comic for the given restaurant place ID.
-    /// This may take 8-10 seconds for a new comic generation.
-    /// On non-success the response body is parsed for an RFC 7807 <c>ProblemDetails</c> payload
-    /// so the user-facing message is actionable instead of the opaque
-    /// "net_http_message_not_success_statuscode_reason, 500, Internal Server Error" surfaced by
-    /// <c>HttpRequestException</c>.
-    /// </summary>
-    public async Task<ComicDto> GenerateComicAsync(
-        string placeId,
-        bool forceRegenerate = false,
-        CancellationToken cancellationToken = default)
-    {
-        var url = $"/api/comics/{placeId}";
-        if (forceRegenerate)
-        {
-            url += "?forceRegenerate=true";
-        }
-
-        using var request = await CreateRequestAsync(HttpMethod.Post, url);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-        await EnsureSuccessAsync(response, "Comic generation failed", cancellationToken, "Please try again in a moment.");
-
-        var comic = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicDto, cancellationToken);
-        return comic ?? throw new InvalidOperationException("Comic response was null");
-    }
-
-    /// <summary>
-    /// Generates a comic while reporting the pipeline stage the server is genuinely in.
-    /// <para>
-    /// Falls back to <see cref="GenerateComicAsync"/> only when the stream is refused before any
-    /// work could start — a non-success status on the request itself. Once the server has
-    /// answered 200 the paid pipeline is running, so a mid-stream failure is surfaced as an
-    /// error rather than retried: a retry there would pay for the same comic twice.
-    /// </para>
+    /// Generates a comic while reporting the pipeline stage the server is genuinely in. Once the
+    /// server has answered 200 the paid pipeline is running, so a mid-stream failure is surfaced
+    /// as an error rather than retried: a retry there would pay for the same comic twice.
     /// </summary>
     public async Task<ComicDto> GenerateComicStreamAsync(
         string placeId,
@@ -99,18 +67,7 @@ public class ApiClient
         using var response = await _httpClient.SendAsync(
             request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
 
-        if (!response.IsSuccessStatusCode)
-        {
-            // 404 means this build of the API predates streaming; 405 that it is routed
-            // differently. Either way nothing was generated, so the plain POST is safe.
-            if (response.StatusCode is System.Net.HttpStatusCode.NotFound
-                or System.Net.HttpStatusCode.MethodNotAllowed)
-            {
-                return await GenerateComicAsync(placeId, forceRegenerate, cancellationToken);
-            }
-
-            await EnsureSuccessAsync(response, "Comic generation failed", cancellationToken, "Please try again in a moment.");
-        }
+        await EnsureSuccessAsync(response, "Comic generation failed", cancellationToken, "Please try again in a moment.");
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
@@ -211,23 +168,6 @@ public class ApiClient
     /// "net_http_message_not_success_statuscode_reason" text that this helper exists to replace.
     /// </para>
     /// </summary>
-    /// <summary>
-    /// Fetches the comic's invented conversation, generating it on the server the first time it
-    /// is asked for. The first tap costs a chat call and rides the comics-post rate limiter;
-    /// every later tap of the same comic is served from the comic row.
-    /// </summary>
-    public async Task<ComicAudioSkit?> GetComicSkitAsync(
-        string placeId,
-        CancellationToken cancellationToken = default)
-    {
-        using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/comics/{placeId}/audio");
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-        await EnsureSuccessAsync(response, "Could not stage the comic's conversation", cancellationToken);
-
-        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicAudioSkit, cancellationToken);
-    }
-
     private static async Task EnsureSuccessAsync(
         HttpResponseMessage response,
         string fallback,
@@ -325,30 +265,6 @@ public class ApiClient
         }
         catch (HttpRequestException)
         {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Regional context for a comic's score. Returns <c>null</c> when the comic has no stats
-    /// yet — the score still renders, just without the comparison.
-    /// </summary>
-    public async Task<ComicStatsDto?> GetComicStatsAsync(
-        string placeId,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}/stats");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-
-            return response.IsSuccessStatusCode
-                ? await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ComicStatsDto, cancellationToken)
-                : null;
-        }
-        catch (HttpRequestException)
-        {
-            // Decoration on the payoff screen. It never justifies an error state.
             return null;
         }
     }

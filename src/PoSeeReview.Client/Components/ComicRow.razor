@@ -4,13 +4,12 @@
    the live board was a RadzenDataGrid: paging over ten rows, sorting a ranking by name, and five
    fixed-width columns that crushed a phone. The whole row is the link (the name stretches over
    it), so there is no per-row "Open" button; `Actions` holds only what is left once opening is
-   free — share, forget. Styles live in app.css (`.comic-row`) next to the freshness, holo and
+   free — share, forget. Styles live in app.css (`.comic-row`) next to the freshness and
    rank-movement rules that key off the same elements. *@
 
-<li class="comic-row glass scroll-enter @Class" @attributes="Attributes"
-    @onmouseenter="OnPreview" @onfocusin="OnPreview">
+<li class="comic-row glass scroll-enter @Class" @attributes="Attributes">
     @Leading
-    <div class="comic-thumbnail" data-rarity="@(Holo ? "holo" : null)">
+    <div class="comic-thumbnail">
         @if (ImageUrl is null)
         {
             @* The blob is gone but the record is not. A score beats a broken image. *@
@@ -37,11 +36,9 @@
     [Parameter] public string? ImageUrl { get; set; }
 
     [Parameter] public string? Meta { get; set; }
-    [Parameter] public bool Holo { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public RenderFragment? Leading { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
-    [Parameter] public EventCallback OnPreview { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? Attributes { get; set; }

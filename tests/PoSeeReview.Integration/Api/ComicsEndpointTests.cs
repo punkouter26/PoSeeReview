@@ -1,5 +1,6 @@
-using System.Net.Http.Json;
 using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Restaurants;
@@ -27,6 +28,30 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         _output = output;
     }
 
+    /// <summary>Terminal outcome of the SSE generation stream: status, comic on success, raw frame.</summary>
+    private sealed record StreamResult(HttpStatusCode StatusCode, ComicDto? Comic, string Body)
+    {
+        public bool IsSuccessStatusCode => StatusCode == HttpStatusCode.OK;
+    }
+
+    private async Task<StreamResult> GenerateAsync(string placeId, bool forceRegenerate = false)
+    {
+        var url = $"/api/comics/{placeId}/stream" + (forceRegenerate ? "?forceRegenerate=true" : "");
+        using var response = await _client.PostAsync(url, null);
+        var body = await response.Content.ReadAsStringAsync();
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            return new StreamResult(response.StatusCode, null, body);
+        }
+
+        // The last data: frame is the outcome — `complete` carries the comic, `error` its status.
+        var last = body.Split('\n').Last(l => l.StartsWith("data:", StringComparison.Ordinal))["data:".Length..].Trim();
+        var evt = JsonSerializer.Deserialize<ComicGenerationEventDto>(last, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        return evt.Kind == ComicGenerationEventDto.CompleteKind
+            ? new StreamResult(HttpStatusCode.OK, evt.Comic, last)
+            : new StreamResult((HttpStatusCode)evt.ErrorStatus, null, last);
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task PostComic_WithValidPlaceId_Returns200OrCachedOrContentPolicyRejection()
@@ -35,8 +60,8 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         var placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4"; // Valid Google Place ID format
 
         // Act
-        var response = await _client.PostAsync($"/api/comics/{placeId}", null);
-        var responseBody = await response.Content.ReadAsStringAsync();
+        var response = await GenerateAsync(placeId);
+        var responseBody = response.Body;
 
         // Assert
         // Should return 200 (success), 400 (invalid/not enough reviews), 404 (not found), 429
@@ -87,7 +112,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
 
         if (response.StatusCode == HttpStatusCode.OK)
         {
-            var comic = await response.Content.ReadFromJsonAsync<ComicDto>();
+            var comic = response.Comic;
             Assert.NotNull(comic);
             Assert.NotNull(comic!.ComicId);
             Assert.Equal(placeId, comic.PlaceId);
@@ -109,25 +134,24 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         var placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
 
         // Act - First call
-        var response1 = await _client.PostAsync($"/api/comics/{placeId}", null);
+        var response1 = await GenerateAsync(placeId);
 
         if (response1.StatusCode != HttpStatusCode.OK)
         {
             // Skip test if restaurant not found, doesn't have enough reviews, or content policy violation
-            var body = await response1.Content.ReadAsStringAsync();
-            _output.WriteLine($"⚠️ First call failed with {response1.StatusCode}: {body}");
+            _output.WriteLine($"⚠️ First call failed with {response1.StatusCode}: {response1.Body}");
             return;
         }
 
-        var comic1 = await response1.Content.ReadFromJsonAsync<ComicDto>();
+        var comic1 = response1.Comic;
 
         // Act - Second call with forceRegenerate
-        var response2 = await _client.PostAsync($"/api/comics/{placeId}?forceRegenerate=true", null);
+        var response2 = await GenerateAsync(placeId, forceRegenerate: true);
 
         // Content policy violations are acceptable
         if (response2.StatusCode == HttpStatusCode.InternalServerError)
         {
-            var body = await response2.Content.ReadAsStringAsync();
+            var body = response2.Body;
             if (body.Contains("content_policy_violation") || body.Contains("safety system"))
             {
                 _output.WriteLine("✓ Content policy violation on force regenerate (expected)");
@@ -137,24 +161,10 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
-        var comic2 = await response2.Content.ReadFromJsonAsync<ComicDto>();
+        var comic2 = response2.Comic;
         Assert.NotNull(comic2);
         Assert.NotEqual(comic1!.ComicId, comic2!.ComicId);
         Assert.False(comic2.IsCached);
-    }
-
-    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.E2EAPI")]
-    public async Task PostComic_WithInvalidPlaceId_Returns404()
-    {
-        // Arrange
-        var invalidPlaceId = "invalid-place-id-123";
-
-        // Act
-        var response = await _client.PostAsync($"/api/comics/{invalidPlaceId}", null);
-
-        // Assert
-        // API returns 404 when restaurant is not found (which is correct behavior)
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -165,7 +175,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         var placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
 
         // First generate a comic
-        var postResponse = await _client.PostAsync($"/api/comics/{placeId}", null);
+        var postResponse = await GenerateAsync(placeId);
 
         if (postResponse.StatusCode != HttpStatusCode.OK)
         {
@@ -185,19 +195,6 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         Assert.True(comic.IsCached);
     }
 
-    [Fact(Skip = "Serilog frozen logger conflict with WebApplicationFactory - moved to PoSeeReview.E2EAPI")]
-    public async Task GetComic_WithNonExistentComic_Returns404()
-    {
-        // Arrange
-        var nonExistentPlaceId = "ChIJNonExistentPlace123456789";
-
-        // Act
-        var response = await _client.GetAsync($"/api/comics/{nonExistentPlaceId}");
-
-        // Assert
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
     [Fact]
     [Trait("Category", "Integration")]
     public async Task PostComic_ReturnsCachedComicWithin24HoursOrContentPolicy()
@@ -206,7 +203,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         var placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
 
         // Act - First call
-        var response1 = await _client.PostAsync($"/api/comics/{placeId}", null);
+        var response1 = await GenerateAsync(placeId);
 
         if (response1.StatusCode != HttpStatusCode.OK)
         {
@@ -215,14 +212,14 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
             return;
         }
 
-        var comic1 = await response1.Content.ReadFromJsonAsync<ComicDto>();
+        var comic1 = response1.Comic;
 
         // Act - Second call (should return cached)
-        var response2 = await _client.PostAsync($"/api/comics/{placeId}", null);
+        var response2 = await GenerateAsync(placeId);
 
         // Assert
         Assert.Equal(HttpStatusCode.OK, response2.StatusCode);
-        var comic2 = await response2.Content.ReadFromJsonAsync<ComicDto>();
+        var comic2 = response2.Comic;
         Assert.NotNull(comic2);
         Assert.Equal(comic1!.ComicId, comic2!.ComicId);
         Assert.True(comic2.IsCached);
@@ -243,11 +240,11 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
         _output.WriteLine($"⏰ Started at: {DateTime.Now:HH:mm:ss}");
 
         // Act
-        var response = await _client.PostAsync($"/api/comics/{placeId}?forceRegenerate=true", null);
+        var response = await GenerateAsync(placeId, forceRegenerate: true);
 
         // Debug output
         _output.WriteLine($"📊 Response Status: {response.StatusCode} ({(int)response.StatusCode})");
-        var responseBody = await response.Content.ReadAsStringAsync();
+        var responseBody = response.Body;
 
         if (!response.IsSuccessStatusCode)
         {
@@ -302,7 +299,7 @@ public class ComicsEndpointTests : IClassFixture<CustomWebApplicationFactory<Pro
             Assert.Fail($"Unexpected error: {response.StatusCode}. Body: {responseBody}");
         }
 
-        var comic = await response.Content.ReadFromJsonAsync<ComicDto>();
+        var comic = response.Comic;
 
         Assert.NotNull(comic);
         Assert.Equal(placeId, comic.PlaceId);

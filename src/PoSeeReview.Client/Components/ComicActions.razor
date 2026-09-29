@@ -1,8 +1,7 @@
 @* The comic page's action bar.
 
    This is the whole reason the app exists and it was missing: the payoff screen rendered a
-   score and an image and offered nothing to do with either. Share lived only on the Hall of
-   Fame, and ApiClient.GenerateComicAsync(forceRegenerate: true) had no caller at all.
+   score and an image and offered nothing to do with either.
 
    Share is first and visually dominant — for the Content Creator persona it is the entire
    product. *@
@@ -43,7 +42,7 @@
     [Parameter, EditorRequired]
     public ComicDto Comic { get; set; } = default!;
 
-    /// <summary>Page-owned controls that belong in the bar (read aloud, skit).</summary>
+    /// <summary>Page-owned controls that belong in the bar (read aloud).</summary>
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
 
@@ -62,7 +61,7 @@
         await Fx.PlayTapAtAsync(e.ClientX);
     }
 
-    private async Task ShareAsync(MouseEventArgs e)
+    private async Task ShareAsync()
     {
         _isBusy = true;
 
@@ -86,7 +85,6 @@
                 case ShareOutcome.Shared:
                     Analytics.Track(FunnelSteps.ComicShared);
                     await Fx.PlayShareStingerAsync();
-                    await Fx.StampAsync("ZOOM!", e.ClientX, e.ClientY);
                     ShowToast("Shared!");
                     break;
 
@@ -99,7 +97,6 @@
                     await ShareService.CopyToClipboardAsync(url);
                     Analytics.Track(FunnelSteps.ComicShared);
                     await Fx.PlayShareStingerAsync();
-                    await Fx.StampAsync("ZOOM!", e.ClientX, e.ClientY);
                     ShowToast("Link copied to clipboard");
                     break;
             }
@@ -110,7 +107,7 @@
         }
     }
 
-    private async Task SaveAsync(MouseEventArgs e)
+    private async Task SaveAsync()
     {
         _isBusy = true;
 
@@ -124,7 +121,6 @@
             {
                 Analytics.Track(FunnelSteps.ComicSaved);
                 await Fx.PlayConfirmAsync();
-                await Fx.StampAsync("SNAP!", e.ClientX, e.ClientY);
                 ShowToast("Saved to your device");
             }
             else

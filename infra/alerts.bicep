@@ -95,7 +95,7 @@ resource aiSpend 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
       allOf: [
         {
           // Single-quoted, not ''' — Bicep's multi-line strings do not interpolate.
-          query: 'customMetrics | where cloud_RoleName == "${roleName}" | where name in ("Gemini.Image.Requests", "HuggingFace.Image.Requests", "Ai.Cost.Usd") | summarize images = sumif(valueSum, name != "Ai.Cost.Usd"), chatUsd = sumif(valueSum, name == "Ai.Cost.Usd") | where images > ${dailyImageThreshold} or chatUsd > ${dailyChatUsdThreshold}'
+          query: 'customMetrics | where cloud_RoleName == "${roleName}" | where name in ("Gemini.Image.Requests", "Ai.Cost.Usd") | summarize images = sumif(valueSum, name != "Ai.Cost.Usd"), chatUsd = sumif(valueSum, name == "Ai.Cost.Usd") | where images > ${dailyImageThreshold} or chatUsd > ${dailyChatUsdThreshold}'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

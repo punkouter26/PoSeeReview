@@ -10,7 +10,7 @@
 <article class="@($"restaurant-card scroll-enter {GetCardClass()}")"
             title="@GetTooltipText()"
             data-testid="restaurant-card"
-            data-physics-card
+            data-comic-card
             data-cached="@(IsCached ? "ready" : "new")"
             @onclick="OnClickIfEnabled">
     <div class="card-header">

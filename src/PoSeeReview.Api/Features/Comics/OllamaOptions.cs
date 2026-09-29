@@ -5,8 +5,8 @@ namespace PoSeeReview.Api.Features.Comics;
 /// to <c>Ollama</c>.
 /// <para>
 /// Ollama exposes an OpenAI-compatible surface at <c>/v1</c>, so this reuses the OpenAI SDK's
-/// <c>ChatClient</c> exactly as <see cref="HuggingFaceChatService"/> does. No new client, no new
-/// wire format, no new parser — the only difference is the base URL and the absence of a key.
+/// <c>ChatClient</c> through <see cref="OpenAiWireChat"/>; the only difference from a hosted
+/// endpoint is the base URL and the absence of a key.
 /// </para>
 /// <para>
 /// Defaults to a 3B instruct model on purpose. The job is extracting three fields from a few

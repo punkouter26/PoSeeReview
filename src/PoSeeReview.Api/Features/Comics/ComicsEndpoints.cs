@@ -22,22 +22,14 @@ internal static class ComicsEndpoints
     {
         var group = app.MapGroup("/api/comics").WithTags("Comics");
 
-        group.MapPost("/{placeId}", GenerateComic).RequireRateLimiting("comics-post");
-        // Same paid pipeline as the POST above, so it carries the same limiter — otherwise the
-        // stream would be a way around the 3/min cap on the one endpoint that spends money.
+        // The one endpoint that spends money, so it carries the 3/min limiter.
         group.MapPost("/{placeId}/stream", GenerateComicStream).RequireRateLimiting("comics-post");
-        // The audio skit calls the chat model the first time a comic's skit is requested, so it
-        // rides the same limiter. A cache hit is free but indistinguishable before the read;
-        // three taps a minute is generous for a play button, and the cap is what stops the
-        // skit from becoming a second unbounded spend path.
-        group.MapPost("/{placeId}/audio", GenerateComicAudioSkit).RequireRateLimiting("comics-post");
 
         // Literal segments outrank route parameters, so "/budget" and "/cached" are matched here
         // rather than being swallowed by "/{placeId}" below. Both are free reads and stay off
         // the limiter.
         group.MapGet("/budget", GetBudget);
         group.MapGet("/cached", GetCachedPlaceIds);
-        group.MapGet("/{placeId}/stats", GetComicStats);
         group.MapGet("/{placeId}/image", DownloadComicImage);
         group.MapGet("/{placeId}", GetCachedComic);
 
@@ -67,9 +59,9 @@ internal static class ComicsEndpoints
     private static async Task<IResult> GetShareCard(
         string placeId,
         IComicGenerationService comicGenerationService,
-        IShareCardService shareCardService,
+        ShareCardService shareCardService,
         IContentModerationGate moderationGate,
-        ILogger<IShareCardService> logger,
+        ILogger<ShareCardService> logger,
         HttpContext http)
     {
         if (string.IsNullOrWhiteSpace(placeId))
@@ -132,10 +124,9 @@ internal static class ComicsEndpoints
         instance: http.Request.Path);
 
     /// <summary>
-    /// Maps a generation failure onto the response the client already knows how to render.
-    /// Shared by the plain POST and the SSE stream: the stream has committed a 200 by the time
-    /// generation fails, so it has to carry the same status in its payload instead of a header,
-    /// and both paths must agree on what a 422 means or the UI copy diverges.
+    /// Maps a generation failure onto the status the client already knows how to render. The
+    /// stream has committed a 200 by the time generation fails, so the status travels in the
+    /// payload instead of a header.
     /// </summary>
     private static (int Status, string Title, string Detail, string TypeUri, string ErrorType) DescribeFailure(
         Exception ex,
@@ -243,19 +234,6 @@ internal static class ComicsEndpoints
             : ("Daily Limit Reached",
                $"You have used all {reservation.Budget.DailyLimit} of today's comic generations. Your limit resets at midnight UTC — cached comics still open for free until then.");
 
-    private static IResult BudgetRefusal(BudgetReservation reservation, HttpContext http)
-    {
-        var (title, detail) = DescribeBudgetRefusal(reservation);
-
-        return Results.Problem(
-            type: "https://tools.ietf.org/html/rfc6585#section-4",
-            title: title,
-            statusCode: StatusCodes.Status429TooManyRequests,
-            detail: detail,
-            instance: http.Request.Path,
-            extensions: new Dictionary<string, object?> { ["budget"] = reservation.Budget });
-    }
-
     /// <summary>
     /// What the caller has left to spend today. A free read, so the client can grey out the
     /// generate button before a tap rather than after a 429.
@@ -325,126 +303,7 @@ internal static class ComicsEndpoints
     }
 
     /// <summary>
-    /// Regional context for a comic's score. Free — reads only rows this app already wrote.
-    /// </summary>
-    private static async Task<IResult> GetComicStats(
-        string placeId,
-        ComicStatsQueryHandler statsQueryHandler,
-        HttpContext http)
-    {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
-        }
-
-        var stats = await statsQueryHandler.ExecuteAsync(PlaceId.From(placeId), http.RequestAborted);
-
-        return stats is null
-            ? Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                title: "Not Found",
-                statusCode: StatusCodes.Status404NotFound,
-                detail: "No comic found for this restaurant",
-                instance: http.Request.Path)
-            : Results.Ok(stats);
-    }
-
-    private static async Task<IResult> GenerateComic(
-        string placeId,
-        IComicGenerationService comicGenerationService,
-        IComicRepository comicRepository,
-        ICurrentRequestIdentityAccessor identityAccessor,
-        GenerationBudgetService budgetService,
-        IContentModerationGate moderationGate,
-        ILogger<ComicGenerationService> logger,
-        HttpContext http,
-        bool forceRegenerate = false)
-    {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            logger.LogWarning("GenerateComic called with empty placeId");
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
-        }
-
-        using var activity = PoSeeReviewTelemetry.ActivitySource.StartActivity("GenerateComic");
-        activity?.SetTag("place_id", placeId);
-        activity?.SetTag("force_regenerate", forceRegenerate);
-
-        var startTime = Stopwatch.GetTimestamp();
-        logger.LogInformation("Generating comic for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
-            placeId, forceRegenerate);
-
-        // Checked before the budget is charged. A suppressed place is one the app has decided
-        // not to draw at all, so charging the caller for that refusal would be charging them for
-        // our own decision.
-        var verdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
-        if (!verdict.IsServable)
-        {
-            return ModerationRefusal(verdict, http);
-        }
-
-        // Charged before the pipeline runs, because the pipeline is what costs money. A cache
-        // hit or a pre-artwork rejection refunds below — this is a spend counter, not a
-        // request counter.
-        var reservation = await budgetService.TryReserveAsync(http.RequestAborted);
-        if (!reservation.IsAllowed)
-        {
-            return BudgetRefusal(reservation, http);
-        }
-
-        try
-        {
-            var comic = await comicGenerationService.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate, null, http.RequestAborted);
-            var currentUserId = identityAccessor.GetCurrentUserId();
-            if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)
-            {
-                comic.RequestedByUserId = currentUserId;
-                await comicRepository.UpsertAsync(comic);
-            }
-
-            if (comic.CacheState == ComicCacheState.Cached)
-            {
-                await budgetService.ReleaseAsync(http.RequestAborted);
-            }
-
-            RecordSuccessMetrics(comic, forceRegenerate, placeId, startTime, activity);
-
-            logger.LogInformation("Comic generated successfully for placeId: {PlaceId}", placeId);
-            return Results.Ok(comic.ToDto());
-        }
-        catch (Exception ex)
-        {
-            var (status, title, detail, typeUri, errorType) = DescribeFailure(ex, placeId);
-            TrackFailure(errorType, placeId);
-            LogFailure(logger, ex, errorType, placeId);
-
-            if (IsRefundableFailure(errorType))
-            {
-                await budgetService.ReleaseAsync(CancellationToken.None);
-            }
-
-            return Results.Problem(
-                type: typeUri,
-                title: title,
-                statusCode: status,
-                detail: detail,
-                instance: http.Request.Path);
-        }
-    }
-
-    /// <summary>
-    /// Same generation as <see cref="GenerateComic"/>, streamed as server-sent events so the
-    /// client can narrate the stages the pipeline is genuinely in rather than animating a timer.
+    /// Comic generation, streamed as server-sent events so the client can narrate the stages the pipeline is genuinely in rather than animating a timer.
     /// One JSON envelope per <c>data:</c> line keeps the trimmed WASM parser trivial.
     /// </summary>
     private static async Task GenerateComicStream(
@@ -484,9 +343,8 @@ internal static class ComicsEndpoints
         logger.LogInformation("Streaming comic generation for placeId: {PlaceId}, forceRegenerate: {ForceRegenerate}",
             placeId, forceRegenerate);
 
-        // The same moderation gate the plain POST applies. The stream has already committed a
-        // 200 by this point, so the refusal travels in the payload ErrorStatus rather than in a
-        // status line - which is exactly what that field exists for.
+        // Moderation gate. The stream has already committed a 200 by this point, so the refusal
+        // travels in the payload ErrorStatus rather than in a status line.
         var streamVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
         if (!streamVerdict.IsServable)
         {
@@ -502,7 +360,7 @@ internal static class ComicsEndpoints
             return;
         }
 
-        // The same daily ceiling the plain POST enforces. Checked before the first phase event
+        // The daily spend ceiling. Checked before the first phase event
         // so a refused caller gets one error frame rather than a stepper that runs and then
         // fails — and so the stream cannot be used to spend past the cap.
         var reservation = await budgetService.TryReserveAsync(http.RequestAborted);
@@ -802,110 +660,6 @@ internal static class ComicsEndpoints
                 title: "Internal Server Error",
                 statusCode: StatusCodes.Status500InternalServerError,
                 detail: "Failed to retrieve cached comic",
-                instance: http.Request.Path);
-        }
-    }
-
-    /// <summary>
-    /// Returns the comic's invented-conversation skit, generating and persisting it on first
-    /// request. The comic itself must be live — a skit for an expired comic is a voice for
-    /// artwork that no longer exists.
-    /// <para>
-    /// Two simultaneous first taps can both reach the chat model (the generation lock guards
-    /// the image pipeline, not this), and the second upsert wins. That is bounded by the
-    /// comics-post limiter and the cost of one chat call, so a distributed lease is not bought
-    /// for it — same reasoning as ComicGenerationLock being in-process.
-    /// </para>
-    /// </summary>
-    private static async Task<IResult> GenerateComicAudioSkit(
-        string placeId,
-        IComicRepository comicRepository,
-        IChatCompletionService chatService,
-        IContentModerationGate moderationGate,
-        ILogger<ComicGenerationService> logger,
-        HttpContext http)
-    {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
-        }
-
-        var readVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
-        if (!readVerdict.IsServable)
-        {
-            return ModerationRefusal(readVerdict, http);
-        }
-
-        try
-        {
-            var comic = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
-            if (comic is null || comic.ExpiresAt <= DateTimeOffset.UtcNow)
-            {
-                return Results.Problem(
-                    type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                    title: "Not Found",
-                    statusCode: StatusCodes.Status404NotFound,
-                    detail: "No live comic found for this restaurant",
-                    instance: http.Request.Path);
-            }
-
-            if (!string.IsNullOrEmpty(comic.AudioSkitJson))
-            {
-                var cached = JsonSerializer.Deserialize<PoSeeReview.Shared.Dtos.ComicAudioSkit>(comic.AudioSkitJson);
-                if (cached is { Lines.Count: > 0 })
-                {
-                    return Results.Ok(cached);
-                }
-                // A row that parses to nothing falls through and regenerates — an empty skit
-                // persisted once should not be permanent.
-            }
-
-            var skit = await chatService.GenerateSkitAsync(
-                comic.RestaurantName,
-                comic.Narrative,
-                captions: comic.Captions, // empty on rows drawn before captions were stored
-                http.RequestAborted);
-
-            if (skit.Lines.Count == 0)
-            {
-                return Results.Problem(
-                    type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                    title: "Bad Request",
-                    statusCode: StatusCodes.Status422UnprocessableEntity,
-                    detail: "The model returned no dialogue for this comic",
-                    instance: http.Request.Path);
-            }
-
-            // Persist before returning: the column round-trips through UpsertAsync, and a lost
-            // write costs one repeat chat call rather than a broken response.
-            comic.AudioSkitJson = JsonSerializer.Serialize(skit);
-            await comicRepository.UpsertAsync(comic);
-
-            return Results.Ok(skit);
-        }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Text.Json.JsonException)
-        {
-            logger.LogWarning(ex, "Skit generation failed for placeId: {PlaceId}", placeId);
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status422UnprocessableEntity,
-                detail: "Could not produce a conversation for this comic",
-                instance: http.Request.Path);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error generating audio skit for placeId: {PlaceId}", placeId);
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-                title: "Internal Server Error",
-                statusCode: StatusCodes.Status500InternalServerError,
-                detail: "Failed to generate audio skit",
                 instance: http.Request.Path);
         }
     }

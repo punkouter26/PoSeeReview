@@ -11,7 +11,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Features.Diagnostics;
 using PoSeeReview.Api.Features.Comics;
-using PoSeeReview.Api.Features.Insights;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
@@ -36,11 +35,7 @@ public static class InfrastructureServiceCollectionExtensions
     /// </summary>
     public const string AiProviderConfigurationKey = "Ai:ImageProvider";
 
-    /// <summary>
-    /// Configuration path for <see cref="AiChatProvider"/>. Absent means "derive from the image
-    /// provider", which is what keeps every deployment that predates this setting on the exact
-    /// pairing it was already running.
-    /// </summary>
+    /// <summary>Configuration path for <see cref="AiChatProvider"/>. Absent means Azure OpenAI.</summary>
     public const string AiChatProviderConfigurationKey = "Ai:ChatProvider";
 
     /// <summary>
@@ -62,10 +57,6 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(GenerationBudgetOptions.SectionName));
         services.Configure<LeaderboardOptions>(
             configuration.GetSection(LeaderboardOptions.SectionName));
-        services.Configure<HuggingFaceOptions>(
-            configuration.GetSection(HuggingFaceOptions.SectionName));
-        services.Configure<InsightsOptions>(
-            configuration.GetSection(InsightsOptions.SectionName));
         services.Configure<ModerationOptions>(
             configuration.GetSection(ModerationOptions.SectionName));
         services.Configure<OllamaOptions>(
@@ -73,11 +64,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.Configure<AiPricingOptions>(
             configuration.GetSection(AiPricingOptions.SectionName));
 
-        // Chat and image are chosen separately. They were one switch, which meant an image-model
-        // experiment could not be run without also changing the scorer underneath it — so every
-        // before/after comparison was really two changes at once. The default for a missing
-        // Ai:ChatProvider reproduces the old pairing exactly, so nothing shifts under an existing
-        // deployment that has not been touched.
+        // Chat and image are chosen separately, so an image-model experiment is not also a
+        // scorer experiment.
         var providerSetting = configuration[AiProviderConfigurationKey];
         var imageProvider = string.IsNullOrWhiteSpace(providerSetting)
             ? AiImageProvider.Gemini
@@ -89,14 +77,13 @@ public static class InfrastructureServiceCollectionExtensions
 
         var chatProviderSetting = configuration[AiChatProviderConfigurationKey];
         var chatProvider = string.IsNullOrWhiteSpace(chatProviderSetting)
-            ? (imageProvider == AiImageProvider.HuggingFace ? AiChatProvider.HuggingFace : AiChatProvider.AzureOpenAI)
+            ? AiChatProvider.AzureOpenAI
             : Enum.TryParse<AiChatProvider>(chatProviderSetting, ignoreCase: true, out var parsedChat)
                 ? parsedChat
                 : throw new InvalidOperationException(
                     $"'{chatProviderSetting}' is not a valid {AiChatProviderConfigurationKey}. " +
                     $"Valid values: {string.Join(", ", Enum.GetNames<AiChatProvider>())}.");
 
-        var useHuggingFace = imageProvider == AiImageProvider.HuggingFace;
         var useAzureChat = chatProvider == AiChatProvider.AzureOpenAI;
 
         // Storage clients: cloud resolves via System-assigned Managed Identity against the
@@ -147,8 +134,7 @@ public static class InfrastructureServiceCollectionExtensions
         }
 
         // Register Azure OpenAI client — only when Azure is the active CHAT provider. Under the
-        // HuggingFace or Ollama chat path the Azure config may be absent, so we must not
-        // fail-fast on missing AzureOpenAI settings.
+        // Ollama chat path the Azure config may be absent, so we must not fail-fast on it.
         if (useAzureChat)
         {
             var openAiOptions = configuration.GetSection(AzureOpenAIOptions.SectionName)
@@ -177,7 +163,6 @@ public static class InfrastructureServiceCollectionExtensions
         // erases through the Shared contract.
         services.AddScoped<IHallOfFameArchive>(sp => sp.GetRequiredService<HallOfFameRepository>());
         services.AddScoped<ComicReportRepository>();
-        services.AddScoped<InsightsRepository>();
         services.AddScoped<ShareLinkRepository>();
         services.AddScoped<ModerationRepository>();
         // Same instance behind both, mirroring HallOfFameRepository: the slice reads through the
@@ -187,7 +172,6 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IContentSafetyScreener, LexicalContentSafetyScreener>();
         services.AddModerationAuthorization(configuration);
         services.AddScoped<GenerationBudgetService>();
-        services.AddScoped<ComicStatsQueryHandler>();
         services.AddScoped<DiagnosticsSnapshotQueryHandler>();
 
         // Register services
@@ -221,18 +205,10 @@ public static class InfrastructureServiceCollectionExtensions
 
         // Chat provider (strangeness analysis + panel captions). Selected independently of the
         // image provider; see the note above. Ollama is the local, zero-marginal-cost tier.
-        switch (chatProvider)
-        {
-            case AiChatProvider.HuggingFace:
-                services.AddScoped<IChatCompletionService, HuggingFaceChatService>();
-                break;
-            case AiChatProvider.Ollama:
-                services.AddScoped<IChatCompletionService, OllamaChatService>();
-                break;
-            default:
-                services.AddScoped<IChatCompletionService, AzureOpenAIChatService>();
-                break;
-        }
+        if (chatProvider == AiChatProvider.Ollama)
+            services.AddScoped<IChatCompletionService, OllamaChatService>();
+        else
+            services.AddScoped<IChatCompletionService, AzureOpenAIChatService>();
 
         // Cost accounting for every model call, tagged by provider and model. Registered once so
         // there is a single metric whose value is "what this app spent" rather than one metric per
@@ -243,20 +219,10 @@ public static class InfrastructureServiceCollectionExtensions
         // twice. Singleton because the gates must be shared across requests, not per request.
         services.AddSingleton<ComicGenerationLock>();
 
-        // Embeddings. Off unless configured, and never able to fail a comic — see IEmbeddingService.
-        services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
-
-
-        // Image provider: Gemini (GeminiComicService), FLUX via HF (HuggingFaceComicService), or
-        // gpt-image on Azure (AzureOpenAIImageService). FLUX honours a negative prompt; the other
-        // two share ComicImagePrompt. All use a named HttpClient with generous timeouts (image gen
+        // Image provider: Gemini (GeminiComicService) or gpt-image on Azure (AzureOpenAIImageService),
+        // both prompted by ComicImagePrompt. A named HttpClient with generous timeouts (image gen
         // is slow) and the standard resilience handler for retry/timeout/circuit-breaker.
-        var imageClientName = imageProvider switch
-        {
-            AiImageProvider.HuggingFace => "HuggingFaceApi",
-            AiImageProvider.AzureOpenAI => "AzureOpenAIImageApi",
-            _ => "GeminiApi"
-        };
+        var imageClientName = imageProvider == AiImageProvider.AzureOpenAI ? "AzureOpenAIImageApi" : "GeminiApi";
         services.AddHttpClient(imageClientName)
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
             .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90))
@@ -272,9 +238,7 @@ public static class InfrastructureServiceCollectionExtensions
                 options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(90);
             });
 
-        if (useHuggingFace)
-            services.AddScoped<IImageGenerationService, HuggingFaceComicService>();
-        else if (imageProvider == AiImageProvider.AzureOpenAI)
+        if (imageProvider == AiImageProvider.AzureOpenAI)
             services.AddScoped<IImageGenerationService, AzureOpenAIImageService>();
         else
             services.AddScoped<IImageGenerationService>(sp =>
@@ -284,23 +248,9 @@ public static class InfrastructureServiceCollectionExtensions
                     sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
                     sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
-        services.AddScoped<IShareCardService, ShareCardService>();
+        services.AddScoped<ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
-
-        // Insights. The mock is gated on the environment as well as the flag: a stray
-        // Insights:UseMockData in production config must not be able to replace real numbers
-        // with a fixture, which is the same posture FakeAuthHandler takes.
-        if (!environment.IsProduction() && configuration.GetValue<bool>($"{InsightsOptions.SectionName}:UseMockData"))
-        {
-            services.AddScoped<MockInsightsService>();
-            services.AddScoped<IInsightsService>(sp => sp.GetRequiredService<MockInsightsService>());
-            services.AddScoped<IMockable>(sp => sp.GetRequiredService<MockInsightsService>());
-        }
-        else
-        {
-            services.AddScoped<IInsightsService, InsightsService>();
-        }
 
         return services;
     }

@@ -21,85 +21,16 @@ public enum FxTier
 /// <param name="ReducedMotion">The OS asked for reduced motion; the tier is pinned to Off.</param>
 /// <param name="WebGl2">Whether a WebGL2 context could be created at all.</param>
 /// <param name="AutoDowngraded">The tier was lowered by the frame-budget watchdog, not by the user.</param>
-/// <param name="WebGpu">
-/// WebGPU is available, so the compute-simulated particle burst can run instead of the
-/// stateless WebGL2 one. Not a tier: the fallback is a complete effect, not a degraded one.
-/// </param>
 /// <param name="Haptics">The Vibration API exists. Absent on every iOS browser.</param>
 /// <param name="Narration">speechSynthesis exists, so the narrative can be read aloud.</param>
 public readonly record struct FxCapabilities(
     FxTier Tier, bool ReducedMotion, bool WebGl2, bool AutoDowngraded,
-    bool WebGpu, bool Haptics, bool Narration);
-
-/// <summary>
-/// How hard a moderation action is to undo. The three sound different on purpose: a moderator
-/// working a queue hears which one they took without reading the confirmation, and they are one
-/// mis-tap apart from each other.
-/// </summary>
-public enum FxSeverity
-{
-    /// <summary>Reversible, and what unreviewed reports get.</summary>
-    Hide = 0,
-
-    /// <summary>Blocks regeneration. What makes a removal stick.</summary>
-    Suppress = 1,
-
-    /// <summary>Erases the comic, blob, board row, archive entry and every kept copy.</summary>
-    Remove = 2
-}
+    bool Haptics, bool Narration);
 
 /// <param name="Supported">Whether the underlying API exists on this device at all.</param>
 /// <param name="Enabled">Whether it is actually active right now.</param>
 /// <param name="Explicit">The user pinned it, rather than inheriting the audio preference.</param>
 public readonly record struct FxToggleState(bool Supported, bool Enabled, bool Explicit);
-
-/// <param name="Fps">Rolling frames per second across the shared scheduler.</param>
-/// <param name="FrameMs">Rolling mean frame time.</param>
-/// <param name="WorstFrameMs">Worst frame seen since the last reset.</param>
-/// <param name="DroppedFrames">Frames that exceeded the 20ms budget.</param>
-/// <param name="SampledFrames">Total frames measured since the last reset.</param>
-/// <param name="ActiveTasks">Effects currently registered on the scheduler.</param>
-/// <param name="CpuMs">
-/// Mean time per frame spent inside effect callbacks. The gap between this and
-/// <paramref name="FrameMs"/> is everything else on the main thread — Blazor renders, GC, layout.
-/// A large gap means the shaders were never the problem.
-/// </param>
-/// <param name="GpuMs">
-/// Mean GPU time per frame, from EXT_disjoint_timer_query_webgl2. Null where the extension is
-/// unavailable — which is most of Safari and Firefox. Null is not zero.
-/// </param>
-/// <param name="HeapMb">Used JS heap. Chromium only; null elsewhere.</param>
-/// <param name="LongTasks">Main-thread tasks over 50ms since the last reset.</param>
-/// <param name="WorstLongTaskMs">Longest single blocking task seen.</param>
-/// <param name="InpMs">
-/// Worst interaction latency observed. A pessimistic stand-in for true INP, which needs a
-/// session-long 98th percentile — the right direction to be wrong in for a diagnostic.
-/// </param>
-/// <param name="LayoutShift">Cumulative layout shift, excluding shifts following real input.</param>
-/// <param name="GlContexts">Live WebGL contexts, pooled plus direct. Creep here is a leak.</param>
-/// <param name="GlSurfaces">Effects holding a render surface.</param>
-/// <param name="ContextLosses">Times the shared atlas context was lost.</param>
-public readonly record struct FxFrameStats(
-    double Fps, double FrameMs, double WorstFrameMs, int DroppedFrames, int SampledFrames, int ActiveTasks,
-    double CpuMs, double? GpuMs, double? HeapMb, int LongTasks, double WorstLongTaskMs,
-    double? InpMs, double LayoutShift, int GlContexts, int GlSurfaces, int ContextLosses);
-
-/// <param name="BaseMs">AudioContext base latency.</param>
-/// <param name="OutputMs">Output latency, where the browser reports one.</param>
-/// <param name="SampleRate">Context sample rate.</param>
-/// <param name="ContextState">running / suspended / closed.</param>
-public readonly record struct FxAudioLatency(
-    double BaseMs, double OutputMs, double SampleRate, string? ContextState);
-
-/// <summary>
-/// One voice of the leaderboard chord.
-/// </summary>
-/// <param name="Seed">
-/// The place id, never the restaurant name. Names collide across chains, and two branches of the
-/// same chain are not the same comic — a motif that cannot tell them apart is not an identity.
-/// </param>
-/// <param name="Score">Strangeness, 0-100. Picks the scale, tempo and timbre.</param>
-public readonly record struct FxMotif(string Seed, double Score);
 
 /// <summary>
 /// Blazor-side facade over <c>wwwroot/js/fx.js</c>.
@@ -186,9 +117,9 @@ public sealed class FxService(IJSRuntime js)
 
         var raw = await SafeAsync<CapabilitiesPayload?>("poseeFx.describe", null);
         var result = raw is null
-            ? new FxCapabilities(FxTier.Off, true, false, false, false, false, false)
+            ? new FxCapabilities(FxTier.Off, true, false, false, false, false)
             : new FxCapabilities(ParseTier(raw.Tier), raw.ReducedMotion, raw.Webgl2, raw.AutoDowngraded,
-                raw.Webgpu, raw.Haptics, raw.Narration);
+                raw.Haptics, raw.Narration);
 
         _capabilities = result;
         return result;
@@ -200,11 +131,6 @@ public sealed class FxService(IJSRuntime js)
         _capabilities = null; // Force a re-read; JS may have refused the change.
         return ParseTier(applied);
     }
-
-    public Task<FxFrameStats> GetFrameStatsAsync() =>
-        SafeAsync("poseeFx.stats", default(FxFrameStats));
-
-    public Task ResetFrameStatsAsync() => SafeVoidAsync("poseeFx.resetStats");
 
     // ── Audio ────────────────────────────────────────────────────────────────────────────
 
@@ -218,10 +144,6 @@ public sealed class FxService(IJSRuntime js)
         SafeAsync("poseeFx.setAudioEnabled", false, enabled);
 
     public Task UnlockAudioAsync() => SafeVoidAsync("poseeFx.unlockAudio");
-
-    /// <summary>Output latency and context state, for the diagnostics panel. Null before unlock.</summary>
-    public Task<FxAudioLatency?> GetAudioLatencyAsync() =>
-        SafeAsync<FxAudioLatency?>("poseeFx.audioLatency", null);
 
     /// <summary>
     /// Click panned to where the pointer was. The practical form for repeated lists: a click
@@ -261,20 +183,11 @@ public sealed class FxService(IJSRuntime js)
 
     public Task PlayScoreTickAsync(int value, int target) => SafeVoidAsync("poseeFx.playScoreTick", value, target);
     public Task PlayScoreLandAsync(int score) => SafeVoidAsync("poseeFx.playScoreLand", score);
-    public Task PlaySplatAsync(double intensity) => SafeVoidAsync("poseeFx.playSplat", intensity);
     public Task PlayShareStingerAsync() => SafeVoidAsync("poseeFx.playShareStinger");
     public Task PlayErrorAsync() => SafeVoidAsync("poseeFx.playError");
 
-    /// <summary>Two rising ticks. For something added to a collection, not for a whole flow completing.</summary>
+    /// <summary>Two rising ticks, for an action that landed.</summary>
     public Task PlayConfirmAsync() => SafeVoidAsync("poseeFx.playConfirm");
-
-    /// <summary>Moderation outcome, graded. See <see cref="FxSeverity"/> for why the three differ.</summary>
-    public Task PlaySeverityAsync(FxSeverity severity) => SafeVoidAsync("poseeFx.playSeverity", severity switch
-    {
-        FxSeverity.Remove => "remove",
-        FxSeverity.Suppress => "suppress",
-        _ => "hide"
-    });
 
     /// <summary>
     /// The comic's own four-note motif, seeded from its place id and voiced by its score.
@@ -288,25 +201,6 @@ public sealed class FxService(IJSRuntime js)
     public Task PlaySignatureAsync(string seed, int score) =>
         SafeVoidAsync("poseeFx.playSignature", seed, score);
 
-    /// <summary>
-    /// The top of the board as a chord, each voice one restaurant's own motif.
-    /// <para>
-    /// Because a motif is deterministic from its place id, a board that has changed sounds
-    /// different from one that has not — before the visitor has read a single row. The Hall of
-    /// Fame had a 3D shelf on it and not one sound.
-    /// </para>
-    /// </summary>
-    public Task PlayBoardChordAsync(IReadOnlyList<FxMotif> entries) =>
-        SafeVoidAsync("poseeFx.playBoardChord", entries);
-
-    /// <summary>
-    /// Plays a numeric series as pitch, sweeping left to right. Long series are decimated on the
-    /// JS side rather than truncated, so the contour survives — which is the only thing being
-    /// communicated.
-    /// </summary>
-    public Task PlaySeriesAsync(IReadOnlyList<double> values) =>
-        SafeVoidAsync("poseeFx.playSeries", values);
-
     // ── Narration ────────────────────────────────────────────────────────────────────────
 
     /// <summary>Whether speechSynthesis exists. Independent of whether audio has been unlocked.</summary>
@@ -317,20 +211,6 @@ public sealed class FxService(IJSRuntime js)
     /// separate output that never enters the graph, so it works before the first gesture.
     /// </summary>
     public Task<bool> NarrateAsync(string text) => SafeAsync("poseeFx.narrate", false, text);
-
-    /// <summary>
-    /// Plays the comic's conversation. Takes the skit PRE-SERIALIZED by <c>AppJsonContext</c>:
-    /// a complex type as an interop argument would be serialized reflectively, which is the
-    /// exact thing the source-generated context exists to avoid on a trim-analyzed client.
-    /// Shares speechSynthesis with narration, so <see cref="StopNarrationAsync"/> stops it too —
-    /// one queue, one cancel.
-    /// <para>
-    /// Each line pops a speech bubble over <paramref name="strip"/> as it starts speaking, so
-    /// the voices have faces. The bubbles are cleared by the same stop.
-    /// </para>
-    /// </summary>
-    public Task<bool> PlaySkitJsonAsync(string skitJson, ElementReference strip) =>
-        SafeAsync("poseeFx.playSkit", false, skitJson, strip);
 
     public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
 
@@ -356,28 +236,6 @@ public sealed class FxService(IJSRuntime js)
 
     public Task StopGradientAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopGradient", handle);
-
-    /// <summary>
-    /// Dresses the shader backdrop in the comic's own colours.
-    /// <para>
-    /// The palette is sampled on the SERVER, off the finished image bytes. It cannot be sampled
-    /// here: the comic blob is served without CORS headers, so a canvas that has drawn it is
-    /// tainted and cannot be read back.
-    /// </para>
-    /// </summary>
-    /// <returns>Whether a palette was actually applied. False for a comic drawn before the
-    /// extractor existed, which renders on brand tokens exactly as it always did.</returns>
-    public Task<bool> SetComicPaletteAsync(int handle, IReadOnlyList<string> palette) =>
-        handle == 0 ? Task.FromResult(false)
-                    : SafeAsync("poseeFx.setComicPalette", false, handle, palette);
-
-    /// <summary>
-    /// Restores the brand gradient. MUST be called when leaving a comic: the variables are set
-    /// on the document element, so a tint left behind follows the user to the next route and
-    /// colours a page with no comic to justify it.
-    /// </summary>
-    public Task ClearComicPaletteAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.clearComicPalette", handle);
 
     // ── Ink development ──────────────────────────────────────────────────────────────────
 
@@ -417,69 +275,6 @@ public sealed class FxService(IJSRuntime js)
     public Task StopPanelScrubAsync(int handle) =>
         handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopPanelScrub", handle);
 
-    /// <summary>Fires the WebGL2 ink burst, sized to the score. Full tier only.</summary>
-    public Task<int> BurstParticlesAsync(ElementReference canvas, int score) =>
-        SafeAsync("poseeFx.burstParticles", 0, canvas, score);
-
-    public Task StopParticlesAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopParticles", handle);
-
-    // ── Generation wait ──────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// One pipeline phase landed: its blip, plus one more sustained voice stacked on the riser,
-    /// so ten seconds of waiting builds instead of beeping. <paramref name="score"/> is 0 until
-    /// the analysis has produced one; a strange score detunes the stack.
-    /// </summary>
-    public Task PlayRiserStepAsync(int index, int total, int score) =>
-        SafeVoidAsync("poseeFx.riserStep", index, total, score);
-
-    /// <summary>Lets the riser ring out as the comic arrives. The score reveal follows it.</summary>
-    public Task ResolveRiserAsync() => SafeVoidAsync("poseeFx.riserResolve");
-
-    /// <summary>Cuts the riser. MUST be called on failure and teardown — it is sustained.</summary>
-    public Task StopRiserAsync() => SafeVoidAsync("poseeFx.riserStop");
-
-    // ── The comic as an object ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Attaches the strip's pointer surface: loupe support always, and holographic foil that
-    /// follows the pointer (or the phone's tilt) when <paramref name="holo"/> is set. All of it
-    /// is CSS drawing the comic's own URL, so none of it reads pixels and the cross-origin blob
-    /// is no obstacle.
-    /// </summary>
-    public Task<int> StartComicSurfaceAsync(ElementReference container, ElementReference image, bool holo) =>
-        SafeAsync("poseeFx.startComicSurface", 0, container, image, holo);
-
-    /// <summary>Loupe on/off. Call from a click: turning it on also starts its hum.</summary>
-    public Task<bool> ToggleLoupeAsync(int handle) =>
-        handle == 0 ? Task.FromResult(false) : SafeAsync("poseeFx.toggleLoupe", false, handle);
-
-    /// <summary>A displacement ripple through the artwork, as deep as the score is strange.</summary>
-    public Task WobbleComicAsync(int handle, int score) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.wobbleComic", handle, score);
-
-    /// <summary>MUST be called on teardown: the loupe hum is sustained.</summary>
-    public Task StopComicSurfaceAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopComicSurface", handle);
-
-    /// <summary>
-    /// The page misbehaves for an absurd score: the nav twitches, the title splits, the pointer
-    /// leaves ink, and a detuned drone sits under everything. MUST be cleared on teardown — it is
-    /// stamped on the document element and would follow the user to the next route.
-    /// </summary>
-    public Task SetWeirdAsync(int score) => SafeVoidAsync("poseeFx.setWeird", score);
-
-    public Task ClearWeirdAsync() => SafeVoidAsync("poseeFx.clearWeird");
-
-    /// <summary>A comic-book sound word ("POW!") stamped at a viewport point, with its thwack.</summary>
-    public Task StampAsync(string word, double clientX, double clientY) =>
-        SafeVoidAsync("poseeFx.stamp", word, clientX, clientY);
-
-    /// <summary>The same stamp, centred on an element.</summary>
-    public Task StampAsync(string word, ElementReference element) =>
-        SafeVoidAsync("poseeFx.stamp", word, element);
-
     // ── Leaderboard ──────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -505,7 +300,6 @@ public sealed class FxService(IJSRuntime js)
         public bool ReducedMotion { get; set; }
         public bool Webgl2 { get; set; }
         public bool AutoDowngraded { get; set; }
-        public bool Webgpu { get; set; }
         public bool Haptics { get; set; }
         public bool Narration { get; set; }
     }

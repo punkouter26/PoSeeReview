@@ -51,17 +51,6 @@ public class ComicDto
     public bool IsCached { get; set; }
 
     /// <summary>
-    /// Three hex colours sampled from the artwork, so the page can tint itself to this comic.
-    /// <para>
-    /// Extracted on the server, because the blob is served without CORS headers and a browser
-    /// canvas that has drawn it cannot be read back. Empty for comics drawn before the extractor
-    /// existed and for any image it could not decode; both cases render the brand gradient,
-    /// which is what every comic did before this field.
-    /// </para>
-    /// </summary>
-    public string[] Palette { get; set; } = [];
-
-    /// <summary>
     /// The caption drawn onto each panel, in order. The client uses them as the image's alt
     /// text: they are baked into the pixels, so without this a screen reader gets nothing of the
     /// strip but its title. Empty on comics drawn before captions were stored.

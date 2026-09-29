@@ -4,14 +4,8 @@ using OpenAI.Chat;
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// The body of every OpenAI-wire-compatible chat provider.
-/// <para>
-/// HuggingFace and Ollama differ in exactly three things: base URL, whether a key is required,
-/// and the completion cap. Everything else — the messages, the JSON contract, the leniency of
-/// the parse, the clamping, the caption normalisation, the usage accounting — is the same code,
-/// and it used to be the same code copied. <see cref="ChatPrompts"/> already made this argument
-/// for the prompt text; this is the same argument for the call around it.
-/// </para>
+/// The call body for OpenAI-wire-compatible chat providers (today: Ollama) — messages, lenient
+/// JSON parse, clamping and usage accounting.
 /// <para>
 /// <see cref="AzureOpenAIChatService"/> deliberately does NOT use this: it parses strictly rather
 /// than leniently (a hosted deployment honours <c>response_format</c>, so a malformed response is
@@ -22,25 +16,6 @@ internal static class OpenAiWireChat
 {
     /// <summary>One analysis call plus what it cost in tokens.</summary>
     internal sealed record Result(StrangenessAnalysis Analysis, long InputTokens, long OutputTokens);
-
-    /// <summary>One skit call plus what it cost in tokens.</summary>
-    internal sealed record SkitResult(PoSeeReview.Shared.Dtos.ComicAudioSkit Skit, long InputTokens, long OutputTokens);
-
-    /// <summary>
-    /// Wire shape the model returns. Lenient fields — a missing title becomes "" rather than
-    /// throwing, because the model's prior for inventing title punctuation is unreliable.
-    /// </summary>
-    internal sealed class SkitWireDto
-    {
-        public string Title { get; set; } = string.Empty;
-        public List<SkitLineWireDto> Lines { get; set; } = new();
-    }
-
-    internal sealed class SkitLineWireDto
-    {
-        public string Speaker { get; set; } = string.Empty;
-        public string Text { get; set; } = string.Empty;
-    }
 
     public static async Task<Result> AnalyzeAsync(
         ChatClient client,
@@ -84,89 +59,6 @@ internal static class OpenAiWireChat
             ChatPrompts.ToAnalysis(result),
             completion.Usage?.InputTokenCount ?? 0,
             completion.Usage?.OutputTokenCount ?? 0);
-    }
-
-    /// <summary>
-    /// One skit call. Same lenient-parse and token-accounting infrastructure as the analyser
-    /// call; the prompt lives in <see cref="ChatPrompts"/> for the same reason the analysis
-    /// prompt does. Pricing is reported under the caller's provider label (AzureOpenAI,
-    /// HuggingFace, Ollama) so the cost is traceable back to the model that produced it.
-    /// </summary>
-    public static async Task<SkitResult> GenerateSkitAsync(
-        ChatClient client,
-        string restaurantName,
-        string narrative,
-        IReadOnlyList<string>? captions,
-        float temperature,
-        int? maxCompletionTokens,
-        bool isReasoningModel,
-        CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(narrative))
-        {
-            // A missing narrative here is a generation that landed a skit call before it had
-            // anything to write about; the comic service should not invoke us in that state.
-            throw new ArgumentException("Skit needs a narrative", nameof(narrative));
-        }
-
-        var messages = new List<ChatMessage>
-        {
-            new SystemChatMessage(ChatPrompts.SkitSystemMessage),
-            new UserChatMessage(ChatPrompts.BuildSkitPrompt(restaurantName, narrative, captions))
-        };
-
-        var response = await client.CompleteChatAsync(
-            messages,
-            ChatTokenBudget.Build(temperature, maxCompletionTokens, isReasoningModel),
-            cancellationToken);
-
-        var completion = response.Value;
-
-        if (completion.Content.Count == 0)
-        {
-            throw new InvalidOperationException("Chat provider returned an empty completion.");
-        }
-
-        var parsed = DeserializeLenient<SkitWireDto>(completion.Content[0].Text);
-        var skit = ParseSkit(parsed);
-
-        return new SkitResult(
-            skit,
-            completion.Usage?.InputTokenCount ?? 0,
-            completion.Usage?.OutputTokenCount ?? 0);
-    }
-
-    /// <summary>
-    /// Normalises a parsed wire skit into the domain shape: trims, drops empty lines. Shared
-    /// with <see cref="AzureOpenAIChatService"/>, whose skit parse must tolerate the same
-    /// casing drift — the prompt shows lowercase keys and the model copies them exactly, which
-    /// a PascalCase POCO reads back as nothing at all.
-    /// </summary>
-    internal static PoSeeReview.Shared.Dtos.ComicAudioSkit ParseSkitResponse(string content)
-    {
-        var parsed = DeserializeLenient<SkitWireDto>(content);
-        return ParseSkit(parsed);
-    }
-
-    private static PoSeeReview.Shared.Dtos.ComicAudioSkit ParseSkit(SkitWireDto? parsed)
-    {
-        if (parsed is null)
-        {
-            return new PoSeeReview.Shared.Dtos.ComicAudioSkit();
-        }
-
-        return new PoSeeReview.Shared.Dtos.ComicAudioSkit
-        {
-            Title = (parsed.Title ?? string.Empty).Trim(),
-            Lines = (parsed.Lines ?? new List<SkitLineWireDto>())
-                .Select(l => new PoSeeReview.Shared.Dtos.ComicAudioSkitLine
-                {
-                    Speaker = (l.Speaker ?? string.Empty).Trim(),
-                    Text = (l.Text ?? string.Empty).Trim()
-                })
-                .Where(l => l.Text.Length > 0)
-                .ToList()
-        };
     }
 
     /// <summary>

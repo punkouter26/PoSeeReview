@@ -17,17 +17,13 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(DiagnosticsSnapshotDto))]
 [JsonSerializable(typeof(MockStatusDto))]
 [JsonSerializable(typeof(AuthStateDto))]
-[JsonSerializable(typeof(ComicStatsDto))]
 [JsonSerializable(typeof(GenerationBudgetDto))]
 [JsonSerializable(typeof(ComicReportRequestDto))]
 [JsonSerializable(typeof(ComicReportResponseDto))]
-[JsonSerializable(typeof(InsightsDto))]
 [JsonSerializable(typeof(ShareLinkDto))]
 [JsonSerializable(typeof(ModerationQueueDto))]
 [JsonSerializable(typeof(ModerationActionDto))]
 [JsonSerializable(typeof(CachedComicsResponse))]
-// The comic's invented conversation, fetched on demand by the comic page's play button.
-[JsonSerializable(typeof(ComicAudioSkit))]
 // Not a wire DTO: the locally-stored comic history (ComicHistoryService).
 [JsonSerializable(typeof(List<ComicHistoryEntry>))]
 // Not a wire DTO: the remembered leaderboard ranks (BoardMemoryService).

@@ -12,15 +12,9 @@
 //     for reduced motion all get something coherent rather than whatever happens to be cheap.
 //
 // Tiers:
-//   'off'  — no GPU loops, no audio, no physics. Static CSS only.
+//   'off'  — no GPU loops, no audio. Static CSS only.
 //   'lite' — audio + CSS materials. No persistent GPU loop.
-//   'full' — everything, including the heavy lazy-loaded scenes.
-
-import { acquireSurface, poolStats } from './gl-pool.js';
-import {
-    startTelemetry, telemetrySnapshot, resetTelemetry,
-    attachGpuTimer, beginGpuSample, endGpuSample
-} from './telemetry.js';
+//   'full' — everything, including the WebGL backdrop.
 
 const STORAGE_KEY = 'posee_fx_tier';
 const TIERS = ['off', 'lite', 'full'];
@@ -62,10 +56,6 @@ const state = {
     frameMsAccumulator: 0,
     frameMsCount: 0,
     cpuMsAccumulator: 0,
-    // A short ring of recent frame times, for the sparkline in the live HUD. Fixed length and
-    // preallocated: an overlay that allocates per frame is a source of the jank it reports.
-    history: new Float32Array(120),
-    historyIndex: 0,
     lastStatsFlush: 0,
     listeners: new Set()
 };
@@ -97,13 +87,12 @@ function detectDefaultTier() {
     }
 
     try {
-        // Save-Data is an explicit request not to spend the user's bytes; the heavy tier
-        // lazy-loads megabytes of library code, so it is exactly what they are asking to avoid.
+        // Save-Data is an explicit request to go easy on the device.
         if (navigator.connection?.saveData) {
             return 'lite';
         }
-        // deviceMemory is Chromium-only and coarse, but a 2GB phone genuinely cannot hold
-        // Three.js, Rapier and a WASM runtime at once without swapping.
+        // deviceMemory and core count are coarse, but a low-end phone should not run a
+        // fullscreen shader behind every page.
         if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4) {
             return 'lite';
         }
@@ -144,11 +133,6 @@ function frame(now) {
 
     const workStart = performance.now();
 
-    // The GPU sample brackets every effect in the frame, not one of them. A per-effect query
-    // would need one query object per effect per frame and would serialise them against each
-    // other; what the overlay actually needs to answer is "is the GPU or the CPU the wall?".
-    beginGpuSample();
-
     for (const task of state.tasks.values()) {
         try {
             task.callback(now, elapsed);
@@ -158,8 +142,6 @@ function frame(now) {
             state.tasks.delete(task.id);
         }
     }
-
-    endGpuSample();
 
     const workMs = performance.now() - workStart;
     recordFrame(elapsed, workMs, now);
@@ -183,9 +165,6 @@ function recordFrame(elapsedMs, workMs, now) {
     state.frameMsAccumulator += elapsedMs;
     state.cpuMsAccumulator += workMs;
     state.frameMsCount++;
-
-    state.history[state.historyIndex] = elapsedMs;
-    state.historyIndex = (state.historyIndex + 1) % state.history.length;
 
     if (elapsedMs > stats.worstFrameMs) {
         stats.worstFrameMs = elapsedMs;
@@ -269,7 +248,6 @@ export const gfx = {
     init() {
         state.reducedMotion = detectReducedMotion();
         state.webgl2 = detectWebGl2();
-        startTelemetry();
 
         const stored = readStoredTier();
         // A stored preference is still overridden by an OS-level reduced-motion request and by
@@ -336,28 +314,9 @@ export const gfx = {
         };
     },
 
+    /** Frame-budget readout. Console: `poseeFx.stats()`. */
     stats() {
-        const pool = poolStats();
-        return {
-            ...state.stats,
-            ...telemetrySnapshot(),
-            tier: state.tier,
-            autoDowngraded: state.tierWasAutoDowngraded,
-            glContexts: pool.pooledContexts + pool.directContexts,
-            pooledContexts: pool.pooledContexts,
-            directContexts: pool.directContexts,
-            glSurfaces: pool.surfaces,
-            contextLosses: pool.contextLosses
-        };
-    },
-
-    /** Raw frame-time ring for the sparkline, oldest first. Copied, so callers cannot corrupt it. */
-    frameHistory() {
-        const out = new Array(state.history.length);
-        for (let i = 0; i < state.history.length; i++) {
-            out[i] = state.history[(state.historyIndex + i) % state.history.length];
-        }
-        return out;
+        return { ...state.stats, tier: state.tier, autoDowngraded: state.tierWasAutoDowngraded };
     },
 
     resetStats() {
@@ -369,46 +328,81 @@ export const gfx = {
         state.cpuMsAccumulator = 0;
         state.frameMsCount = 0;
         state.overBudgetStreak = 0;
-        state.history.fill(0);
-        state.historyIndex = 0;
-        resetTelemetry();
     }
 };
 
 // ── Minimal WebGL2 helpers ───────────────────────────────────────────────────────────────
 //
-// Hand-rolled rather than pulled from a library: the effects here draw a fullscreen triangle
-// and one instanced quad batch. That is a few dozen lines, against ~130KB gzipped for a
-// renderer whose feature set this app would not touch.
+// Hand-rolled rather than pulled from a library: the backdrop is one fullscreen triangle.
 
 /**
- * Preferred way to get a render target. Hands back a pooled surface where the browser supports
- * one, and a privately-owned context where it does not — the caller's code is identical either
- * way. Also the point where the GPU timer is bound, since that has to happen on whatever context
- * the effects actually ended up sharing.
- *
- * Usage per frame: `if (!surface.beginFrame()) return;` … draw … `surface.present();`
- * On teardown: `surface.release()`.
+ * A WebGL2 render target on its own canvas. Per frame: `if (!surface.beginFrame()) return;`
+ * … draw … `surface.present();`. On teardown: `surface.release()`. Returns null without WebGL2.
  */
-export function createSurface(canvas, options = {}) {
-    const surface = acquireSurface(canvas, options);
-    if (surface) {
-        attachGpuTimer(surface.gl);
+export function createSurface(canvas, { maxDpr = 2 } = {}) {
+    let gl = null;
+    try {
+        gl = canvas.getContext('webgl2', {
+            alpha: true,
+            antialias: false,      // Post-process passes; MSAA buys nothing and costs fill rate.
+            depth: false,
+            stencil: false,
+            premultipliedAlpha: true,
+            powerPreference: 'low-power'
+        });
+    } catch {
+        gl = null;
     }
-    return surface;
-}
+    if (!gl) return null;
 
-/** @deprecated Use createSurface. Retained for effects that need the default framebuffer. */
-export function createGl(canvas) {
-    return canvas.getContext('webgl2', {
-        alpha: true,
-        antialias: false,      // These are post-process passes; MSAA buys nothing and costs fill rate.
-        depth: false,
-        stencil: false,
-        premultipliedAlpha: true,
-        powerPreference: 'low-power',
-        desynchronized: true
-    });
+    // Capping DPR matters: a DPR-3 phone would otherwise ask a mobile GPU for nine times the fill
+    // rate of the CSS pixel count.
+    const measure = () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
+        return {
+            width: Math.max(1, Math.floor((canvas.clientWidth || canvas.width || 1) * dpr)),
+            height: Math.max(1, Math.floor((canvas.clientHeight || canvas.height || 1) * dpr))
+        };
+    };
+
+    const surface = {
+        gl,
+        canvas,
+        ...measure(),
+        dead: false,
+
+        beginFrame() {
+            if (surface.dead) return false;
+            const { width, height } = measure();
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+            surface.width = canvas.width;
+            surface.height = canvas.height;
+            surface.bindTarget();
+            gl.disable(gl.BLEND);
+            gl.disable(gl.DEPTH_TEST);
+            gl.disable(gl.SCISSOR_TEST);
+            return true;
+        },
+
+        /** Re-binds the default framebuffer, for multi-pass effects returning from their own FBO. */
+        bindTarget() {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        },
+
+        // Nothing to copy: the effect drew straight to the visible canvas.
+        present: () => !surface.dead,
+
+        release() {
+            if (surface.dead) return;
+            surface.dead = true;
+            try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* optional */ }
+        }
+    };
+    return surface;
 }
 
 export function compileProgram(gl, vertexSource, fragmentSource) {
@@ -458,34 +452,3 @@ void main() {
     vUv = pos;
     gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
 }`;
-
-/**
- * Sizes the drawing buffer to the element, capping device pixel ratio. A phone reporting DPR 3
- * would otherwise ask a mobile GPU for nine times the fill rate of the CSS pixel count, which
- * is the single most common way a "cheap" fullscreen shader stops being cheap.
- */
-export function resizeToDisplay(canvas, gl, maxDpr = 2) {
-    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
-    const width = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-    const height = Math.max(1, Math.floor(canvas.clientHeight * dpr));
-
-    if (canvas.width !== width || canvas.height !== height) {
-        canvas.width = width;
-        canvas.height = height;
-        gl.viewport(0, 0, width, height);
-        return true;
-    }
-    return false;
-}
-
-/** Frees GPU resources deterministically instead of waiting for the context to be collected. */
-export function disposeGl(gl) {
-    if (!gl) return;
-    try {
-        gl.getExtension('WEBGL_lose_context')?.loseContext();
-    } catch {
-        // Extension is optional; the context will be reclaimed with the canvas.
-    }
-}
-
-window.poseeGfx = gfx;

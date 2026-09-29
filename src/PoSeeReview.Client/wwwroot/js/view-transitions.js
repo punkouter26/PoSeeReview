@@ -74,10 +74,10 @@ function reducedMotion() {
  * what makes an app of many lists feel like one place: the thing you touched is the thing that
  * arrives.
  *
- *   [data-physics-card] — a restaurant card on discovery
+ *   [data-comic-card] — a restaurant card on discovery
  *   .comic-row          — the live Hall of Fame, the weekly archive and /my-comics
  */
-const MORPH_SOURCES = '[data-physics-card], .comic-row';
+const MORPH_SOURCES = '[data-comic-card], .comic-row';
 
 /** The destination half of the pair. Tagged on arrival — see tagMorphTarget. */
 const MORPH_TARGET = '.comic-strip-container';

@@ -31,7 +31,6 @@ public partial class ComicGenerationService : IComicGenerationService
     private readonly TelemetryClient _telemetryClient;
     private readonly TimeProvider _timeProvider;
     private readonly ComicGenerationLock _generationLock;
-    private readonly IEmbeddingService _embeddingService;
 
     private readonly ComicOptions _options;
 
@@ -48,7 +47,6 @@ public partial class ComicGenerationService : IComicGenerationService
         ILogger<ComicGenerationService> logger,
         TelemetryClient telemetryClient,
         ComicGenerationLock generationLock,
-        IEmbeddingService embeddingService,
         IOptions<ComicOptions> options,
         TimeProvider? timeProvider = null)
     {
@@ -64,7 +62,6 @@ public partial class ComicGenerationService : IComicGenerationService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
         _generationLock = generationLock ?? throw new ArgumentNullException(nameof(generationLock));
-        _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _options = (options ?? throw new ArgumentNullException(nameof(options))).Value;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
@@ -273,12 +270,6 @@ public partial class ComicGenerationService : IComicGenerationService
         var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
         var scenes = ChatPrompts.NormalizeScenes(analysis.Scenes, captions, panelCount);
 
-        // The vector that will let another comic find this one. It needs only the narrative, so it
-        // runs alongside the image call instead of after it, where its timeout sat on the critical
-        // path. Best-effort by contract: it never throws, and an empty array means "not a
-        // similarity candidate", which costs a related link and never a comic.
-        var embeddingTask = _embeddingService.EmbedAsync(narrative, cancellationToken);
-
         // Generate comic image (panel count capped at 2)
         progress?.Report(new ComicGenerationProgress(ComicGenerationPhase.GeneratingArtwork, strangenessScore, captions));
         var imageStopwatch = Stopwatch.StartNew();
@@ -316,13 +307,6 @@ public partial class ComicGenerationService : IComicGenerationService
         _logger.LogInformation("Added text overlay to comic: {Size} bytes", imageBytes.Length);
         _telemetryClient.GetMetric("Comics.Generation.TextOverlayDurationMs").TrackValue(overlayStopwatch.Elapsed.TotalMilliseconds);
 
-        // The comic's own colours, read off the finished bytes while they are still in memory.
-        // Has to happen here rather than on the client: the blob is served without CORS headers,
-        // so a browser canvas that has drawn it cannot be read back.
-        var palette = ComicPaletteExtractor.Extract(imageBytes);
-
-        var embedding = await embeddingTask;
-
         // Upload to blob storage
         progress?.Report(ComicGenerationPhase.Publishing);
         var comicId = ComicId.New();
@@ -342,10 +326,8 @@ public partial class ComicGenerationService : IComicGenerationService
             CreatedAt = _timeProvider.GetUtcNow(),
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
             CacheState = ComicCacheState.Generated,
-            Palette = palette,
             Captions = [.. captions],
-            PromptVersion = _options.PromptVersion,
-            Embedding = embedding
+            PromptVersion = _options.PromptVersion
         };
 
         // Save to cache

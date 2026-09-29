@@ -26,7 +26,6 @@ public class ComicGenerationServiceTests
     private readonly Mock<IChatCompletionService> _mockOpenAIService;
     private readonly Mock<IImageGenerationService> _mockImageGenerationService;
     private readonly Mock<IComicTextOverlayService> _mockTextOverlayService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
     private readonly Mock<IBlobStorageService> _mockBlobStorageService;
     private readonly Mock<IComicRepository> _mockComicRepository;
     private readonly Mock<ILeaderboardService> _mockLeaderboardService;
@@ -41,7 +40,6 @@ public class ComicGenerationServiceTests
         _mockOpenAIService = new Mock<IChatCompletionService>();
         _mockImageGenerationService = new Mock<IImageGenerationService>();
         _mockTextOverlayService = new Mock<IComicTextOverlayService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
         _mockBlobStorageService = new Mock<IBlobStorageService>();
         _mockComicRepository = new Mock<IComicRepository>();
         _mockLeaderboardService = new Mock<ILeaderboardService>();
@@ -60,12 +58,6 @@ public class ComicGenerationServiceTests
             It.IsAny<int>(),
             It.IsAny<CancellationToken>()))
             .ReturnsAsync((byte[] imageBytes, IReadOnlyList<string> captions, int panelCount, CancellationToken ct) => imageBytes);
-
-        // Default: no embedding backend — the same posture the app takes when the feature is
-        // switched off. A vector is an enrichment, so tests that do not care about similarity
-        // should not have to arrange one.
-        _mockEmbeddingService.Setup(x => x.EmbedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
 
         // Default: the content screen allows. Tests that care about the screen override this.
         _mockContentSafetyScreener
@@ -87,7 +79,6 @@ public class ComicGenerationServiceTests
             // The real gate: it is a ConcurrentDictionary, and standing in a fake for it would
             // remove the only thing the type does.
             new ComicGenerationLock(),
-            _mockEmbeddingService.Object,
             Options.Create(options ?? new ComicOptions())
         );
     }

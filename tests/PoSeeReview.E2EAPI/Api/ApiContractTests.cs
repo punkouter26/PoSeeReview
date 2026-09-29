@@ -20,10 +20,13 @@ public class ApiContractTests : IClassFixture<CustomWebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task PostComic_WithInvalidPlaceId_Returns404()
+    public async Task StreamComic_WithInvalidPlaceId_EndsWith404Event()
     {
-        var response = await _client.PostAsync("/api/comics/invalid-place-id-123", null);
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // The stream commits a 200 before generation can fail, so the real status is in the frame.
+        var response = await _client.PostAsync("/api/comics/invalid-place-id-123/stream", null);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("\"errorStatus\":404", body);
     }
 
     [Fact]

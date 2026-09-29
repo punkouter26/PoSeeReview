@@ -8,15 +8,6 @@ using PoSeeReview.Shared.Contracts;
 
 namespace PoSeeReview.Api.Features.Comics;
 
-/// <summary>Composes the 1200x630 image a shared link unfurls as.</summary>
-public interface IShareCardService
-{
-    /// <summary>
-    /// Renders the card for a comic, or null when the comic's artwork is no longer retrievable.
-    /// </summary>
-    Task<byte[]?> RenderAsync(Comic comic, CancellationToken cancellationToken = default);
-}
-
 /// <summary>
 /// Builds the link-preview card.
 /// <para>
@@ -34,7 +25,7 @@ public interface IShareCardService
 /// </summary>
 public sealed class ShareCardService(
     IBlobStorageService blobStorageService,
-    ILogger<ShareCardService> logger) : IShareCardService
+    ILogger<ShareCardService> logger)
 {
     /// <summary>The size every major link-preview client expects. Anything else gets letterboxed.</summary>
     public const int CardWidth = 1200;

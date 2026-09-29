@@ -30,8 +30,6 @@ uniform vec3  uColorA;
 uniform vec3  uColorB;
 uniform vec3  uColorC;
 uniform vec3  uKeyLight;   // rgb tint of the shadow-casting light
-uniform float uAudio;      // 0..1 overall level
-uniform float uAudioBass;  // 0..1 low band
 uniform float uAmbient;
 `;
 
@@ -80,7 +78,7 @@ struct PoseeScene {
 
 PoseeScene posee_scene() {
     PoseeScene s;
-    s.energy = uStrange + uAudio * 0.35;
+    s.energy = uStrange;
     s.t = uTime * (0.02 + s.energy * 0.10);
     s.warpAmount = 0.15 + s.energy * 0.85;
     s.aspect = uResolution.x / max(uResolution.y, 1.0);
@@ -135,7 +133,7 @@ vec3 posee_backdrop(vec2 p, PoseeScene s) {
     albedo = mix(albedo, uColorC, smoothstep(0.55, 1.0, n) * (0.25 + uStrange * 0.55));
 
     vec3 color = albedo * uAmbient;
-    color += albedo * uKeyLight * keyDiffuse * (1.30 + uAudioBass * 0.7);
+    color += albedo * uKeyLight * keyDiffuse * 1.30;
     color += albedo * uColorC   * fillDiffuse * 0.55;
     color += uColorC * rimDiffuse * 0.22;
 
@@ -207,8 +205,7 @@ const COLOR_EASE = 0.018;
 // So the scene is built from --color-surface / --color-brand-surface / --color-brand, exactly
 // like the CSS fallback on .fx-backdrop that it replaces. In light mode that is a pale lavender
 // field; in dark mode the same three tokens have already flipped. Reading them rather than
-// restating them is the same rule the Insights charts, the map pins and physics.js follow, and
-// for the same reason: a literal freezes one theme into a page that renders both.
+// restating them matters: a literal freezes one theme into a page that renders both.
 
 const SCENE_FALLBACK = {
     light: [[0.976, 0.973, 1.0], [0.929, 0.914, 1.0], [0.486, 0.227, 0.929]],
@@ -254,26 +251,6 @@ function readSceneTokens() {
     }
 }
 
-/**
- * Blends a comic's colour INTO the theme's own base rather than replacing it.
- *
- * The extracted colours are the ones a person would name looking at the comic: mid-lightness and
- * saturated. Correct for the artwork, wrong for something body text sits on. Replacing the base
- * with them would move the page's ground to an arbitrary lightness chosen by an image model, and
- * every text/surface pair in this app is measured against the tokens by ColorContrastTests.
- *
- * Mixing keeps the LIGHTNESS the theme's and takes the HUE from the comic — which is the half
- * that carries "this is that comic" anyway. The third slot takes more of the comic because it is
- * the highlight, not the ground.
- */
-function blendToward(base, comic, amount) {
-    return [
-        base[0] + (comic[0] - base[0]) * amount,
-        base[1] + (comic[1] - base[1]) * amount,
-        base[2] + (comic[2] - base[2]) * amount
-    ];
-}
-
 export function start(canvas, options = {}) {
     if (!canvas || !gfx.allows('full')) {
         return 0;
@@ -304,8 +281,6 @@ export function start(canvas, options = {}) {
         colorB: gl.getUniformLocation(program, 'uColorB'),
         colorC: gl.getUniformLocation(program, 'uColorC'),
         keyLight: gl.getUniformLocation(program, 'uKeyLight'),
-        audio: gl.getUniformLocation(program, 'uAudio'),
-        audioBass: gl.getUniformLocation(program, 'uAudioBass'),
         ambient: gl.getUniformLocation(program, 'uAmbient')
     };
 
@@ -330,19 +305,10 @@ export function start(canvas, options = {}) {
         targetA: [...scene.colors[0]],
         targetB: [...scene.colors[1]],
         targetC: [...scene.colors[2]],
-        // The theme's own base, kept so a palette can be cleared without the caller remembering
-        // what it was — and re-read on a theme flip, which is why this is not a constant.
-        baseA: [...scene.colors[0]],
-        baseB: [...scene.colors[1]],
-        baseC: [...scene.colors[2]],
         ambient: scene.ambient,
-        /** The comic palette currently applied, so a theme flip can re-blend it. */
-        palette: null,
         // Warm key against the cool violet field: the complementary split is what stops a
         // single-hue noise field from reading as flat.
         keyLight: parseColor(options.keyLight, [1.00, 0.86, 0.62]),
-        audio: 0,
-        audioBass: 0,
         stop: null
     };
 
@@ -355,10 +321,7 @@ export function start(canvas, options = {}) {
         // Ease toward the target so a score change is a transition, not a jump cut.
         instance.strange += (instance.targetStrange - instance.strange) * 0.04;
 
-        // Colours ease toward their targets on the same terms the score does. A palette that
-        // snapped would be a hard cut on a full-screen backdrop at the exact moment the user is
-        // looking at the comic that caused it — the change has to read as the page taking on the
-        // artwork's colour, which means it has to be slower than the eye.
+        // Colours ease toward their targets too, so a theme flip is not a hard cut.
         easeColor(instance.colorA, instance.targetA);
         easeColor(instance.colorB, instance.targetB);
         easeColor(instance.colorC, instance.targetC);
@@ -372,8 +335,6 @@ export function start(canvas, options = {}) {
         gl.uniform3fv(uniforms.colorB, instance.colorB);
         gl.uniform3fv(uniforms.colorC, instance.colorC);
         gl.uniform3fv(uniforms.keyLight, instance.keyLight);
-        gl.uniform1f(uniforms.audio, instance.audio);
-        gl.uniform1f(uniforms.audioBass, instance.audioBass);
         gl.uniform1f(uniforms.ambient, instance.ambient);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindVertexArray(null);
@@ -394,74 +355,17 @@ export function setScore(id, score) {
 }
 
 /**
- * Retints the backdrop to a comic's own colours.
- *
- * `palette` is the three hex strings the server sampled off the finished artwork (see
- * ComicPaletteExtractor). Passing nothing, or anything unparseable, restores the brand gradient
- * — which is what every route other than a comic should show, and what a comic drawn before the
- * extractor existed still ships.
- *
- * The two base colours are darkened and the third is kept bright as the highlight. That split is
- * the whole trick: the hue relationship is what makes the page recognisably this comic, while
- * the lightness stays where the contrast tokens assume it is, so body text over the backdrop is
- * as readable as it was with the brand purple.
- */
-export function setPalette(id, palette) {
-    const instance = instances.get(id);
-    if (!instance) return false;
-
-    const colors = Array.isArray(palette) ? palette : [];
-    if (colors.length < 3) {
-        instance.palette = null;
-        applyPalette(instance);
-        return false;
-    }
-
-    const parsed = colors.slice(0, 3).map(c => parseColor(c, null));
-    if (parsed.some(c => c === null)) {
-        return false;
-    }
-
-    instance.palette = parsed;
-    applyPalette(instance);
-    return true;
-}
-
-/**
- * Recomputes the targets from the theme base plus whatever comic palette is applied. Split out
- * because it is needed from two directions — a new comic, and a theme flip under an unchanged
- * comic — and doing it in only one of those is how a dark-mode toggle ends up showing light
- * mode's ground until the next navigation.
- */
-function applyPalette(instance) {
-    const p = instance.palette;
-    if (!p) {
-        instance.targetA = [...instance.baseA];
-        instance.targetB = [...instance.baseB];
-        instance.targetC = [...instance.baseC];
-        return;
-    }
-
-    // The ground takes a little of the comic, the mid takes more, the highlight takes most. The
-    // page's LIGHTNESS stays the theme's throughout; only the hue travels.
-    instance.targetA = blendToward(instance.baseA, p[0], 0.18);
-    instance.targetB = blendToward(instance.baseB, p[1], 0.42);
-    instance.targetC = blendToward(instance.baseC, p[2], 0.75);
-}
-
-/**
- * Re-reads the tokens and re-blends. Bound to a theme change below rather than polled: the token
+ * Re-reads the tokens. Bound to a theme change below rather than polled: the token
  * values change under the shader with no event of their own, and a backdrop still drawing light
  * mode's ground under a dark page is the most visible bug this file can have.
  */
 function refreshTheme() {
     const scene = readSceneTokens();
     for (const instance of instances.values()) {
-        instance.baseA = [...scene.colors[0]];
-        instance.baseB = [...scene.colors[1]];
-        instance.baseC = [...scene.colors[2]];
+        instance.targetA = [...scene.colors[0]];
+        instance.targetB = [...scene.colors[1]];
+        instance.targetC = [...scene.colors[2]];
         instance.ambient = scene.ambient;
-        applyPalette(instance);
     }
 }
 
@@ -472,41 +376,6 @@ try {
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
 } catch {
     // Backdrop keeps the colours it started with.
-}
-
-export { refreshTheme };
-
-/**
- * Feeds the audio analyser into the lighting. Called by the reactive driver rather than read
- * here, so a gradient with no sound playing does no analyser work at all.
- */
-export function setAudioLevels(id, level, bass) {
-    const instance = instances.get(id);
-    if (instance) {
-        // Smoothed on this side as well as in the analyser: the visual response to a transient
-        // should decay slower than the transient does, or bright frames strobe.
-        instance.audio += (level - instance.audio) * 0.25;
-        instance.audioBass += (bass - instance.audioBass) * 0.25;
-    }
-}
-
-/** Every live gradient id, so the audio driver can push levels without tracking handles. */
-export function activeIds() {
-    return [...instances.keys()];
-}
-
-// Listeners fired whenever the number of live gradients changes.
-//
-// Exposed as an event for the same reason setAudioLevels is a setter: the coupling points one
-// way. This module must not learn that anything else depends on it being on screen — and
-// something does. A glass pane refracts this scene by RECOMPUTING it, so a pane still running
-// after the backdrop has gone is faithfully refracting a scene nobody can see. fx.js is where
-// that pairing is enforced; here there is only a notification.
-const activeListeners = new Set();
-
-export function onActiveChanged(listener) {
-    activeListeners.add(listener);
-    return () => activeListeners.delete(listener);
 }
 
 function notifyActive() {
@@ -521,16 +390,7 @@ function notifyActive() {
             delete document.documentElement.dataset.fxBackdrop;
         }
     } catch {
-        // Without the flag the page keeps its own background. Nothing breaks; the shader is
-        // simply covered, which is what happened for the whole life of this file until now.
-    }
-
-    for (const listener of activeListeners) {
-        try {
-            listener(instances.size);
-        } catch {
-            // A listener must not be able to take the backdrop down.
-        }
+        // Without the flag the page keeps its own background; the shader is simply covered.
     }
 }
 
@@ -556,4 +416,3 @@ gfx.onTierChanged((tier) => {
     }
 });
 
-window.poseeGradient = { start, stop, setScore, setPalette };

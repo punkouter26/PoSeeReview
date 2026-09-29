@@ -7,12 +7,13 @@ Before writing code, stop at the first rung that holds:
 2. Already in this codebase?  → reuse it, don't rewrite
 3. Stdlib does it?            → use it
 4. Native platform feature?   → use it
-5. Installed dependency?      → use it (Radzen.Blazor first!)
+5. Installed dependency?      → use it
 6. One line?                  → one line
 7. Only then: the minimum that works
 
 Lazy, not negligent:
 - Trust-boundary validation, data-loss handling, security, and accessibility are NEVER cut.
 - Write only what the task needs.
-- Never write custom JS/CSS when Radzen controls or native HTML5 provide the functionality out of the box.
+- Never write custom JS/CSS when native HTML5 provides the functionality out of the box.
+- Architecture and conventions: CLAUDE.md. Working rules: AGENTS.md.
 

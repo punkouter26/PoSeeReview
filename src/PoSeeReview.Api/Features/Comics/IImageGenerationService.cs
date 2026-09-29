@@ -1,8 +1,8 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Service for generating comic strip images using an AI image model: Gemini, FLUX via
-/// HuggingFace, or gpt-image via Azure, selected by <c>Ai:ImageProvider</c>.
+/// Service for generating comic strip images using an AI image model: Gemini
+/// or gpt-image via Azure, selected by <c>Ai:ImageProvider</c>.
 /// </summary>
 public interface IImageGenerationService
 {

@@ -106,10 +106,10 @@ public sealed class StartupSecretValidator(
         var imageProviderSetting = configuration[InfrastructureServiceCollectionExtensions.AiProviderConfigurationKey];
 
         var usesAzureChat = string.IsNullOrWhiteSpace(chatProviderSetting)
-            ? !string.Equals(imageProviderSetting, "HuggingFace", StringComparison.OrdinalIgnoreCase)
-            : string.Equals(chatProviderSetting, nameof(AiChatProvider.AzureOpenAI), StringComparison.OrdinalIgnoreCase);
+            || string.Equals(chatProviderSetting, nameof(AiChatProvider.AzureOpenAI), StringComparison.OrdinalIgnoreCase);
 
-        var usesGeminiImages = !string.Equals(imageProviderSetting, "HuggingFace", StringComparison.OrdinalIgnoreCase);
+        var usesGeminiImages = string.IsNullOrWhiteSpace(imageProviderSetting)
+            || string.Equals(imageProviderSetting, nameof(AiImageProvider.Gemini), StringComparison.OrdinalIgnoreCase);
 
         var prodRequired = new List<string>(capacity: 4);
 

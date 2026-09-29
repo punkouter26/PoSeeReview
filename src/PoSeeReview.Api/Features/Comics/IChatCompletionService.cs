@@ -2,7 +2,7 @@ namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// Scores restaurant reviews for strangeness, and writes the narrative and the panel captions
-/// that follow from that score. Implemented per provider (Azure OpenAI, HuggingFace, Ollama);
+/// that follow from that score. Implemented per provider (Azure OpenAI, Ollama);
 /// the prompt contract they share lives in <see cref="ChatPrompts"/>.
 /// <para>
 /// <b>One method, on purpose.</b> There used to be a second — <c>GeneratePanelDialogueAsync</c> —
@@ -23,14 +23,4 @@ public interface IChatCompletionService
     /// <exception cref="ArgumentException">If reviews list is empty</exception>
     Task<StrangenessAnalysis> AnalyzeStrangenessAsync(List<string> reviews, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Writes an invented short conversation between the people in the comic. Same chat
-    /// providers, same prompt contract — a second method rather than a parameter overload so the
-    /// contract can say "this is a skit" without overloading "this is a score".
-    /// </summary>
-    Task<PoSeeReview.Shared.Dtos.ComicAudioSkit> GenerateSkitAsync(
-        string restaurantName,
-        string narrative,
-        IReadOnlyList<string>? captions,
-        CancellationToken cancellationToken = default);
 }
