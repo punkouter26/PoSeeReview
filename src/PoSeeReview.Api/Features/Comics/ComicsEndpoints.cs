@@ -692,9 +692,16 @@ internal static class ComicsEndpoints
             // Sanitised so a restaurant name cannot inject header syntax or path separators into
             // Content-Disposition. Results.File quotes the value, but the name is third-party
             // text and this is the one place it reaches a header.
-            var fileName = BuildDownloadFileName(comic.RestaurantName);
+            // The blob's own extension says what it holds: .png for older comics, .webp since.
+            var (extension, contentType) = Path.GetExtension(new Uri(comic.ImageUrl).AbsolutePath).ToLowerInvariant() switch
+            {
+                ".webp" => ("webp", "image/webp"),
+                ".jpg" => ("jpg", "image/jpeg"),
+                _ => ("png", "image/png")
+            };
+            var fileName = $"{BuildDownloadFileName(comic.RestaurantName)}.{extension}";
 
-            return Results.File(stream, "image/png", fileName, enableRangeProcessing: false);
+            return Results.File(stream, contentType, fileName, enableRangeProcessing: false);
         }
         catch (Exception ex)
         {
@@ -722,7 +729,7 @@ internal static class ComicsEndpoints
             cleaned = "restaurant";
         }
 
-        return $"poseereview_{cleaned}.png";
+        return $"poseereview_{cleaned}";
     }
 
     /// <summary>

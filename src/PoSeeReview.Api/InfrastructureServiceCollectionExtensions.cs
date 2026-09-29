@@ -247,11 +247,16 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IEmbeddingService, OpenAiEmbeddingService>();
 
 
-        // Image provider: Google Imagen (GeminiComicService), or FLUX via HF (HuggingFaceComicService).
-        // FLUX is the fix for Imagen's garbled baked-in speech bubbles — it honours a negative prompt.
-        // Both use a named HttpClient with generous timeouts (image gen is slow) and the standard
-        // resilience handler for retry/timeout/circuit-breaker on 5xx/429/timeouts.
-        var imageClientName = useHuggingFace ? "HuggingFaceApi" : "GeminiApi";
+        // Image provider: Gemini (GeminiComicService), FLUX via HF (HuggingFaceComicService), or
+        // gpt-image on Azure (AzureOpenAIImageService). FLUX honours a negative prompt; the other
+        // two share ComicImagePrompt. All use a named HttpClient with generous timeouts (image gen
+        // is slow) and the standard resilience handler for retry/timeout/circuit-breaker.
+        var imageClientName = imageProvider switch
+        {
+            AiImageProvider.HuggingFace => "HuggingFaceApi",
+            AiImageProvider.AzureOpenAI => "AzureOpenAIImageApi",
+            _ => "GeminiApi"
+        };
         services.AddHttpClient(imageClientName)
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
             .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90))
@@ -269,6 +274,8 @@ public static class InfrastructureServiceCollectionExtensions
 
         if (useHuggingFace)
             services.AddScoped<IImageGenerationService, HuggingFaceComicService>();
+        else if (imageProvider == AiImageProvider.AzureOpenAI)
+            services.AddScoped<IImageGenerationService, AzureOpenAIImageService>();
         else
             services.AddScoped<IImageGenerationService>(sp =>
                 new GeminiComicService(

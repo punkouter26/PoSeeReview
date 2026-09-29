@@ -102,27 +102,26 @@ public class AzureOpenAIChatService : IChatCompletionService
         // cannot express it and its reasoning tokens would eat it anyway. See ChatTokenBudget
         // for the full reasoning, and StartupSecretValidator for the warning raised when a cap is
         // configured against a model family that will ignore it.
+        // A strict schema rather than json_object: the deployment then guarantees the panel
+        // objects exist and are shaped right, which is what the image prompt is built from.
         var chatOptions = ChatTokenBudget.Build(
             temperature: 0.3f,
             maxCompletionTokens: _options.MaxCompletionTokens,
-            isReasoningModel: _options.IsReasoningModel);
+            isReasoningModel: _options.IsReasoningModel,
+            responseFormat: ChatResponseFormat.CreateJsonSchemaFormat(
+                "comic_analysis", ChatPrompts.AnalysisJsonSchema, jsonSchemaIsStrict: true));
 
-        // Propagate the caller's token: this call can take 40+ seconds on reasoning models, and
-        // an abandoned browser request should stop the pipeline instead of completing a paid call.
+        // Propagate the caller's token: an abandoned browser request should stop the pipeline
+        // instead of completing a paid call.
         var response = await _chatRetryPolicy.ExecuteAsync(
             ct => chatClient.CompleteChatAsync(chatMessages, chatOptions, ct),
             cancellationToken);
 
         _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
 
-        // Parse JSON response
         var jsonResponse = response.Value.Content[0].Text;
         var result = JsonSerializer.Deserialize<StrangenessAnalysisResult>(jsonResponse)
             ?? throw new InvalidOperationException("Failed to parse OpenAI response");
-
-        // Clamp score to 0-100 range and panel count to 1-2
-        var score = Math.Clamp(result.StrangenessScore, 0, 100);
-        var panelCount = Math.Clamp(result.PanelCount, 1, 2);
 
         if (response.Value.Usage is { } usage)
         {
@@ -134,11 +133,7 @@ public class AzureOpenAIChatService : IChatCompletionService
             _costTracker.Track(ProviderLabel, _options.DeploymentName, usage.InputTokenCount, usage.OutputTokenCount);
         }
 
-        return new StrangenessAnalysis(
-            score,
-            panelCount,
-            result.Narrative,
-            ChatPrompts.NormalizeCaptions(result.Captions, result.Narrative, panelCount));
+        return ChatPrompts.ToAnalysis(result);
     }
 
     /// <inheritdoc />

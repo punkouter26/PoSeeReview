@@ -38,7 +38,7 @@ public class BlobStorageService : IBlobStorageService
     /// Uploads a comic image to Azure Blob Storage and returns the public URL.
     /// </summary>
     /// <param name="comicId">Unique identifier for the comic</param>
-    /// <param name="imageBytes">PNG image bytes (1792x1024 recommended)</param>
+    /// <param name="imageBytes">Encoded image bytes: WebP, PNG or JPEG</param>
     /// <returns>Public HTTPS URL to the uploaded blob</returns>
     /// <exception cref="ArgumentNullException">If comicId or imageBytes is null/empty</exception>
     /// <exception cref="RequestFailedException">If blob upload fails</exception>
@@ -54,14 +54,15 @@ public class BlobStorageService : IBlobStorageService
         // hot path must not incur a blocking existence check on every request.
         var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
 
-        // Blob name format: {comicId}.png
-        var blobName = $"{comicId}.png";
-        var blobClient = containerClient.GetBlobClient(blobName);
+        // Named and typed by what the bytes are: the overlay writes WebP, but a failed overlay hands
+        // back the provider's original (PNG or JPEG), and a WebP labelled image/png still renders
+        // while a download of it opens as a broken file.
+        var (extension, contentType) = ImageFormatOf(imageBytes);
+        var blobClient = containerClient.GetBlobClient($"{comicId}.{extension}");
 
-        // Upload with overwrite and PNG content type
         var blobHttpHeaders = new BlobHttpHeaders
         {
-            ContentType = "image/png"
+            ContentType = contentType
         };
 
         using var stream = new MemoryStream(imageBytes);
@@ -88,12 +89,22 @@ public class BlobStorageService : IBlobStorageService
         if (string.IsNullOrWhiteSpace(comicId))
             throw new ArgumentNullException(nameof(comicId));
 
+        // Every name a comic's image can have been written under; older comics are all .png.
         var containerClient = _blobServiceClient.GetBlobContainerClient(_containerName);
-        var blobName = $"{comicId}.png";
-        var blobClient = containerClient.GetBlobClient(blobName);
-
-        await blobClient.DeleteIfExistsAsync();
+        foreach (var extension in new[] { "webp", "png", "jpg" })
+        {
+            await containerClient.GetBlobClient($"{comicId}.{extension}").DeleteIfExistsAsync();
+        }
     }
+
+    /// <summary>Extension and MIME type from the file signature.</summary>
+    internal static (string Extension, string ContentType) ImageFormatOf(ReadOnlySpan<byte> bytes) =>
+        bytes switch
+        {
+            [(byte)'R', (byte)'I', (byte)'F', (byte)'F', _, _, _, _, (byte)'W', (byte)'E', (byte)'B', (byte)'P', ..] => ("webp", "image/webp"),
+            [0xFF, 0xD8, 0xFF, ..] => ("jpg", "image/jpeg"),
+            _ => ("png", "image/png")
+        };
 
     /// <summary>
     /// Deletes a blob by its full URL

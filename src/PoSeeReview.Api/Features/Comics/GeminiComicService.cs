@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -14,7 +13,7 @@ namespace PoSeeReview.Api.Features.Comics;
 /// Requires <c>Google:GeminiApiKey</c> in configuration (stored as "PoSeeReview--Google--GeminiApiKey" in Key Vault).
 /// Model must expose <c>generateContent</c>; the Imagen <c>predict</c> family is not available on this key.
 /// </summary>
-public sealed partial class GeminiComicService : IImageGenerationService
+public sealed class GeminiComicService : IImageGenerationService
 {
     // Verified against ListModels for this project's key on 2026-08-25: NO model exposes the
     // Imagen ":predict" method any more, which is why every generation was failing with
@@ -53,16 +52,17 @@ public sealed partial class GeminiComicService : IImageGenerationService
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateComicImageAsync(string narrative, IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(narrative))
             throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
 
+        var panelCount = panelScenes.Count;
         if (panelCount is < 1 or > 4)
-            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelCount));
+            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelScenes));
 
         var stopwatch = Stopwatch.StartNew();
-        var (sanitizedNarrative, bluntedTerms) = SanitizeNarrative(narrative);
+        var (prompt, bluntedTerms) = ComicImagePrompt.Build(narrative, panelScenes);
 
         if (bluntedTerms.Count > 0)
         {
@@ -76,14 +76,12 @@ public sealed partial class GeminiComicService : IImageGenerationService
                 bluntedTerms.Count, string.Join(", ", bluntedTerms));
         }
 
-        var prompt = BuildComicPrompt(sanitizedNarrative, panelCount);
-
         // Transient failures (429/503/timeouts) are handled by the standard resilience handler
         // configured on the "GeminiApi" HttpClient, so no hand-rolled retry is needed here.
         byte[] imageBytes;
         try
         {
-            imageBytes = await GenerateAsync(prompt, cancellationToken);
+            imageBytes = await GenerateAsync(prompt, AspectRatio(panelCount), cancellationToken);
         }
         catch (InvalidOperationException ex) when (IsRefusal(ex))
         {
@@ -123,7 +121,7 @@ public sealed partial class GeminiComicService : IImageGenerationService
     /// position 0 is the image.
     /// </para>
     /// </summary>
-    private async Task<byte[]> GenerateAsync(string prompt, CancellationToken cancellationToken)
+    private async Task<byte[]> GenerateAsync(string prompt, string aspectRatio, CancellationToken cancellationToken)
     {
         var body = new
         {
@@ -134,7 +132,8 @@ public sealed partial class GeminiComicService : IImageGenerationService
             generationConfig = new
             {
                 // Without this the model may answer with prose about the picture it would draw.
-                responseModalities = new[] { "IMAGE" }
+                responseModalities = new[] { "IMAGE" },
+                imageConfig = new { aspectRatio }
             }
         };
 
@@ -216,80 +215,15 @@ public sealed partial class GeminiComicService : IImageGenerationService
         || ex.Message.Contains("blocked", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Blunts terms the image safety filter rejects, and reports which ones it blunted.
-    /// <para>
-    /// This was 37 separate <see cref="Regex"/>.Replace passes — 37 interpolated patterns and 37
-    /// full-string rewrites per image, thrashing a process-wide pattern cache that holds 15. One
-    /// generated alternation, one pass.
-    /// </para>
+    /// The frame shape that makes the requested layout's panels come out landscape. The overlay
+    /// places captions by assuming equal panels, and a square frame asked for two stacked panels
+    /// produced two letterbox strips whose top third the caption box then covered.
     /// </summary>
-    [GeneratedRegex(
-        @"\b(?:blood|bloody|kill|murder|dead|death|die|dying|gun|shoot|weapon|knife|stab|fight|attack|drug|cocaine|heroin|meth|naked|nude|sex|sexual|hate|racist|racial|vomit|puke|disgusting|roach|cockroach|rat|mice|vermin|poison|toxic|contaminated)\w*\b",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex FlaggedTermRegex();
-
-    private static (string Narrative, List<string> BluntedTerms) SanitizeNarrative(string narrative)
+    private static string AspectRatio(int panelCount) => panelCount switch
     {
-        var matches = FlaggedTermRegex().Matches(narrative);
-        if (matches.Count == 0)
-        {
-            return (narrative, []);
-        }
-
-        var terms = new List<string>(matches.Count);
-        foreach (Match match in matches)
-        {
-            var term = match.Value.ToLowerInvariant();
-            if (!terms.Contains(term, StringComparer.Ordinal))
-            {
-                terms.Add(term);
-            }
-        }
-
-        return (FlaggedTermRegex().Replace(narrative, "unusual"), terms);
-    }
-
-    private static string BuildComicPrompt(string narrative, int panelCount)
-    {
-        var panelLayout = panelCount switch
-        {
-            1 => "Single-panorama comic strip (one wide scene filling the frame)",
-            2 => "Two-panel comic strip with equal landscape panels stacked vertically",
-            3 => "Three-panel strip with cinematic flow (left-to-right storytelling)",
-            _ => "Four-panel comic strip arranged left-to-right, top-to-bottom (1-2 on top row, 3-4 on bottom row)"
-        };
-
-        var panelBreakdown = panelCount switch
-        {
-            1 => "1. Capture the most surreal moment as a cinematic snapshot with supporting background details.",
-            2 => "1. Setup the unusual situation or conflict.\n2. Deliver the punchline, reaction, or outcome.",
-            3 => "1. Introduce the setting and main characters.\n2. Escalate the bizarre element.\n3. Conclude with the payoff.",
-            _ => "1. Setup the restaurant and characters.\n2. Introduce the strange twist.\n3. Spotlight the climax.\n4. Show the aftermath."
-        };
-
-        // Imagen has no negative-prompt channel: forbidden concepts named in the prompt
-        // ("NO SPEECH BUBBLES") tend to get PAINTED INTO the artwork as literal lettering.
-        // Describe only what we want — wordless, pantomime, blank surfaces — and never
-        // mention text, bubbles, or writing. Captions are added later by the overlay service.
-        return $"""
-Create a vibrant {panelCount}-panel wordless pantomime comic strip in a clean, modern cartoon illustration style, told purely through pictures, in the tradition of silent-film slapstick.
-
-Visual story to depict (through action and expression only):
-"{narrative}"
-
-Layout: {panelLayout}
-- Consistent characters across panels with matching outfits and visual traits
-- Clean black panel gutters/borders separating EXACTLY {panelCount} panel(s)
-
-Panel breakdown:
-{panelBreakdown}
-
-Visual style:
-- Bold outlines, vivid colors, exaggerated facial expressions and body language
-- Modern cartoon illustration (NOT manga, NOT realistic)
-- Pure visual storytelling: every emotion carried by faces, gestures, and posture alone
-- Every wall, sign, menu, and surface rendered as plain solid color or simple decoration
-- Wordless, silent, pantomime scenes throughout
-""";
-    }
+        1 => "4:3",
+        2 => "3:4",
+        3 => "21:9",
+        _ => "1:1"
+    };
 }

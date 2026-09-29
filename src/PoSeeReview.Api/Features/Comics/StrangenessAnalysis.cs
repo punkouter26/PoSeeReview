@@ -14,8 +14,13 @@ namespace PoSeeReview.Api.Features.Comics;
 /// normalises this before returning, and callers still pass it through
 /// <see cref="ChatPrompts.NormalizeCaptions"/> so the pipeline is total either way.
 /// </param>
+/// <param name="Scenes">
+/// One illustrator brief per panel, the same panels the captions describe. Null only for a
+/// hand-constructed value; callers pass it through <see cref="ChatPrompts.NormalizeScenes"/>.
+/// </param>
 public sealed record StrangenessAnalysis(
     int StrangenessScore,
     int PanelCount,
     string Narrative,
-    IReadOnlyList<string>? Captions = null);
+    IReadOnlyList<string>? Captions = null,
+    IReadOnlyList<string>? Scenes = null);

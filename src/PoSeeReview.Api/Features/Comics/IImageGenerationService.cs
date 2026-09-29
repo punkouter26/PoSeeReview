@@ -1,8 +1,8 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Service for generating comic strip images using an AI image model.
-/// Currently implemented by GeminiComicService (Imagen 4).
+/// Service for generating comic strip images using an AI image model: Gemini, FLUX via
+/// HuggingFace, or gpt-image via Azure, selected by <c>Ai:ImageProvider</c>.
 /// </summary>
 public interface IImageGenerationService
 {
@@ -10,10 +10,10 @@ public interface IImageGenerationService
     /// Generates a comic strip image based on the narrative.
     /// </summary>
     /// <param name="narrative">Narrative describing the restaurant's strange aspects</param>
-    /// <param name="panelCount">Number of panels (1-4)</param>
+    /// <param name="panelScenes">One illustrator brief per panel (1-4); the count is the panel count</param>
     /// <param name="cancellationToken">Cancels the (potentially slow) image generation call</param>
-    /// <returns>PNG image bytes</returns>
-    /// <exception cref="ArgumentException">If narrative is empty or panelCount is invalid</exception>
+    /// <returns>Encoded image bytes (PNG, JPEG or WebP, whatever the provider returned)</returns>
+    /// <exception cref="ArgumentException">If narrative is empty or the panel count is invalid</exception>
     /// <exception cref="HttpRequestException">If the image generation API call fails</exception>
-    Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount, CancellationToken cancellationToken = default);
+    Task<byte[]> GenerateComicImageAsync(string narrative, IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default);
 }

@@ -61,7 +61,9 @@ window.shareUtils = {
             }
 
             const blob = await response.blob();
-            return new File([blob], 'poseereview-comic.png', { type: blob.type || 'image/png' });
+            // Newer comics are WebP; a share target trusts the extension, so it must match the type.
+            const type = blob.type || 'image/png';
+            return new File([blob], `poseereview-comic.${type.split('/')[1]}`, { type });
         } catch {
             return null;
         }

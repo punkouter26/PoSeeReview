@@ -80,16 +80,8 @@ internal static class OpenAiWireChat
         var result = DeserializeLenient<StrangenessAnalysisResult>(completion.Content[0].Text)
             ?? throw new InvalidOperationException("Failed to parse chat response");
 
-        var score = Math.Clamp(result.StrangenessScore, 0, 100);
-        var panelCount = Math.Clamp(result.PanelCount, 1, 2);
-        var narrative = result.Narrative ?? string.Empty;
-
         return new Result(
-            new StrangenessAnalysis(
-                score,
-                panelCount,
-                narrative,
-                ChatPrompts.NormalizeCaptions(result.Captions, narrative, panelCount)),
+            ChatPrompts.ToAnalysis(result),
             completion.Usage?.InputTokenCount ?? 0,
             completion.Usage?.OutputTokenCount ?? 0);
     }

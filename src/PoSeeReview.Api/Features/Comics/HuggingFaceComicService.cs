@@ -55,16 +55,17 @@ public sealed class HuggingFaceComicService : IImageGenerationService
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateComicImageAsync(string narrative, int panelCount, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateComicImageAsync(string narrative, IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(narrative))
             throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
 
+        var panelCount = panelScenes.Count;
         if (panelCount is < 1 or > 4)
-            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelCount));
+            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelScenes));
 
         var stopwatch = Stopwatch.StartNew();
-        var prompt = BuildComicPrompt(narrative, panelCount);
+        var prompt = BuildComicPrompt(narrative, panelScenes);
 
         var body = new
         {
@@ -73,8 +74,9 @@ public sealed class HuggingFaceComicService : IImageGenerationService
             {
                 negative_prompt = NegativePrompt,
                 num_inference_steps = _options.ImageSteps,
-                width = 1024,
-                height = 1024
+                // Landscape panels either way: one wide frame, or two stacked in a tall one.
+                width = panelCount == 2 ? 768 : 1024,
+                height = panelCount == 1 ? 768 : 1024
             }
         };
 
@@ -153,8 +155,10 @@ public sealed class HuggingFaceComicService : IImageGenerationService
     /// or "no text" (naming a concept, even to forbid it, nudges diffusion models to draw it).
     /// All lettering suppression lives in <see cref="NegativePrompt"/>.
     /// </summary>
-    private static string BuildComicPrompt(string narrative, int panelCount)
+    private static string BuildComicPrompt(string narrative, IReadOnlyList<string> panelScenes)
     {
+        var panelCount = panelScenes.Count;
+        var breakdown = string.Join("\n", panelScenes.Select((scene, i) => $"Panel {i + 1}: {scene}"));
         var panelLayout = panelCount switch
         {
             1 => "a single wide comic panel filling the frame",
@@ -168,8 +172,10 @@ Create {panelLayout} in a clean, modern cartoon illustration style — vibrant c
 exaggerated facial expressions and body language. Wordless, silent, pantomime storytelling in the
 tradition of silent-film slapstick: every emotion carried purely by faces, gestures, and posture.
 
-Depict this scene through action alone:
+Depict this story through action alone:
 "{narrative}"
+
+{breakdown}
 
 Consistent characters across panels with matching outfits. Clean black panel gutters separating
 exactly {panelCount} panel(s). Every wall, sign, menu, and surface is a plain solid color or simple

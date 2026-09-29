@@ -32,12 +32,16 @@ internal static class ChatTokenBudget
     /// entirely on thinking and return a completion with no content parts — a 500, not a saving.
     /// </para>
     /// </summary>
-    public static ChatCompletionOptions Build(float temperature, int? maxCompletionTokens, bool isReasoningModel)
+    public static ChatCompletionOptions Build(
+        float temperature,
+        int? maxCompletionTokens,
+        bool isReasoningModel,
+        ChatResponseFormat? responseFormat = null)
     {
         var options = new ChatCompletionOptions
         {
             Temperature = temperature,
-            ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
+            ResponseFormat = responseFormat ?? ChatResponseFormat.CreateJsonObjectFormat()
         };
 
         if (CanApplyCap(maxCompletionTokens, isReasoningModel))

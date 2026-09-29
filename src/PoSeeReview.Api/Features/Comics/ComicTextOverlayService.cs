@@ -62,8 +62,16 @@ public class ComicTextOverlayService : IComicTextOverlayService
                 drawn++;
             }
 
+            // Lossy WebP, not PNG: a painted strip saved as PNG was ~1.1 MB, and every thumbnail,
+            // comic view, share card and download paid for it. FileFormat must be explicit: left
+            // unset, ImageSharp inherits it from the decoded source, and a PNG source means
+            // lossless WebP at 930 KB — the same bill in a new container.
             using var outputStream = new MemoryStream();
-            image.SaveAsPng(outputStream);
+            image.SaveAsWebp(outputStream, new SixLabors.ImageSharp.Formats.Webp.WebpEncoder
+            {
+                FileFormat = SixLabors.ImageSharp.Formats.Webp.WebpFileFormatType.Lossy,
+                Quality = 85
+            });
 
             _logger.LogInformation("Drew {Count} panel caption(s) onto comic", drawn);
             return Task.FromResult(outputStream.ToArray());

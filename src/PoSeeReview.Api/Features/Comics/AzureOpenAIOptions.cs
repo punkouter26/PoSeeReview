@@ -52,4 +52,13 @@ public class AzureOpenAIOptions
     /// </para>
     /// </summary>
     public int? MaxCompletionTokens { get; set; }
+
+    /// <summary>
+    /// gpt-image deployment used when <c>Ai:ImageProvider</c> is <c>AzureOpenAI</c>. Lives on the
+    /// same resource, endpoint and key as the chat deployment.
+    /// </summary>
+    public string ImageDeployment { get; set; } = "gpt-image-1-mini";
+
+    /// <summary><c>low</c>, <c>medium</c> or <c>high</c>. Price scales with it roughly 4x per step.</summary>
+    public string ImageQuality { get; set; } = "low";
 }

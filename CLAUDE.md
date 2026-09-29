@@ -170,12 +170,12 @@ it, so a Test-only auto-navigate silently breaks that suite.
 - `AzureAd:ClientId` and `AzureAd:AllowedTenants` stay in appsettings.json on purpose — public
   application identifiers, not credentials. `AzureAd:ClientSecret` is Key Vault only.
 - AI backend is selected by `Ai:ImageProvider`, bound to the `AiImageProvider` enum
-  (`Gemini` default, `HuggingFace`) in `InfrastructureServiceCollectionExtensions`. It replaced a
-  `UseHuggingFace` boolean; an unparseable value fails startup rather than silently falling back
-  to the paid default. There is deliberately **no** `AzureOpenAI` member — only two
-  `IImageGenerationService` implementations exist, so a third value could only ever throw. The
-  choice selects the chat provider too; that pairing is real (HuggingFace's chat and image
-  endpoints share a token), not an oversight.
+  (`Gemini` default, `HuggingFace`, `AzureOpenAI`) in `InfrastructureServiceCollectionExtensions`.
+  It replaced a `UseHuggingFace` boolean; an unparseable value fails startup rather than silently
+  falling back to the paid default. One member per `IImageGenerationService`, so no value can only
+  throw. `AzureOpenAI` is gpt-image-1-mini (`AzureOpenAI:ImageDeployment`/`ImageQuality`) on the
+  scorer's own Foundry resource — roughly a tenth of Gemini's price per strip, visibly rougher,
+  and it letters signs despite the wordless prompt, which is why Gemini stays the default.
 
 ### Pipeline ordering that matters
 
@@ -247,12 +247,39 @@ to effects where compute changes what the effect *can be*.
 **There is one chat call, not two.** Captions used to come from a second completion issued after
 the image existed, though it shared no input with the image call it waited behind — it needs
 only the narrative, which the first call produced. `IChatCompletionService` has one method and
-`ChatPrompts.BuildAnalysisPrompt` asks for `captions` alongside `narrative`. The neat part is
+the analysis asks for `panels: [{scene, caption}]` alongside `narrative`. The neat part is
 what that removes: `ComicTextOverlayService` no longer holds a chat service at all, so the
 drawing step is text-in/pixels-out and the model coupling lives in one place.
-`ChatPrompts.NormalizeCaptions` makes the result total — a language model asked to count panels
+`ChatPrompts.ToAnalysis` makes the result total — a language model asked to count panels
 gets it wrong often enough to matter, and topping up from the narrative beats paying a second
 call to improve a subtitle.
+
+**The painter draws the scorer's shot list.** Each panel's `scene` becomes a numbered line of
+the image prompt (`ComicImagePrompt`, shared by Gemini and gpt-image; FLUX keeps its own for the
+negative prompt). The painter used to get the narrative plus a generic "setup / punchline", and
+invented panels the separately written captions did not describe. Scenes are asked for in
+cartoon terms, so blunting is the backstop rather than the plan. Gemini also gets an
+`imageConfig.aspectRatio` (3:4 for two stacked panels) so the panels come out landscape.
+
+**The model rates, the code scores.** The analysis returns `absurdity`, `specificity` and
+`storyPotential` (0-10, pinned by three worked examples in the system message) and
+`ChatPrompts.ComputeScore` multiplies: absurdity × (6 + 0.2·specificity + 0.2·story). Adding them
+instead scored a vivid complaint about cold fries in the 20s-30s. Azure gets a strict JSON
+schema. The system message holds everything static and the user message is only `<reviews>` —
+the old layout, rules interleaved with reviews, tripped Azure's jailbreak filter (a 400) on an
+injection-style review; this one scores it 7. Judge a prompt change with the golden set:
+
+```powershell
+dotnet run SCRIPTS/prompt-eval.cs -- --model gemma3:4b      # Ollama, free
+dotnet run SCRIPTS/prompt-eval.cs -- --provider azure        # needs AZURE_OPENAI_ENDPOINT/_API_KEY
+```
+
+It reports band hits, run-to-run spread, parse failures and blunted terms. Against gpt-5.4-nano
+the old prompt hit 6/12 bands (everything odd squeezed into 58-78); this one hits 12/12 with a
+1.3-point spread. Spread did not improve — the old prompt was already steady — the range did.
+
+gpt-5.4-nano defaults to **no reasoning** (0 reasoning tokens, ~2s). Do not set a
+`reasoning_effort`: any value but `none` makes the model reject the scorer's `temperature: 0.3`.
 
 **Single flight.** `ComicGenerationLock` is a per-place `SemaphoreSlim`; the pipeline takes it
 after the first cache miss and re-reads the cache under it. Without it a double-tap or two tabs
@@ -283,9 +310,21 @@ wrong instrument anyway: reasoning tokens are billed against the same allowance.
 answered by redrawing with a fixed "happy restaurant" prompt and publishing *that* under the
 reviews' score, with no marker that the subject had been swapped — the app spending money to
 lie. `ImageDeclinedException` now surfaces as a 422 and flags the place for moderation, because
-a refusal is a real signal about the source material. `SanitizeNarrative` still blunts the terms
+a refusal is a real signal about the source material. `ComicImagePrompt` still blunts the terms
 the image filter rejects (the alternative is refusing the one-star reviews the product mines)
 but now reports which ones via `Gemini.Image.PromptTermsBlunted` — a rewrite should be visible.
+
+**Reviews are masked, not dropped, for profanity.** Google returns at most five reviews and the
+angriest is usually the best material, so `fuck`/`shit`/… become `[bleep]` in place; only
+explicit sexual terms drop a review. The leet normalisation is strictly one character for one
+so a match index maps straight back onto the original text.
+
+**Comics are lossy WebP** (~140 KB against ~1.1 MB PNG). `WebpEncoder.FileFormat` must be set
+explicitly — unset, ImageSharp inherits lossless from the PNG it decoded and writes 930 KB.
+`BlobStorageService` names and types the blob from the file signature (a failed overlay hands
+back the provider's PNG/JPEG), and `DeleteComicImageAsync` removes every extension a comic may
+have been stored under, since older rows are all `.png`. The embedding call now runs alongside
+the image call rather than after it.
 
 **Embeddings, and the `/comics/{placeId}/similar` row.** `IEmbeddingService` (`Embedding:*`,
 **opt-in and off by default**) vectors the narrative onto the comic row; `VectorMath` packs it

@@ -271,6 +271,13 @@ public partial class ComicGenerationService : IComicGenerationService
         // Normalised here rather than at the overlay step so the wait for the artwork can show
         // them: they are final once the analysis returns, and the image call is the long pole.
         var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
+        var scenes = ChatPrompts.NormalizeScenes(analysis.Scenes, captions, panelCount);
+
+        // The vector that will let another comic find this one. It needs only the narrative, so it
+        // runs alongside the image call instead of after it, where its timeout sat on the critical
+        // path. Best-effort by contract: it never throws, and an empty array means "not a
+        // similarity candidate", which costs a related link and never a comic.
+        var embeddingTask = _embeddingService.EmbedAsync(narrative, cancellationToken);
 
         // Generate comic image (panel count capped at 2)
         progress?.Report(new ComicGenerationProgress(ComicGenerationPhase.GeneratingArtwork, strangenessScore, captions));
@@ -278,7 +285,7 @@ public partial class ComicGenerationService : IComicGenerationService
         byte[] imageBytes;
         try
         {
-            imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, panelCount, cancellationToken);
+            imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, scenes, cancellationToken);
         }
         catch (ImageDeclinedException ex)
         {
@@ -314,10 +321,7 @@ public partial class ComicGenerationService : IComicGenerationService
         // so a browser canvas that has drawn it cannot be read back.
         var palette = ComicPaletteExtractor.Extract(imageBytes);
 
-        // The vector that will let another comic find this one. Best-effort by contract: an empty
-        // array means "not a similarity candidate", which costs a related link and never a comic,
-        // and it is what a switched-off or unreachable embedding backend returns.
-        var embedding = await _embeddingService.EmbedAsync(narrative, cancellationToken);
+        var embedding = await embeddingTask;
 
         // Upload to blob storage
         progress?.Report(ComicGenerationPhase.Publishing);
@@ -387,57 +391,70 @@ public partial class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
-    /// The profanity filter, as one alternation. These keywords used to be matched in a loop of
-    /// interpolated patterns: 16 keywords against a process-wide <see cref="Regex"/> cache that
-    /// holds 15, so the LRU evicted on every pass — every keyword was re-parsed for every review,
-    /// and other callers' patterns were evicted along with them. Generated at build time now.
+    /// Explicit sexual terms. A review containing one is dropped: nothing about a restaurant
+    /// visit needs it, and it is the category an image model refuses outright.
     /// </summary>
     [GeneratedRegex(
-        @"\b(?:fuck|shit|ass|bitch|bastard|piss|slut|whore|damn|crap|hell|dick|cock|penis|vagina|anus)\b",
+        @"\b(?:slut|whore|cock|penis|vagina|anus)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex InappropriateContentRegex();
+    private static partial Regex ExplicitContentRegex();
 
     /// <summary>
-    /// Filters out reviews containing inappropriate language or content.
-    /// Normalizes leet-speak substitutions before matching so "sh1t", "f*ck", "a$$"
-    /// are caught as reliably as their plaintext equivalents.
+    /// Profanity, which is masked rather than dropped. Google returns at most five reviews and
+    /// the angriest one-star review is usually the best material; dropping it over one word threw
+    /// away the story to avoid the word. "damn", "hell" and "crap" are no longer on the list at
+    /// all: they are ordinary review English, and "hell" is also a restaurant name.
     /// </summary>
-    private static List<string> FilterInappropriateReviews(List<string> reviews)
+    [GeneratedRegex(
+        @"\b(?:fuck|shit|ass|bitch|bastard|piss|dick)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ProfanityRegex();
+
+    /// <summary>
+    /// Drops reviews with explicit content and masks profanity in the rest. Both checks run on a
+    /// leet-normalised copy so "sh1t" and "a$$" match like their plain spellings.
+    /// </summary>
+    private static List<string> FilterInappropriateReviews(List<string> reviews) =>
+        [.. reviews
+            .Select(review => review.Normalize(System.Text.NormalizationForm.FormC))
+            .Where(review => !ExplicitContentRegex().IsMatch(NormalizeLeetSpeak(review)))
+            .Select(MaskProfanity)];
+
+    /// <summary>
+    /// Matched on the normalised copy, masked in the original. The substitutions are one
+    /// character for one, so a match index in one is the same index in the other.
+    /// </summary>
+    private static string MaskProfanity(string review)
     {
-        return reviews
-            .Where(review => !ContainsInappropriateContent(review))
-            .ToList();
+        var matches = ProfanityRegex().Matches(NormalizeLeetSpeak(review));
+        if (matches.Count == 0)
+            return review;
+
+        var masked = new System.Text.StringBuilder(review);
+        for (var i = matches.Count - 1; i >= 0; i--)
+        {
+            masked.Remove(matches[i].Index, matches[i].Length).Insert(matches[i].Index, "[bleep]");
+        }
+
+        return masked.ToString();
     }
 
     /// <summary>
-    /// Normalizes common leet-speak character substitutions so filter keywords
-    /// match obfuscated variants (e.g. "sh!t", "f*ck", "a$$").
+    /// Normalizes common leet-speak substitutions, strictly one character for one (see
+    /// <see cref="MaskProfanity"/>). There is no rule for "*": a starred word is already masked.
     /// </summary>
     private static string NormalizeLeetSpeak(string text)
     {
         return text
-            .Replace("0", "o", StringComparison.Ordinal)
-            .Replace("1", "i", StringComparison.Ordinal)
-            .Replace("3", "e", StringComparison.Ordinal)
-            .Replace("4", "a", StringComparison.Ordinal)
-            .Replace("5", "s", StringComparison.Ordinal)
-            .Replace("7", "t", StringComparison.Ordinal)
-            .Replace("@", "a", StringComparison.Ordinal)
-            .Replace("$", "s", StringComparison.Ordinal)
-            .Replace("!", "i", StringComparison.Ordinal)
-            .Replace("*", string.Empty, StringComparison.Ordinal);
-    }
-
-    private static bool ContainsInappropriateContent(string review)
-    {
-        if (string.IsNullOrWhiteSpace(review))
-            return false;
-
-        // Normalize Unicode to NFC then apply leet-speak substitutions before matching
-        var normalized = NormalizeLeetSpeak(
-            review.Normalize(System.Text.NormalizationForm.FormC));
-
-        return InappropriateContentRegex().IsMatch(normalized);
+            .Replace('0', 'o')
+            .Replace('1', 'i')
+            .Replace('3', 'e')
+            .Replace('4', 'a')
+            .Replace('5', 's')
+            .Replace('7', 't')
+            .Replace('@', 'a')
+            .Replace('$', 's')
+            .Replace('!', 'i');
     }
 
     /// <summary>

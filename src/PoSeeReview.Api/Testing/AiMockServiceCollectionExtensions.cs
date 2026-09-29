@@ -27,6 +27,8 @@ public static class AiMockServiceCollectionExtensions
         // The factory chains the InnerHandler automatically for AddHttpMessageHandler.
         services.AddHttpClient("GeminiApi")
             .AddHttpMessageHandler(() => new AiMockDelegatingHandler());
+        services.AddHttpClient("AzureOpenAIImageApi")
+            .AddHttpMessageHandler(() => new AiMockDelegatingHandler());
 
         // ── Azure AI Foundry / Azure OpenAI: SDK uses the Azure.Core pipeline, so the
         //    DelegatingHandler is injected via a custom HttpClient transport. ──

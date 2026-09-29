@@ -123,7 +123,7 @@ public class ComicGenerationServiceTests
         Assert.Equal(PlaceId.From(placeId), result.PlaceId);
         Assert.Equal(cachedComic.ImageUrl, result.ImageUrl);
         Assert.Equal(ComicCacheState.Cached, result.CacheState);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StrangenessAnalysis(75, 3, "A restaurant where waiters dress as dinosaurs and food is served in shoes."));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -169,7 +169,7 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal(ComicCacheState.Generated, result.CacheState);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockComicRepository.Verify(x => x.UpsertAsync(It.IsAny<Comic>()), Times.Once);
     }
 
@@ -206,7 +206,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StrangenessAnalysis(75, 3, "Test narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -217,7 +217,7 @@ public class ComicGenerationServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Equal(ComicCacheState.Generated, result.CacheState);
-        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockImageGenerationService.Verify(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -276,7 +276,7 @@ public class ComicGenerationServiceTests
             service.GenerateComicAsync(PlaceId.From(placeId), forceRegenerate: false));
 
         _mockImageGenerationService.Verify(
-            x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -306,7 +306,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StrangenessAnalysis(50, 2, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -338,7 +338,7 @@ public class ComicGenerationServiceTests
 
         var reports = new List<ComicGenerationProgress>();
         ComicGenerationProgress? atImageCall = null;
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .Callback(() => atImageCall = reports.LastOrDefault())
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         IReadOnlyList<string>? lettered = null;
@@ -388,7 +388,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StrangenessAnalysis(70, 3, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -448,7 +448,7 @@ public class ComicGenerationServiceTests
             .ReturnsAsync(restaurant);
         _mockOpenAIService.Setup(x => x.AnalyzeStrangenessAsync(It.IsAny<List<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new StrangenessAnalysis(80, 4, "Narrative"));
-        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _mockImageGenerationService.Setup(x => x.GenerateComicImageAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new byte[] { 1, 2, 3, 4 });
         _mockBlobStorageService.Setup(x => x.UploadComicImageAsync(It.IsAny<string>(), It.IsAny<byte[]>()))
             .ReturnsAsync("https://blob.storage/comic.png");
@@ -563,7 +563,7 @@ public class ComicGenerationServiceTests
     [InlineData("What a shit restaurant")]      // Exact word match
     [InlineData("The service was ass")]         // Exact word match
     [InlineData("The waiter was a bitch")]      // Exact word match
-    public void FilterInappropriateReviews_Removes_ProfanityContent(string inappropriateText)
+    public void FilterInappropriateReviews_Masks_ProfanityInsteadOfDroppingTheReview(string inappropriateText)
     {
         // Arrange
         var reviews = new List<string>
@@ -582,18 +582,19 @@ public class ComicGenerationServiceTests
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
         // Assert
-        Assert.Equal(2, result.Count);
+        Assert.Equal(3, result.Count);
+        Assert.Contains("[bleep]", result[1]);
         Assert.DoesNotContain(inappropriateText, result);
     }
 
     [Fact]
-    public void FilterInappropriateReviews_CaseInsensitive()
+    public void FilterInappropriateReviews_MasksLeetAndAnyCase_AndDropsOnlyExplicitReviews()
     {
         // Arrange
         var reviews = new List<string>
         {
-            "This is FUCK terrible",      // Exact word match
-            "What a SHIT place",           // Exact word match
+            "Waited 45 min, total SH1T, but the goat in the kitchen was a hell of a show",
+            "The waiter described his penis to us",
             "Nice restaurant"
         };
 
@@ -605,9 +606,10 @@ public class ComicGenerationServiceTests
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         var result = (List<string>)method!.Invoke(service, new object[] { reviews })!;
 
-        // Assert
-        Assert.Single(result);
-        Assert.Equal("Nice restaurant", result[0]);
+        // Assert: digits outside the masked word survive, "hell" is not profanity, explicit drops.
+        Assert.Equal(
+            ["Waited 45 min, total [bleep], but the goat in the kitchen was a hell of a show", "Nice restaurant"],
+            result);
     }
 
     [Fact]
