@@ -6,6 +6,5 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Git-driven versioning via MinVer -->
     <MinVerDefaultPreReleaseIdentifiers>preview</MinVerDefaultPreReleaseIdentifiers>
-    <MinVerVerbosity>normal</MinVerVerbosity>
   </PropertyGroup>
 </Project>
