@@ -32,8 +32,8 @@ function readStoredPreference() {
 }
 
 function active() {
-    if (!state.supported || state.preference === false) return false;
-    return state.preference === true || state.audioEnabled;
+    // An explicit true is not an override: it only matters as "not false". Audio off is off.
+    return state.supported && state.preference !== false && state.audioEnabled;
 }
 
 function fire(pattern) {

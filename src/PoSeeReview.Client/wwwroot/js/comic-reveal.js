@@ -27,6 +27,7 @@ import { gfx } from './gfx-core.js';
 
 const PROPERTY = '--comic-reveal';
 const ATTRIBUTE = 'comicReveal';   // dataset key for data-comic-reveal
+const DURATION_MS = 1400;
 
 const instances = new Map();
 let nextId = 1;
@@ -44,8 +45,7 @@ function ease(t) {
 
 /**
  * @param {HTMLElement} container the .comic-strip-container; carries the mask and the property
- * @param {{ bands?: number, durationMs?: number,
- *           onBand?: (index: number, total: number) => void }} options
+ * @param {{ bands?: number, onBand?: (index: number, total: number) => void }} options
  * @returns {number} handle, or 0 when no reveal ran (in which case the comic is simply visible)
  */
 export function start(container, options = {}) {
@@ -56,13 +56,12 @@ export function start(container, options = {}) {
     if (!gfx.allows('lite')) return 0;
 
     const bands = Math.max(1, Math.min(4, options.bands ?? 2));
-    const durationMs = Math.max(300, Math.min(4000, options.durationMs ?? 1400));
     const onBand = typeof options.onBand === 'function' ? options.onBand : null;
 
     // A second start on the same container replaces the first — a regenerate swaps the src on
     // the same element, and two loops writing one property is a fight neither wins.
     for (const [existingId, existing] of instances) {
-        if (existing.container === container) cancel(existingId);
+        if (existing.container === container) finish(existingId);
     }
 
     const id = nextId++;
@@ -93,11 +92,11 @@ export function start(container, options = {}) {
     instance.stop = gfx.addTask(`comic-reveal#${id}`, (now) => {
         // The element can be removed from the DOM by a navigation while the loop is live.
         if (!container.isConnected) {
-            cancel(id);
+            finish(id);
             return;
         }
 
-        const raw = Math.min(1, (now - startedAt) / durationMs);
+        const raw = Math.min(1, (now - startedAt) / DURATION_MS);
         const progress = ease(raw);
 
         write(progress);
@@ -127,9 +126,8 @@ export function start(container, options = {}) {
 }
 
 /**
- * Ends the reveal with the comic fully developed. Separate from cancel() only in intent — both
- * land on the same cleanup, because a half-finished reveal and a finished one must both leave
- * the whole comic visible.
+ * Ends the reveal with the comic fully developed. Also the abort path: a half-finished reveal
+ * and a finished one must both leave the whole comic visible.
  */
 export function finish(id) {
     const instance = instances.get(id);
@@ -138,10 +136,6 @@ export function finish(id) {
     cleanup(instance);
     instance.stop?.();
     instances.delete(id);
-}
-
-export function cancel(id) {
-    finish(id);
 }
 
 function cleanup(instance) {
@@ -154,11 +148,6 @@ function cleanup(instance) {
     } catch {
         // Already detached.
     }
-}
-
-/** Reveals in progress. Read by the perf HUD and the diagnostics page. */
-export function activeCount() {
-    return instances.size;
 }
 
 gfx.onTierChanged((tier) => {

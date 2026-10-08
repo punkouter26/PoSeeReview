@@ -115,8 +115,3 @@ export function stop(id) {
     } catch { /* detached */ }
     instances.delete(id);
 }
-
-/** Live scrubbers, for the diagnostics panel. */
-export function activeCount() {
-    return instances.size;
-}

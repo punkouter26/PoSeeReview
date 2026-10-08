@@ -281,13 +281,3 @@ export function settle() {
     tagMorphTarget();
     pending?.settle();
 }
-
-export function dispose() {
-    document.removeEventListener('click', onDocumentClick, true);
-    window.removeEventListener('pagehide', onPageHide);
-    pending?.settle();
-    enabled = false;
-    delete document.documentElement.dataset.viewTransitions;
-}
-
-window.poseeViewTransitions = { init, settle, dispose };
