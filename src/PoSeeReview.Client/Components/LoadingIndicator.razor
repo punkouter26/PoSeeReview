@@ -1,16 +1,17 @@
-@* One loading display for the whole app, carrying role="status" + aria-busy so a screen reader
-   is told a wait is happening.
+@* One loading display for the whole app, carrying role="status" so a screen reader is told a
+   wait is happening. No aria-busy: on a live region that means "hold announcements", and this
+   one never cleared it.
 
    With `Steps` it is a single line — the step the pipeline is on and how far along — because the
    comic page puts the Storyboard directly under it, and the storyboard IS the progress display.
-   It used to stack a spinner, the step label, a progress bar and a Radzen stepper on top of that:
+   It used to stack a spinner, the step label, a progress bar and a stepper on top of that:
    five indicators of one wait. *@
 <div class="loading-indicator @(Steps is { Length: > 0 } ? "loading-indicator--steps" : "")"
-     role="status" aria-live="polite" aria-busy="true">
+     role="status">
     @if (Steps is { Length: > 0 })
     {
         <p class="stepper-message" @key="_stepIndex">
-            @Steps[_stepIndex].Icon @Steps[_stepIndex].Label
+            <span aria-hidden="true">@Steps[_stepIndex].Icon</span> @Steps[_stepIndex].Label
             <span class="stepper-count">@(_stepIndex + 1)/@Steps.Length</span>
         </p>
     }

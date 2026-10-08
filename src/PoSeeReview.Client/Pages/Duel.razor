@@ -1,0 +1,61 @@
+@page "/duel/{A}/{B}"
+@attribute [Authorize]
+@using PoSeeReview.Client.Services
+@using PoSeeReview.Shared.Dtos
+@inject ApiClient ApiClient
+
+<PageTitle>Duel - PoSeeReview</PageTitle>
+
+<PageShell Title="Which is stranger?" Width="PageShell.ShellWidth.Narrow">
+    @if (_failed)
+    {
+        <StateCard Icon="⚔️" Title="This duel is over">
+            <ChildContent>One of these comics has expired or been withdrawn, so there is nothing to compare.</ChildContent>
+            <Actions><a href="/" class="btn btn-primary">Find restaurants</a></Actions>
+        </StateCard>
+    }
+    else
+    {
+        @* The card is drawn by the server (the same image a link preview shows); width and
+           height reserve its box before it loads. *@
+        <img class="duel-card" width="1200" height="630"
+             src="@($"/share/duel/{Uri.EscapeDataString(A)}/{Uri.EscapeDataString(B)}/card.png")"
+             alt="@($"{NameOf(_a, "The first comic")} versus {NameOf(_b, "the second comic")}, side by side with their strangeness scores")"
+             @onerror="() => _failed = true" />
+        <div class="duel-links">
+            <a class="btn btn-secondary" href="@($"/comic/{Uri.EscapeDataString(A)}")">@NameOf(_a, "First comic")</a>
+            <a class="btn btn-secondary" href="@($"/comic/{Uri.EscapeDataString(B)}")">@NameOf(_b, "Second comic")</a>
+        </div>
+    }
+</PageShell>
+
+@code {
+    [Parameter] public string A { get; set; } = string.Empty;
+    [Parameter] public string B { get; set; } = string.Empty;
+
+    private ComicDto? _a;
+    private ComicDto? _b;
+    private bool _failed;
+
+    /// <summary>Only for the names on the two links; the page works without them.</summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        _failed = false;
+        (_a, _b) = (await TryGetAsync(A), await TryGetAsync(B));
+    }
+
+    private async Task<ComicDto?> TryGetAsync(string placeId)
+    {
+        try
+        {
+            return await ApiClient.GetCachedComicAsync(placeId);
+        }
+        catch (HttpRequestException)
+        {
+            return null;   // Withheld (451) or unreachable; the image's own failure says so.
+        }
+    }
+
+    private static string NameOf(ComicDto? comic, string fallback) =>
+        string.IsNullOrWhiteSpace(comic?.RestaurantName) ? fallback : comic.RestaurantName;
+}

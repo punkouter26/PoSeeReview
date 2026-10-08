@@ -14,8 +14,8 @@ public sealed class BffAuthenticationStateProvider(HttpClient http) : Authentica
 {
     private static readonly AuthenticationState Anonymous = new(new ClaimsPrincipal(new ClaimsIdentity()));
 
-    // /auth/me is hit on every outgoing API request; cache the resolved state so we make at most
-    // one round-trip per auth change. Invalidated by NotifyStateChanged() after login/logout.
+    // Cached for the session: login and logout are full-page navigations, so a new session is
+    // a new provider.
     private Task<AuthenticationState>? _cachedState;
 
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
@@ -55,12 +55,5 @@ public sealed class BffAuthenticationStateProvider(HttpClient http) : Authentica
 
         return new AuthenticationState(
             new ClaimsPrincipal(new ClaimsIdentity(claims, state.AuthScheme ?? "BFF")));
-    }
-
-    /// <summary>Re-queries /auth/me after a login/logout navigation completes.</summary>
-    public void NotifyStateChanged()
-    {
-        _cachedState = null;
-        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }
 }

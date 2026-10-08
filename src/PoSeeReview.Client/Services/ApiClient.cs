@@ -30,7 +30,7 @@ public class ApiClient
         int limit = 10,
         CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(
+        using var request = new HttpRequestMessage(
             HttpMethod.Get,
             $"/api/restaurants/nearby?latitude={latitude}&longitude={longitude}&limit={limit}");
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken);
@@ -57,7 +57,7 @@ public class ApiClient
             url += "?forceRegenerate=true";
         }
 
-        using var request = await CreateRequestAsync(HttpMethod.Post, url);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
 
         // Without this the browser HttpClient buffers the entire body before ReadAsStreamAsync
         // yields a byte, so every phase arrived in one burst after `complete` and the stepper
@@ -125,7 +125,7 @@ public class ApiClient
         string placeId,
         CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/{placeId}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/comics/{placeId}");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -139,8 +139,6 @@ public class ApiClient
     }
 
     /// <summary>
-
-    /// <summary>
     /// Searches for restaurants by location query (city name or ZIP code).
     /// </summary>
     public async Task<NearbyRestaurantsResponse?> SearchRestaurantsByLocationAsync(
@@ -149,7 +147,7 @@ public class ApiClient
         CancellationToken cancellationToken = default)
     {
         var url = $"/api/restaurants/search?location={Uri.EscapeDataString(locationQuery)}&limit={limit}";
-        using var request = await CreateRequestAsync(HttpMethod.Get, url);
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
 
         await EnsureSuccessAsync(response, "Search request failed", cancellationToken);
@@ -232,7 +230,7 @@ public class ApiClient
     {
         try
         {
-            using var request = await CreateRequestAsync(
+            using var request = new HttpRequestMessage(
                 HttpMethod.Get,
                 $"/api/leaderboard?region={region}&limit={limit}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -256,7 +254,7 @@ public class ApiClient
     {
         try
         {
-            using var request = await CreateRequestAsync(
+            using var request = new HttpRequestMessage(
                 HttpMethod.Get,
                 $"/api/leaderboard/weekly?weeks={weeks}&limit={limit}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -278,7 +276,7 @@ public class ApiClient
     {
         try
         {
-            using var request = await CreateRequestAsync(HttpMethod.Get, "/api/comics/budget");
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/comics/budget");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
 
             return response.IsSuccessStatusCode
@@ -309,7 +307,7 @@ public class ApiClient
         try
         {
             var query = Uri.EscapeDataString(string.Join(',', ids));
-            using var request = await CreateRequestAsync(HttpMethod.Get, $"/api/comics/cached?placeIds={query}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/comics/cached?placeIds={query}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
 
             if (!response.IsSuccessStatusCode)
@@ -342,7 +340,7 @@ public class ApiClient
     {
         try
         {
-            using var request = await CreateRequestAsync(HttpMethod.Post, $"/api/share/{placeId}");
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/share/{placeId}");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
 
             return response.IsSuccessStatusCode
@@ -363,7 +361,7 @@ public class ApiClient
         ComicReportRequestDto report,
         CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Post, "/api/reports");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/reports");
         request.Content = JsonContent.Create(report, AppJsonContext.Default.ComicReportRequestDto);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -375,7 +373,7 @@ public class ApiClient
 
     public async Task<HealthStatusDto?> GetHealthStatusAsync(CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, "/health");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, "Health request failed", cancellationToken);
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.HealthStatusDto, cancellationToken);
@@ -383,14 +381,9 @@ public class ApiClient
 
     public async Task<DiagnosticsSnapshotDto?> GetDiagnosticsSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        using var request = await CreateRequestAsync(HttpMethod.Get, "/diag");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/diag");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, "Diagnostics request failed", cancellationToken);
         return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.DiagnosticsSnapshotDto, cancellationToken);
-    }
-
-    private static Task<HttpRequestMessage> CreateRequestAsync(HttpMethod method, string url)
-    {
-        return Task.FromResult(new HttpRequestMessage(method, url));
     }
 }

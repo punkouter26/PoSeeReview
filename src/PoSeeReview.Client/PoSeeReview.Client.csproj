@@ -2,7 +2,6 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Do NOT set IsTrimmable on this assembly: the Router/LayoutView instantiate
          components via reflection (typeof(MainLayout) in App.razor), so member-level
          trimming strips their constructors and the published app dies at runtime with
@@ -20,8 +19,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
-    <PackageReference Include="Radzen.Blazor" />
   </ItemGroup>
 
   <ItemGroup>

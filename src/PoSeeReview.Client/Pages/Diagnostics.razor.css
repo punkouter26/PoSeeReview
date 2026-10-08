@@ -9,10 +9,10 @@
 .health-summary {
     display: flex;
     align-items: center;
-    gap: 1.5rem;
-    padding: 2rem;
-    border-radius: 12px;
-    margin-bottom: 2rem;
+    gap: var(--space-lg);
+    padding: var(--space-xl);
+    border-radius: var(--radius-card);
+    margin-bottom: var(--space-xl);
     box-shadow: var(--shadow-sm);
 }
 
@@ -35,27 +35,27 @@
 }
 
 .status-icon {
-    font-size: 3rem;
+    font-size: var(--text-3xl);
 }
 
 .status-details h2 {
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 var(--space-xs) 0;
     font-size: 1.75rem;
     color: var(--color-text-primary);
 }
 
 .status-details p {
-    margin: 0.25rem 0;
+    margin: var(--space-3xs) 0;
     color: var(--color-text-primary);
 }
 
 /* Health Checks */
 .health-checks {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-xl);
 }
 
 .diagnostics-section {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-xl);
 }
 
 /* `min(220px, 100%)` rather than a bare 220px: auto-fit tracks overflow their container when
@@ -70,7 +70,7 @@
     background: var(--color-card);
     border: 1px solid var(--color-border);
     border-radius: 10px;
-    padding: 1rem;
+    padding: var(--space-md);
 }
 
 .key-present {
@@ -105,11 +105,11 @@
 .config-row {
     display: grid;
     grid-template-columns: minmax(0, clamp(140px, 30%, 320px)) minmax(0, 1fr);
-    gap: 1rem;
-    padding: 0.85rem 1rem;
+    gap: var(--space-md);
+    padding: 0.85rem var(--space-md);
     background: var(--color-card);
     border: 1px solid var(--color-border);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
 }
 
 .config-key {
@@ -129,15 +129,15 @@
 
 .health-checks h3 {
     font-size: 1.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-md);
     color: var(--color-text-primary);
 }
 
 .health-check-card {
     background: var(--color-card);
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-sm);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-md);
     box-shadow: var(--shadow-xs);
     border-left: 4px solid var(--color-border);
 }
@@ -157,8 +157,8 @@
 .check-header {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-md);
+    margin-bottom: var(--space-sm);
 }
 
 .check-icon {
@@ -175,9 +175,9 @@
 
 .check-status {
     font-weight: 600;
-    padding: 0.25rem 0.75rem;
+    padding: var(--space-3xs) var(--space-sm);
     border-radius: 4px;
-    font-size: 0.875rem;
+    font-size: var(--text-sm);
     text-transform: uppercase;
 }
 
@@ -198,13 +198,13 @@
 
 .check-description {
     color: var(--color-text-secondary);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-xs);
 }
 
 .check-meta {
     display: flex;
-    gap: 1rem;
-    font-size: 0.875rem;
+    gap: var(--space-md);
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
 }
 
@@ -216,17 +216,17 @@
 
 .error-details {
     background: var(--color-surface-alt);
-    padding: 1rem;
+    padding: var(--space-md);
     border-radius: 4px;
     overflow-x: auto;
-    font-size: 0.875rem;
-    margin-top: 0.5rem;
+    font-size: var(--text-sm);
+    margin-top: var(--space-xs);
 }
 
 /* Actions */
 .actions {
     display: flex;
-    gap: 1rem;
+    gap: var(--space-md);
 }
 
 /* .btn / .btn-primary / .btn-secondary and .alert* are global primitives in app.css — see
@@ -255,12 +255,12 @@
    and the theme tests assert token values rather than rendered contrast, so nothing would catch
    it. */
 .fx-panel {
-    margin: 1.5rem 0;
+    margin: var(--space-lg) 0;
     padding: 1.25rem;
 }
 
 .fx-panel h2 {
-    margin: 0 0 1rem;
+    margin: 0 0 var(--space-md);
     font-family: var(--font-display);
     font-size: 1.4rem;
     letter-spacing: 0.02em;
@@ -277,7 +277,7 @@
 .fx-control-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-sm);
     flex-wrap: wrap;
 }
 
@@ -293,7 +293,7 @@
 }
 
 .fx-notes {
-    margin: 1rem 0 0;
+    margin: var(--space-md) 0 0;
     padding-left: 1.1rem;
     font-size: 0.82rem;
     line-height: 1.5;

@@ -10,12 +10,16 @@
 @inject FxService Fx
 @inject AnalyticsService Analytics
 @inject ComicHistoryService History
+@inject IJSRuntime JS
 
 <PageTitle>@(_comic?.RestaurantName ?? "Comic") - PoSeeReview</PageTitle>
 
 <div class="comic-view">
     @if (_isLoading)
     {
+        @* FocusOnNavigate looks for an h1, and the loading state had none. *@
+        <h1 class="visually-hidden">@(_isGenerating ? "Drawing your comic" : "Loading comic")</h1>
+
         @* A generation shows the step it is on over the storyboard, which is itself the progress
            display — frames ink in as the pipeline advances. A cache read is a plain spinner. *@
         <LoadingIndicator Message="Reading the weird stuff..."
@@ -29,7 +33,7 @@
     }
     else if (_error != null)
     {
-        <StateCard Class="error-container" Icon="🤷" Title="@_errorTitle" Heading1="true" Alert="true">
+        <StateCard Class="error-container" Icon="@_errorIcon" Title="@_errorTitle" Heading1="true" Alert="true">
             <ChildContent>@_error</ChildContent>
             <Actions>
                 @* A 429 that says "wait about a minute" needs somewhere to wait a minute and try
@@ -83,7 +87,9 @@
         <article class="comic-container glass">
             <div class="comic-header">
                 <h1>@_comic.RestaurantName</h1>
-                <div class="strangeness-ring-wrap">
+                @* The one inline style, and only a custom property: the score has to reach
+                   CSS as a number, and 0-100 is not something classes can carry. *@
+                <div class="strangeness-ring-wrap" style="--score-target: @_comic.StrangenessScore">
                     <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                             <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -92,19 +98,16 @@
                             </linearGradient>
                         </defs>
                         <circle class="ring-bg" cx="50" cy="50" r="42" />
-                        @* InvariantCulture: WASM picks up the browser locale, and a
-                           comma-decimal locale would emit "13,2" and break the SVG attribute. *@
-                        <circle class="ring-fill" cx="50" cy="50" r="42"
-                                style="stroke-dasharray: @RingDashArray" />
+                        <circle class="ring-fill" cx="50" cy="50" r="42" pathLength="100" />
                     </svg>
                     <div class="ring-label">
-                        <span class="ring-score" aria-hidden="true">@_revealedScore</span>
+                        @* Empty on purpose: CSS prints the animated --score into it. The real
+                           number is the visually-hidden line below. *@
+                        <span class="ring-score" aria-hidden="true"></span>
                         <span class="ring-text" aria-hidden="true">Weird</span>
                         <span class="visually-hidden">Strangeness @_comic.StrangenessScore out of 100</span>
                     </div>
-                    @* A conic sweep behind the ring while the count-up runs, and only then. It
-                       is a registered custom property animated by the compositor, so it costs
-                       nothing in the shared frame budget the rest of the reveal is spending. *@
+                    @* A conic sweep behind the ring while the count-up runs, and only then. *@
                     @if (!_burstFired)
                     {
                         <div class="sweep-halo ring-halo" aria-hidden="true"></div>
@@ -194,17 +197,14 @@
 
     private string? _error;
     private string _errorTitle = "Oops!";
-    private Timer? _scoreRevealTimer;
+    private string _errorIcon = DefaultErrorIcon;
+    private const string DefaultErrorIcon = "🤷";
 
-    /// <summary>
-    /// Bumped each time a reveal starts. A timer callback already queued when a regenerate
-    /// restarts the count-up compares against it and drops out, instead of mutating the new
-    /// reveal's score.
-    /// </summary>
+    /// <summary>Bumped each time a reveal starts, so a superseded one does not land twice.</summary>
     private int _revealGeneration;
 
-    /// <summary>Score currently painted in the ring while it counts up to the real one.</summary>
-    private int _revealedScore;
+    /// <summary>Bumped per narration, so an old utterance ending cannot reset a newer one's button.</summary>
+    private int _narrationRun;
 
     /// <summary>Pipeline stage the server last reported, as an index into the step arrays.</summary>
     private int _activeStepIndex;
@@ -256,19 +256,6 @@
         _ => "You've used all of today's comic generations. They reset at midnight UTC."
     };
 
-    /// <summary>Circumference of the r=42 score ring: 2 * PI * 42.</summary>
-    private const double RingCircumference = 263.89;
-
-    private string RingDashArray
-    {
-        get
-        {
-            var filled = _revealedScore / 100.0 * RingCircumference;
-            return $"{filled.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)} "
-                 + RingCircumference.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-        }
-    }
-
     protected override async Task OnInitializedAsync()
     {
         // Viewing is read-only: try the cached comic first (GET, free). Generation (POST,
@@ -304,6 +291,7 @@
             {
                 _needsGeneration = true;
                 _isLoading = false;
+                await CueIfBudgetSpentAsync();
             }
         }
         else
@@ -311,9 +299,13 @@
             _isLoading = false;
             Analytics.TrackGenerationCompleted(fromCache: true);
             await OnComicReadyAsync();
-            StartScoreReveal();
+            await RevealScoreAsync();
         }
     }
+
+    /// <summary>Arriving at a generate button that is greyed out is a refusal; it should sound like one.</summary>
+    private Task CueIfBudgetSpentAsync() =>
+        _budget is { CanGenerate: false } ? Fx.PlayErrorAsync() : Task.CompletedTask;
 
     /// <summary>
     /// Everything that follows a comic arriving, whether it was cached or freshly drawn.
@@ -343,6 +335,7 @@
     {
         await LoadComic(forceRegenerate: false);
         _budget = await ReadBudgetAsync();
+        await CueIfBudgetSpentAsync();
     }
 
     /// <summary>
@@ -362,94 +355,37 @@
         }
     }
 
-    /// <summary>
-    /// Counts the ring up to the real score instead of printing it. The score is the payoff of
-    /// a ten-second wait; landing it as a static integer wastes the only dramatic beat the app
-    /// has.
-    /// </summary>
-    private void StartScoreReveal()
-    {
-        var target = _comic?.StrangenessScore ?? 0;
-        var generation = ++_revealGeneration;
+    /// <summary>Matches <c>score-roll</c> in ComicView.razor.css.</summary>
+    private const int ScoreRollMs = 900;
 
-        _scoreRevealTimer?.Dispose();
-        _revealedScore = 0;
+    /// <summary>
+    /// The payoff beat. The count-up itself is CSS (a registered --score animated to the target)
+    /// and its ticks and landing chord are one scheduled audio call, so nothing renders or
+    /// crosses interop per tick. This only waits it out, then plays the place's own motif —
+    /// after the chord, because together they make one muddle instead of two statements — and
+    /// retunes the backdrop.
+    /// </summary>
+    private async Task RevealScoreAsync()
+    {
+        var score = _comic?.StrangenessScore ?? 0;
+        var generation = ++_revealGeneration;
         _burstFired = false;
 
-        if (target <= 0)
+        // Reduced motion shows the score at once, so there is no roll to accompany or wait for.
+        var duration = (await Fx.GetCapabilitiesAsync()).ReducedMotion ? 0 : ScoreRollMs;
+
+        StateHasChanged();
+        await Fx.PlayScoreRollAsync(score, duration);
+        await Task.Delay(duration);
+
+        if (generation != _revealGeneration || _disposed)
         {
             return;
         }
 
-        // Fixed duration rather than fixed step size, so a 12 and a 97 both take ~900ms.
-        var step = Math.Max(1, (int)Math.Ceiling(target / (RevealDurationMs / (double)RevealTickMs)));
-
-        _scoreRevealTimer = new Timer(_ =>
-        {
-            // Dispose() does not recall a callback already queued; a regenerate that restarted
-            // the reveal, or a teardown, would otherwise have this tick count against the wrong
-            // target or render into a component that no longer exists.
-            if (generation != _revealGeneration || _disposed)
-            {
-                return;
-            }
-
-            _revealedScore = Math.Min(target, _revealedScore + step);
-            var landed = _revealedScore >= target;
-
-            if (landed)
-            {
-                _scoreRevealTimer?.Change(Timeout.Infinite, Timeout.Infinite);
-            }
-
-            InvokeAsync(async () =>
-            {
-                if (generation != _revealGeneration || _disposed)
-                {
-                    return;
-                }
-
-                StateHasChanged();
-
-                // Interop must run on the renderer's context, not the timer thread.
-                if (landed)
-                {
-                    await OnScoreLandedAsync(target);
-                }
-                else
-                {
-                    await Fx.PlayScoreTickAsync(_revealedScore, target);
-                }
-            });
-        }, null, RevealTickMs, RevealTickMs);
-    }
-
-    private const int RevealDurationMs = 900;
-    private const int RevealTickMs = 30;
-
-    /// <summary>
-    /// The payoff beat: resolving chord voiced by score, the place's own motif, and the backdrop
-    /// retuned to match. Guarded by <c>_burstFired</c> so a re-render cannot replay it.
-    /// </summary>
-    private async Task OnScoreLandedAsync(int score)
-    {
-        if (_burstFired)
-        {
-            return;
-        }
-        _burstFired = true;
-
-        await Fx.PlayScoreLandAsync(score);
-
-        // The restaurant's own motif, seeded from its place id. Deliberately after the chord:
-        // the chord is the score landing, the signature is what this particular place sounds
-        // like, and playing them together makes one muddle instead of two statements.
+        _burstFired = true;   // Drops the conic sweep, which only means something while counting.
         await Fx.PlaySignatureAsync(_comic?.PlaceId ?? PlaceId, score);
-
-        // Tint the app-wide backdrop to this comic.
         Layout.MainLayout.RaiseScoreChanged(score);
-
-        // Drops the conic sweep behind the ring, which is only meaningful while counting.
         StateHasChanged();
     }
 
@@ -460,6 +396,8 @@
     /// </summary>
     private async Task ToggleNarrationAsync()
     {
+        var run = ++_narrationRun;
+
         if (_isNarrating)
         {
             await Fx.StopNarrationAsync();
@@ -469,6 +407,19 @@
 
         await Fx.UnlockAudioAsync();
         _isNarrating = await Fx.NarrateAsync(_comic?.Narrative ?? string.Empty);
+        if (!_isNarrating)
+        {
+            return;
+        }
+
+        // Without this the button stays on "Stop" after the last word.
+        StateHasChanged();
+        await Fx.WaitNarrationEndAsync();
+
+        if (run == _narrationRun && !_disposed)
+        {
+            _isNarrating = false;
+        }
     }
 
     private async Task GenerateFromPromptAsync()
@@ -489,8 +440,6 @@
             Analytics.TrackGenerationAbandoned();
         }
 
-        _scoreRevealTimer?.Dispose();
-
         // speechSynthesis is a browser-global queue and would follow the user to the next route.
         await Fx.StopNarrationAsync();
     }
@@ -500,6 +449,7 @@
         _isLoading = true;
         _isGenerating = true;
         _error = null;
+        _errorIcon = DefaultErrorIcon;
         _canRetry = false;
         _activeStepIndex = 0;
         _storyCaptions = null;
@@ -554,7 +504,10 @@
 
             _freshlyDrawn = !_comic.IsCached;
             await OnComicReadyAsync();
-            StartScoreReveal();
+
+            // Not awaited: the finally below is what takes the loading state down, and the
+            // count-up belongs to the comic that then appears.
+            _ = RevealScoreAsync();
         }
         catch (HttpRequestException ex)
         {
@@ -566,33 +519,49 @@
                 or System.Net.HttpStatusCode.UnprocessableEntity
                 or System.Net.HttpStatusCode.NotFound);
 
+            // Three different 422s arrive with one status and one title; the stream event has
+            // no error-type field, so the server's fixed detail text is the only tell.
+            var tooNormal = ex.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity
+                && ex.Message.Contains("too ordinary", StringComparison.OrdinalIgnoreCase);
+
+            if (tooNormal)
+            {
+                _errorIcon = "😌";
+            }
+
             (_errorTitle, _error) = ex.StatusCode switch
             {
                 System.Net.HttpStatusCode.BadRequest => (
-                    "No Reviews to Draw From! 📭",
+                    "No reviews to draw from",
                     "We couldn't find any usable reviews for this restaurant, so there's nothing to build a comic out of. Try another place!"),
 
+                // Rejected before the paid image call, and the reservation is refunded.
+                System.Net.HttpStatusCode.UnprocessableEntity when tooNormal => (
+                    "Too normal to draw",
+                    "These reviews are too ordinary to make a comic, so nothing was drawn — it cost nothing and didn't use any of today's comics. Try a place with weirder reviews."),
+
+                // Content blocked, or the image model declined. The server's wording says which.
                 System.Net.HttpStatusCode.UnprocessableEntity => (
-                    "Too Normal for a Comic! 😌",
+                    "Couldn't draw this one",
                     string.IsNullOrWhiteSpace(ex.Message)
-                        ? "This restaurant's reviews are too ordinary to make a good comic. Try a place with weirder reviews!"
+                        ? "This comic couldn't be drawn. Try another place."
                         : ex.Message),
 
                 // A 429 now means either the per-minute limiter or the daily budget. The
                 // server's detail text distinguishes them; falling back to "wait a minute" for
                 // a daily cap would be a lie the user discovers 59 seconds later.
                 System.Net.HttpStatusCode.TooManyRequests => (
-                    "Hold On a Moment 🚦",
+                    "Hold on a moment",
                     string.IsNullOrWhiteSpace(ex.Message)
                         ? "You're generating comics faster than we can draw them. Please wait about a minute and try again."
                         : ex.Message),
 
                 System.Net.HttpStatusCode.NotFound => (
-                    "Restaurant Not Found",
+                    "Restaurant not found",
                     "We couldn't find this restaurant. It might have closed or the Google Maps data is unavailable."),
 
                 _ => (
-                    "Generation Failed",
+                    "Generation failed",
                     $"Something went wrong while generating the comic. Please try again in a moment. ({ex.Message})")
             };
         }
@@ -600,7 +569,7 @@
         {
             Analytics.TrackGenerationFailed();
             _canRetry = true;
-            _errorTitle = "Unexpected Error";
+            _errorTitle = "Unexpected error";
             _error = $"An unexpected error occurred: {ex.Message}";
         }
         finally
@@ -610,18 +579,33 @@
 
             if (!_disposed)
             {
+                // "Too normal" is an answer, not a malfunction — the same cue as an empty search.
                 if (_error is not null)
                 {
-                    await Fx.PlayErrorAsync();
+                    await (_errorIcon == DefaultErrorIcon ? Fx.PlayErrorAsync() : Fx.PlayEmptyAsync());
                 }
                 StateHasChanged();
             }
         }
     }
 
-    private void GoBack()
+    /// <summary>
+    /// Back through history when there is any, so the list comes back where it was left (scroll,
+    /// search and all). A comic opened cold — a shared link in a new tab — has nowhere to go
+    /// back to and gets the route instead.
+    /// </summary>
+    private async Task GoBack()
     {
-        Navigation.NavigateTo(From == "leaderboard" ? "/leaderboard" : "/");
+        // ponytail: history.length also counts pages before the app in this tab, so a link
+        // followed from another site goes back there. Track in-app navigations if that matters.
+        if (await JS.GetValueAsync<int>("history.length") > 1)
+        {
+            await JS.InvokeVoidAsync("history.back");
+        }
+        else
+        {
+            Navigation.NavigateTo(From == "leaderboard" ? "/leaderboard" : "/");
+        }
     }
 
     /// <summary>

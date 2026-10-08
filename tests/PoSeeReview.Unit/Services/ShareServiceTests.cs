@@ -1,162 +1,108 @@
+using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Moq;
-using PoSeeReview.Api.Features.Comics;
-using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Client.Services;
 using Xunit;
-using PoSeeReview.Shared.Contracts;
-using PoSeeReview.Shared.Ids;
-using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Unit.Services;
 
 /// <summary>
-/// Unit tests for ShareService - handles social media sharing via Web Share API
+/// ShareService is the one share path: Web Share, then the clipboard, then a toast either way.
 /// </summary>
 public class ShareServiceTests
 {
-    private readonly Mock<IJSRuntime> _mockJsRuntime;
-    private readonly ShareService _shareService;
+    private readonly Mock<IJSRuntime> _js = new();
+    private readonly ToastService _toasts = new();
+    private readonly ShareService _share;
 
     public ShareServiceTests()
     {
-        _mockJsRuntime = new Mock<IJSRuntime>();
-        _shareService = new ShareService(_mockJsRuntime.Object);
+        // Minting the short link 404s, which is the "fall back to the canonical URL" path.
+        var api = new ApiClient(new HttpClient(new NotFoundHandler()) { BaseAddress = new Uri("https://app.test/") });
+        _share = new ShareService(_js.Object, api, new FakeNavigation(), _toasts, new FxService(_js.Object));
     }
 
+    private void ShareReturns(string outcome) =>
+        _js.Setup(x => x.InvokeAsync<string>("shareUtils.share", It.IsAny<object[]>())).ReturnsAsync(outcome);
+
     [Fact]
-    public async Task ShareComicAsync_WithValidData_ShouldInvokeWebShareAPI()
+    public async Task ShareAsync_WhenShared_PassesThePlaceIdAndConfirms()
     {
-        // Arrange
-        var title = "Strange Restaurant Comic";
-        var text = "Check out this weird review comic!";
-        var url = "https://poseereviews.com/comic/test123";
+        ShareReturns("shared");
 
-        _mockJsRuntime
-            .Setup(x => x.InvokeAsync<string>(
-                "shareUtils.share",
-                It.IsAny<object[]>()))
-            .ReturnsAsync("shared");
+        var result = await _share.ShareAsync("Title", "text", "https://app.test/s/abc", "place123");
 
-        // Act
-        var result = await _shareService.ShareComicAsync(title, text, url, "place123");
-
-        // Assert — the place id is what lets the JS side attach the PNG itself.
+        // The place id is what lets the JS side attach the image itself.
         Assert.Equal(ShareOutcome.Shared, result);
-        _mockJsRuntime.Verify(
-            x => x.InvokeAsync<string>(
-                "shareUtils.share",
-                It.Is<object[]>(args =>
-                    args.Length == 4 &&
-                    args[0].ToString() == title &&
-                    args[1].ToString() == text &&
-                    args[2].ToString() == url &&
-                    args[3].ToString() == "place123")),
-            Times.Once);
-    }
-
-    [Fact]
-    public async Task ShareComicAsync_WhenWebShareNotSupported_ShouldReturnUnsupported()
-    {
-        // Arrange
-        var title = "Test Comic";
-        var text = "Test description";
-        var url = "https://test.com/comic/123";
-
-        _mockJsRuntime
-            .Setup(x => x.InvokeAsync<string>(
-                "shareUtils.share",
-                It.IsAny<object[]>()))
-            .ThrowsAsync(new JSException("Web Share API not supported"));
-
-        // Act
-        var result = await _shareService.ShareComicAsync(title, text, url);
-
-        // Assert
-        Assert.Equal(ShareOutcome.Unsupported, result);
-    }
-
-    [Fact]
-    public async Task ShareComicAsync_WhenUserCancels_ShouldReportCancelledNotUnsupported()
-    {
-        // Arrange — a dismissed share sheet must NOT be mistaken for "no Web Share API",
-        // or the caller silently copies a link the user never asked for.
-        _mockJsRuntime
-            .Setup(x => x.InvokeAsync<string>(
-                "shareUtils.share",
-                It.IsAny<object[]>()))
-            .ReturnsAsync("cancelled");
-
-        // Act
-        var result = await _shareService.ShareComicAsync("Test Comic", "text", "https://test.com/c/1");
-
-        // Assert
-        Assert.Equal(ShareOutcome.Cancelled, result);
-    }
-
-    [Fact]
-    public async Task IsShareSupportedAsync_WhenSupported_ShouldReturnTrue()
-    {
-        // Arrange
-        _mockJsRuntime
-            .Setup(x => x.InvokeAsync<bool>(
-                "shareUtils.isSupported",
-                Array.Empty<object>()))
-            .ReturnsAsync(true);
-
-        // Act
-        var result = await _shareService.IsShareSupportedAsync();
-
-        // Assert
-        Assert.True(result);
-    }
-
-    [Fact]
-    public async Task IsShareSupportedAsync_WhenNotSupported_ShouldReturnFalse()
-    {
-        // Arrange
-        _mockJsRuntime
-            .Setup(x => x.InvokeAsync<bool>(
-                "shareUtils.isSupported",
-                Array.Empty<object>()))
-            .ReturnsAsync(false);
-
-        // Act
-        var result = await _shareService.IsShareSupportedAsync();
-
-        // Assert
-        Assert.False(result);
-    }
-
-    [Fact]
-    public async Task CopyToClipboardAsync_WithValidUrl_ShouldNotThrow()
-    {
-        // Arrange
-        var url = "https://poseereviews.com/comic/test123";
-
-        // Act & Assert - Verify no exception is thrown
-        // Note: InvokeVoidAsync is an extension method and cannot be directly mocked with Moq
-        // This test verifies the method signature and argument validation
-        var exception = await Record.ExceptionAsync(
-            async () => await _shareService.CopyToClipboardAsync(url));
-
-        // The mock will return default ValueTask which completes successfully
-        Assert.Null(exception);
+        Assert.Equal("Shared!", _toasts.Message);
+        _js.Verify(x => x.InvokeAsync<string>(
+            "shareUtils.share",
+            It.Is<object[]>(args => args.Length == 4
+                && (string)args[0] == "Title"
+                && (string)args[2] == "https://app.test/s/abc"
+                && (string)args[3] == "place123")), Times.Once);
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task ShareComicAsync_WithInvalidTitle_ShouldThrowArgumentException(string? invalidTitle)
+    [InlineData("unsupported")]
+    [InlineData(null)]   // interop threw
+    public async Task ShareAsync_WithoutWebShare_CopiesTheLinkInstead(string? jsOutcome)
     {
-        // Arrange
-        var text = "Test description";
-        var url = "https://test.com/comic/123";
+        if (jsOutcome is null)
+        {
+            _js.Setup(x => x.InvokeAsync<string>("shareUtils.share", It.IsAny<object[]>()))
+               .ThrowsAsync(new JSException("no Web Share API"));
+        }
+        else
+        {
+            ShareReturns(jsOutcome);
+        }
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(
-            async () => await _shareService.ShareComicAsync(invalidTitle!, text, url));
+        var result = await _share.ShareAsync("Title", "text", "https://app.test/s/abc");
+
+        Assert.Equal(ShareOutcome.Copied, result);
+        Assert.Equal("Link copied to clipboard", _toasts.Message);
+        _js.Verify(x => x.InvokeAsync<Microsoft.JSInterop.Infrastructure.IJSVoidResult>(
+            "shareUtils.copyToClipboard",
+            It.Is<object[]>(args => (string)args[0] == "https://app.test/s/abc")), Times.Once);
     }
 
+    [Fact]
+    public async Task ShareAsync_WhenUserCancels_DoesNothingElse()
+    {
+        // A dismissed share sheet must NOT be mistaken for "no Web Share API", or the caller
+        // silently copies a link the user just declined to share.
+        ShareReturns("cancelled");
+
+        var result = await _share.ShareAsync("Title", "text", "https://app.test/s/abc");
+
+        Assert.Equal(ShareOutcome.Cancelled, result);
+        Assert.Null(_toasts.Message);
+        _js.Verify(x => x.InvokeAsync<Microsoft.JSInterop.Infrastructure.IJSVoidResult>(
+            "shareUtils.copyToClipboard", It.IsAny<object[]>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ShareComicAsync_WhenNoShortLink_SharesTheCanonicalComicUrl()
+    {
+        ShareReturns("shared");
+
+        await _share.ShareComicAsync("place123", "Odd Diner", 87);
+
+        _js.Verify(x => x.InvokeAsync<string>(
+            "shareUtils.share",
+            It.Is<object[]>(args => (string)args[2] == "https://app.test/comic/place123"
+                && ((string)args[1]).Contains("87/100"))), Times.Once);
+    }
+
+    private sealed class NotFoundHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
+
+    private sealed class FakeNavigation : NavigationManager
+    {
+        public FakeNavigation() => Initialize("https://app.test/", "https://app.test/");
+    }
 }

@@ -6,10 +6,6 @@
 <main id="main-content">
     <ErrorBoundary>
         <ChildContent>@Body</ChildContent>
-        <ErrorContent>
-            <StateCard Class="po-error-panel" Icon="⚠️" Title="Something went wrong" Alert="true" Heading1="true">
-                This page hit an unexpected error. Reload the page to try again.
-            </StateCard>
-        </ErrorContent>
+        <ErrorContent><ErrorPanel /></ErrorContent>
     </ErrorBoundary>
 </main>

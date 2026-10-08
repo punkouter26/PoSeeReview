@@ -1,12 +1,25 @@
 @* One row for every list of comics — the live board, the weekly archive and /my-comics.
 
    Those were three hand-built layouts of the same four facts (thumbnail, name, score, open), and
-   the live board was a RadzenDataGrid: paging over ten rows, sorting a ranking by name, and five
+   the live board was a data grid: paging over ten rows, sorting a ranking by name, and five
    fixed-width columns that crushed a phone. The whole row is the link (the name stretches over
    it), so there is no per-row "Open" button; `Actions` holds only what is left once opening is
    free — share, forget. Styles live in app.css (`.comic-row`) next to the freshness and
    rank-movement rules that key off the same elements. *@
 
+@if (Skeleton)
+{
+    <li class="comic-row glass" aria-hidden="true">
+        @Leading
+        <div class="comic-thumbnail sk-block"></div>
+        <div class="comic-row-body">
+            <span class="sk-block sk-line"></span>
+            <span class="sk-block sk-line sk-line--meta"></span>
+        </div>
+    </li>
+}
+else
+{
 <li class="comic-row glass scroll-enter @Class" @attributes="Attributes">
     @Leading
     <div class="comic-thumbnail">
@@ -26,11 +39,15 @@
     </div>
     @Actions
 </li>
+}
 
 @code {
     [Parameter, EditorRequired] public string Href { get; set; } = default!;
     [Parameter, EditorRequired] public string Name { get; set; } = default!;
     [Parameter] public int Score { get; set; }
+
+    /// <summary>A placeholder with a loaded row's geometry; only <see cref="Leading"/> is read.</summary>
+    [Parameter] public bool Skeleton { get; set; }
 
     /// <summary>Null when the artwork has expired; the score takes the thumbnail's place.</summary>
     [Parameter] public string? ImageUrl { get; set; }

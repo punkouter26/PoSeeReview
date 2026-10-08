@@ -18,7 +18,7 @@
    because that is the only way to place framework-generated CSS into a layer.
    ============================================================================================ */
 
-@layer reset, vendor, tokens, base, page, shared, utilities;
+@layer reset, tokens, base, page, shared, utilities;
 
 /* WHY THERE ARE TWO APP LAYERS, `base` AND `shared`:
      base   — bare element defaults (a, code, body). Pages MUST be able to override these.
@@ -30,7 +30,6 @@
    label brand-purple on the dark bar. Element selectors go in `base`; class-based components
    go in `shared`. */
 
-@import url("/_content/Radzen.Blazor/css/material-base.css") layer(vendor);
 @import url("/PoSeeReview.Client.styles.css") layer(page);
 
 /* ============================================================================================
@@ -249,6 +248,10 @@
         --ease-in: cubic-bezier(0.55, 0.06, 0.68, 0.19);
         --ease-in-out: cubic-bezier(0.65, 0.05, 0.36, 1);
         --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        /* Real springs: linear() can overshoot and settle, which one bezier cannot. 1 is gentle
+           (a press releasing), 2 bounces (a menu or dialog arriving). */
+        --ease-spring-1: linear(0, 0.006, 0.025 2.8%, 0.101 6.1%, 0.539 18.9%, 0.721 25.3%, 0.849 31.5%, 0.937 38.1%, 0.968 41.8%, 0.991 45.7%, 1.006 50.1%, 1.015 55%, 1.017 63.9%, 1.001);
+        --ease-spring-2: linear(0, 0.007, 0.029 2.2%, 0.118 4.7%, 0.625 14.4%, 0.826 19%, 0.902, 0.962, 1.008 26.1%, 1.041 28.7%, 1.064 32.1%, 1.07 36%, 1.061 40.5%, 1.015 53.4%, 0.999 61.6%, 0.995 71.2%, 1);
 
         /* ── Elevation ───────────────────────────────────────────────────────────────────────
            An elevation is a PAIR: a shadow and the surface tint that goes under it. Shadow
@@ -528,6 +531,11 @@
         text-decoration: underline;
     }
 
+    ::placeholder {
+        color: var(--color-text-muted);
+        opacity: 1;
+    }
+
     code {
         font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
         font-size: 0.9em;
@@ -590,19 +598,26 @@
         font-size: var(--text-md);
         font-weight: 700;
         line-height: 1;
-        /* Explicitly none: Radzen's Material base uppercases button labels, and since .btn never
-           said otherwise the vendor layer won. "USE MY LOCATION" is not this app's voice. */
-        text-transform: none;
         letter-spacing: normal;
         cursor: pointer;
         text-decoration: none;
         box-shadow: none;
-        transition: transform 0.15s, box-shadow 0.15s, background 0.15s, border-color 0.15s;
+        transition:
+            scale var(--duration-slow) var(--ease-spring-1),
+            transform var(--duration-fast), box-shadow var(--duration-fast),
+            background var(--duration-fast), border-color var(--duration-fast);
     }
 
     .btn:hover {
         transform: translateY(-1px);
         text-decoration: none;
+    }
+
+    /* `scale`, not `transform`: hover owns that. Down is instant; the base rule's spring is what
+       plays on release, because a transition is read from the state being entered. */
+    .btn:active:not(:disabled) {
+        scale: 0.96;
+        transition-duration: var(--duration-instant);
     }
 
     .btn:disabled {
@@ -732,9 +747,9 @@
     }
 
     /* ── Toast ───────────────────────────────────────────────────────────────────────────────
-       Transient confirmation ("Shared!", "Link copied"). The Hall of Fame had `.copy-toast` and
-       the comic actions needed the same thing; this is the one implementation. Always paired
-       with role="status" in markup so it is announced. */
+       The one transient confirmation ("Shared!", "Link copied"): the Toast component in
+       MainLayout, driven by ToastService. The element is always mounted so the live region
+       exists before its text does; empty, it is simply not displayed. */
     .toast {
         position: fixed;
         left: 50%;
@@ -750,12 +765,83 @@
         font-weight: 600;
         text-align: center;
         box-shadow: var(--shadow-card-hover);
-        animation: toast-in 0.25s ease-out both;
     }
 
-    @keyframes toast-in {
-        from { opacity: 0; transform: translate(-50%, 8px); }
-        to   { opacity: 1; transform: translate(-50%, 0); }
+    .toast:empty {
+        display: none;
+    }
+
+    /* ── Popover menu ────────────────────────────────────────────────────────────────────────
+       The surface of a native [popover]: the account menu and the comic's challenge picker.
+       Position is the caller's (`page` may set what this rule leaves alone). */
+    .popover-menu {
+        min-width: 13rem;
+        max-width: calc(100vw - 2 * var(--space-sm));
+        padding: var(--space-xs);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-card);
+        background: var(--elevation-3-surface);
+        color: var(--color-text-primary);
+        box-shadow: var(--elevation-3-shadow);
+    }
+
+    .popover-menu:popover-open {
+        display: grid;
+        gap: var(--space-3xs);
+    }
+
+    .popover-menu-title {
+        padding: var(--space-2xs) var(--space-sm);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+    }
+
+    .popover-menu-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-xs);
+        width: 100%;
+        min-height: var(--tap-target);
+        padding: 0 var(--space-sm);
+        border-radius: var(--radius-sm);
+        color: var(--color-text-primary);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        text-align: start;
+        text-decoration: none;
+    }
+
+    .popover-menu-item:hover,
+    .popover-menu-item.active {
+        background: var(--brand-a08);
+        text-decoration: none;
+    }
+
+    /* ── Skeleton ────────────────────────────────────────────────────────────────────────────
+       Token-driven so a placeholder stays darker than its card in dark mode. */
+    .sk-block,
+    .comic-row .comic-thumbnail.sk-block {
+        background: linear-gradient(90deg,
+            var(--color-surface-alt) 25%,
+            var(--color-border) 50%,
+            var(--color-surface-alt) 75%);
+        background-size: 200% 100%;
+        animation: skShimmer 1.4s ease-in-out infinite;
+    }
+
+    /* Sized to the line boxes of a loaded ComicRow, so the list does not move when it lands. */
+    .sk-line {
+        width: 55%;
+        height: 1.25rem;
+        border-radius: var(--radius-sm);
+    }
+
+    .sk-line--meta {
+        width: 35%;
+        height: calc(var(--text-xs) * var(--leading-normal));
     }
 
     /* NOTE: there is deliberately no shared `.nav-link` rule.
@@ -772,24 +858,10 @@
         margin-bottom: var(--space-md);
     }
 
-    .alert h3 {
-        margin-top: 0;
-    }
-
     .alert-danger {
         background: var(--color-danger-surface);
         border: 1px solid var(--color-danger);
         color: var(--color-danger-text);
-    }
-
-    /* Two pages needed a non-fatal notice — the mock-data banner on Insights and the hidden /
-       suppressed states on Moderation. That is exactly the shape `.btn-primary` forked in
-       last time, so it is defined here once rather than twice in scoped sheets.
-       --color-accent is a SURFACE; the readable text pairing is --color-accent-ink. */
-    .alert-warning {
-        background: var(--color-highlight);
-        border: 1px solid var(--color-accent);
-        color: var(--color-accent-ink);
     }
 
     /* ── Error / empty state ─────────────────────────────────────────────────────────────────
@@ -1050,41 +1122,6 @@
         }
     }
 
-    /* ── Radzen design tokens ─────────────────────────────────────────────────────────────────
-       Radzen reads plain --rz-* custom properties at render time, so mapping them onto the
-       design tokens themes every Radzen control at once — including in dark mode, since these
-       resolve to tokens that already flip. This is the whole reason the primary CTA was Material
-       blue: nothing had told Radzen what "primary" means here. */
-    :root {
-        --rz-primary: var(--color-brand);
-        --rz-primary-light: var(--color-brand);
-        --rz-primary-dark: var(--color-brand-dark);
-        --rz-on-primary: #ffffff;
-        --rz-secondary: var(--color-text-secondary);
-        --rz-on-secondary: var(--color-card);
-        --rz-success: var(--color-success);
-        --rz-on-success: var(--color-on-accent);
-        --rz-danger: var(--color-danger);
-        --rz-warning: var(--color-accent);
-        --rz-on-warning: var(--color-on-accent);
-        --rz-info: var(--color-brand);
-
-        --rz-base-background-color: var(--color-surface);
-        --rz-base-color: var(--color-text-primary);
-        --rz-text-color: var(--color-text-primary);
-        --rz-text-secondary-color: var(--color-text-secondary);
-        --rz-text-disabled-color: var(--color-text-muted);
-        --rz-border-radius: var(--radius-sm);
-        --rz-card-background-color: var(--color-card);
-        --rz-card-border: 1px solid var(--color-border);
-        --rz-card-box-shadow: var(--shadow-card);
-        --rz-input-background-color: var(--color-card);
-        --rz-input-border: 1px solid var(--color-border-strong);
-        --rz-input-color: var(--color-text-primary);
-        --rz-body-font-family: var(--font-body);
-        --rz-body-font-size: var(--text-md);
-    }
-
     /* ── Blazor framework UI ─────────────────────────────────────────────────────────────── */
     h1:focus {
         outline: none;
@@ -1109,16 +1146,6 @@
         position: absolute;
         right: var(--space-sm);
         top: var(--space-xs);
-    }
-
-    .blazor-error-boundary {
-        background: #b32121;
-        padding: var(--space-md);
-        color: #ffffff;
-    }
-
-    .blazor-error-boundary::after {
-        content: "An error has occurred."
     }
 
     /* Boot UI: renders before the app starts, so it cannot depend on anything the app sets —
@@ -1248,10 +1275,6 @@
             --duration-base: 0ms;
             --duration-slow: 0ms;
             --duration-deliberate: 0ms;
-        }
-
-        .elevation-raise:hover {
-            transform: none;
         }
 
         .fx-backdrop {
@@ -1395,32 +1418,11 @@
    ============================================================================================ */
 
 @layer utilities {
-    /* ── Elevation utilities ─────────────────────────────────────────────────────────────────
+    /* ── Elevation utility ───────────────────────────────────────────────────────────────────
        Apply a step as a pair. Reaching for `box-shadow: var(--shadow-md)` on its own is what
        these exist to replace: it is correct in light mode and invisible in dark, because a black
        shadow on a near-black surface conveys no height. See the token block for the full note. */
     .elevation-1 { background: var(--elevation-1-surface); box-shadow: var(--elevation-1-shadow); }
-    .elevation-2 { background: var(--elevation-2-surface); box-shadow: var(--elevation-2-shadow); }
-    .elevation-3 { background: var(--elevation-3-surface); box-shadow: var(--elevation-3-shadow); }
-    .elevation-4 { background: var(--elevation-4-surface); box-shadow: var(--elevation-4-shadow); }
-
-    /* Raising on hover moves BOTH halves of the pair, or the tint and the shadow disagree about
-       how high the card is. Pointer-only: on touch there is no hover state to leave, so the card
-       would stick raised after a tap. */
-    @media (hover: hover) {
-        .elevation-raise {
-            transition:
-                box-shadow var(--duration-base) var(--ease-out),
-                background-color var(--duration-base) var(--ease-out),
-                transform var(--duration-base) var(--ease-out);
-        }
-
-        .elevation-raise:hover {
-            background: var(--elevation-3-surface);
-            box-shadow: var(--elevation-3-shadow);
-            transform: translateY(-2px);
-        }
-    }
 }
 
 /* ============================================================================================
@@ -1448,6 +1450,14 @@
     syntax: "<angle>";
     inherits: false;
     initial-value: 0deg;
+}
+
+/* The score count-up. An integer, so `counter-reset: score var(--score)` can print it and the
+   ring's dash can follow the same animation. Inherits: the wrap animates, its children read. */
+@property --score {
+    syntax: "<integer>";
+    inherits: true;
+    initial-value: 0;
 }
 
 /* Halftone route transition: the dot radius. Typed, or the keyframes would snap 0 -> 14px. */
@@ -1538,6 +1548,18 @@
     }
 }
 
+/* Defined once: Blazor scopes selectors, not keyframe names, so the three scoped copies of this
+   were one global name with the last sheet winning. */
+@keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes skShimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
 @keyframes posee-sweep {
     to {
         --sweep-angle: 360deg;
@@ -1556,15 +1578,6 @@
                    still running once the reader has arrived at the content is a distraction
                    rather than an entrance. */
                 animation-range: entry 2% cover 20%;
-            }
-
-            /* Staggering with nth-child would need a rule per position and breaks the moment the
-               list is filtered or sorted. Ranges do it for free: each card animates against its
-               OWN position in the scrollport, so the stagger falls out of the layout. */
-            .scroll-enter-late {
-                animation: posee-enter linear both;
-                animation-timeline: view();
-                animation-range: entry 8% cover 30%;
             }
         }
     }
@@ -1592,8 +1605,8 @@
 
    `@starting-style` plus `transition-behavior: allow-discrete` is the first way to animate an
    element that is being ADDED to the DOM without a JS mount hook — which matters here because
-   Blazor adds and removes the toast and the report dialog by re-rendering,
-   and there is no lifecycle point in between to hang a class on.
+   Blazor fills the toast and adds the report dialog by re-rendering, and a popover opens with no
+   script at all — there is no lifecycle point in between to hang a class on.
 
    Both halves are needed. `@starting-style` supplies the "before" frame; allow-discrete lets
    `display` participate, so the exit is not cut off the moment display flips.
@@ -1602,33 +1615,46 @@
 @layer shared {
     @supports (transition-behavior: allow-discrete) {
         @media (prefers-reduced-motion: no-preference) {
+            /* `translate`, not `transform`: the toast's transform is what centres it. Rises into
+               place — arriving from below reads as coming from the control that produced it. */
             .toast {
                 transition:
                     opacity var(--duration-base) var(--ease-out),
-                    transform var(--duration-base) var(--ease-out),
+                    translate var(--duration-base) var(--ease-out),
                     display var(--duration-base) allow-discrete;
             }
 
             @starting-style {
                 .toast {
                     opacity: 0;
-                    /* Rises into place. The toast is anchored to the bottom, and something
-                       arriving from below reads as coming from the control that produced it. */
-                    transform: translateY(0.75rem);
+                    translate: 0 0.75rem;
+                }
+            }
+
+            .popover-menu:popover-open {
+                transition:
+                    opacity var(--duration-fast) var(--ease-out),
+                    translate var(--duration-slow) var(--ease-spring-2);
+            }
+
+            @starting-style {
+                .popover-menu:popover-open {
+                    opacity: 0;
+                    translate: 0 -0.5rem;
                 }
             }
 
             /* The dialog settles DOWN into place rather than up: it is modal, so it should read
                as something placed in front of the page rather than emitted by it. */
-            .report-dialog-panel {
+            .report-panel {
                 transition:
                     opacity var(--duration-base) var(--ease-out),
-                    transform var(--duration-base) var(--ease-out),
+                    transform var(--duration-slow) var(--ease-spring-1),
                     display var(--duration-base) allow-discrete;
             }
 
             @starting-style {
-                .report-dialog-panel {
+                .report-panel {
                     opacity: 0;
                     transform: translateY(-0.5rem) scale(0.98);
                 }
@@ -1702,52 +1728,6 @@
             color-mix(in srgb, var(--color-surface-alt) 60%, transparent) 42%,
             transparent 52%);
     }
-}
-
-/* ============================================================================================
-   DISCOVERY: THE ARRIVAL SEQUENCE
-
-   The landing page is the first screen every visitor sees and it had, in effect, no feedback of
-   its own — a tap sound shared with every other button, then skeletons, then a grid. The three
-   states below are the three things actually happening, and none of them costs frame budget:
-   everything here animates transform and opacity, which the compositor evaluates off the main
-   thread.
-   ============================================================================================ */
-
-@layer shared {
-    /* A request in flight. Two rings leaving the card, offset by half the period so there is
-       always one in view — one ring alone has a dead beat between repeats that reads as the
-       animation having stopped rather than as a pulse.
-
-       Anchored to the card and NOT to the button: the answer to this request is often a browser
-       permission dialog, which can sit unanswered indefinitely. A spinner next to a disabled
-       button says "stuck"; a ring still leaving says "waiting on you". */
-    @media (prefers-reduced-motion: no-preference) {
-        .prompt-card--searching {
-            position: relative;
-        }
-
-        .prompt-card--searching::after,
-        .prompt-card--searching::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            border-radius: inherit;
-            border: 1px solid var(--color-brand);
-            pointer-events: none;
-            opacity: 0;
-            animation: posee-sonar 2.4s var(--ease-out) infinite;
-        }
-
-        .prompt-card--searching::before {
-            animation-delay: 1.2s;
-        }
-    }
-}
-
-@keyframes posee-sonar {
-    from { transform: scale(1); opacity: 0.5; }
-    to   { transform: scale(1.06); opacity: 0; }
 }
 
 /* ============================================================================================
@@ -1871,27 +1851,6 @@
 @keyframes posee-rank-settle-down {
     from { transform: translateY(-10px); opacity: 0; }
     to   { transform: translateY(0); opacity: 1; }
-}
-
-/* Where a forgotten comic goes. Fixed rather than absolute: the grid scrolls and the bodies are
-   simulated in viewport space, so an absolutely-positioned canvas would leave the dismissal
-   behind as soon as the user scrolled. aria-hidden and pointer-events:none like every overlay
-   canvas in this app — the list underneath is the real feature. */
-@layer shared {
-    .fx-dust-canvas {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 5;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-        .fx-dust-canvas {
-            display: none;
-        }
-    }
 }
 
 /* ============================================================================================

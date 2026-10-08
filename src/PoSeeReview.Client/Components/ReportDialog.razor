@@ -18,6 +18,7 @@
 @implements IAsyncDisposable
 @inject ApiClient ApiClient
 @inject IJSRuntime JS
+@inject FxService Fx
 
 @* role="dialog" and aria-modal are implicit on a modal <dialog>, so stating them again would
    only be noise. aria-labelledby still matters: the heading is the accessible name. *@
@@ -28,9 +29,9 @@
         @if (_submitted)
         {
             <h2 id="report-title" class="report-title">Thanks for flagging it</h2>
-            <p class="report-body">@_confirmation</p>
+            <p class="report-body" role="status">@_confirmation</p>
             <div class="report-actions">
-                <button type="button" class="btn btn-primary" @onclick="CloseAsync">Done</button>
+                <button @ref="_done" type="button" class="btn btn-primary" @onclick="CloseAsync">Done</button>
             </div>
         }
         else
@@ -41,6 +42,9 @@
                 Tell us what's wrong and we'll review it.
             </p>
 
+            @* A real form: Enter submits, and type="email" is validated by the browser before
+               the handler ever runs. *@
+            <form @onsubmit="SubmitAsync">
             <fieldset class="report-reasons">
                 <legend class="visually-hidden">Reason for reporting</legend>
                 @foreach (var (reason, label) in Reasons)
@@ -67,7 +71,7 @@
 
             <label class="report-field">
                 <span class="report-label">Your email (optional — only if you want a reply)</span>
-                <input class="report-input" type="email" @bind="_contactEmail" placeholder="you@example.com" />
+                <input class="report-input" type="email" autocomplete="email" @bind="_contactEmail" placeholder="you@example.com" />
             </label>
 
             @if (_error is not null)
@@ -76,11 +80,12 @@
             }
 
             <div class="report-actions">
-                <button type="button" class="btn btn-primary" @onclick="SubmitAsync" disabled="@_isSubmitting">
+                <button type="submit" class="btn btn-primary" disabled="@_isSubmitting">
                     @(_isSubmitting ? "Sending..." : "Send report")
                 </button>
                 <button type="button" class="btn btn-secondary" @onclick="CloseAsync" disabled="@_isSubmitting">Cancel</button>
             </div>
+            </form>
         }
     </div>
 </dialog>
@@ -116,11 +121,20 @@
     private string? _error;
     private string _confirmation = string.Empty;
     private ElementReference _dialog;
+    private ElementReference _done;
+    private bool _focusDone;
     private IJSObjectReference? _module;
     private bool _modalActive;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // The form the focus was in is gone; without this it falls back to <body>.
+        if (_focusDone)
+        {
+            _focusDone = false;
+            await _done.FocusAsync();
+        }
+
         if (!firstRender)
         {
             return;
@@ -162,7 +176,8 @@
             });
 
             _confirmation = response.Message;
-            _submitted = true;
+            _submitted = _focusDone = true;
+            await Fx.PlayConfirmAsync();
         }
         catch (HttpRequestException ex)
         {
@@ -171,6 +186,7 @@
             _error = string.IsNullOrWhiteSpace(ex.Message)
                 ? "We couldn't send that report. Please try again."
                 : ex.Message;
+            await Fx.PlayErrorAsync();
         }
         finally
         {

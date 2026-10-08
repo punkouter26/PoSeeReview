@@ -13,7 +13,7 @@
 {
     <StateCard Icon="🔒" Title="Development only" Heading1="true">
         <ChildContent>This page is only available in development environments.</ChildContent>
-        <Actions><a href="/" class="btn btn-secondary">Back to home</a></Actions>
+        <Actions><a href="/" class="btn btn-primary">Back to home</a></Actions>
     </StateCard>
 }
 else
@@ -33,7 +33,8 @@ else
                     @foreach (var tier in new[] { FxTier.Off, FxTier.Lite, FxTier.Full })
                     {
                         <button type="button"
-                                class="btn @(_caps.Tier == tier ? "btn-primary" : "btn-secondary")"
+                                class="chip-toggle @(_caps.Tier == tier ? "chip-toggle--active" : "")"
+                                aria-pressed="@(_caps.Tier == tier ? "true" : "false")"
                                 disabled="@_caps.ReducedMotion"
                                 @onclick="() => SetTierAsync(tier)">
                             @tier
@@ -44,7 +45,8 @@ else
 
             <div class="fx-control-row">
                 <span class="fx-control-label">Sound</span>
-                <button type="button" class="btn @(_audioEnabled ? "btn-primary" : "btn-secondary")"
+                <button type="button" class="chip-toggle @(_audioEnabled ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_audioEnabled ? "true" : "false")" aria-label="Sound"
                         @onclick="ToggleAudioAsync">
                     @(_audioEnabled ? "On" : "Off")
                 </button>
@@ -58,7 +60,8 @@ else
             {
                 <div class="fx-control-row">
                     <span class="fx-control-label">Haptics</span>
-                    <button type="button" class="btn @(_haptics.Enabled ? "btn-primary" : "btn-secondary")"
+                    <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
+                            aria-pressed="@(_haptics.Enabled ? "true" : "false")" aria-label="Haptics"
                             @onclick="ToggleHapticsAsync">
                         @(_haptics.Enabled ? "On" : "Off")@(_haptics.Explicit ? "" : " (follows sound)")
                     </button>
@@ -86,7 +89,7 @@ else
     {
         <StateCard Icon="⚠️" Title="Unable to retrieve health status" Alert="true">
             <ChildContent>@errorMessage</ChildContent>
-            <Actions><button type="button" class="btn btn-secondary" @onclick="LoadHealthStatus">Retry</button></Actions>
+            <Actions><button type="button" class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button></Actions>
         </StateCard>
     }
     else
@@ -197,14 +200,9 @@ else
         _caps = await Fx.GetCapabilitiesAsync();
     }
 
-    private async Task ToggleAudioAsync()
-    {
+    // Switching sound on plays its own tick in JS; no confirmation cue is needed here.
+    private async Task ToggleAudioAsync() =>
         _audioEnabled = await Fx.SetAudioEnabledAsync(!_audioEnabled);
-        if (_audioEnabled)
-        {
-            await Fx.PlayScoreLandAsync(72);   // Audible confirmation that it actually works.
-        }
-    }
 
     private async Task ToggleHapticsAsync()
     {

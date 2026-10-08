@@ -1,11 +1,11 @@
 .comic-strip-container {
     position: relative;
     width: 100%;
-    margin: 1.5rem auto;
+    margin: var(--space-lg) auto;
     background: var(--surface-film);
-    border-radius: 12px;
+    border-radius: var(--radius-card);
     /* Cinematic letterbox frame */
-    box-shadow: 0 0 0 4px var(--color-comic-ink), 0 20px 56px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 4px var(--color-comic-ink), var(--shadow-lg);
     overflow: hidden;
     animation: comicReveal 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
 }
@@ -17,27 +17,36 @@
         box-shadow: 0 0 0 4px var(--color-brand), 0 8px 24px var(--brand-a35);
     }
     50% {
-        box-shadow: 0 0 0 4px var(--color-danger), 0 30px 60px var(--shadow-lg);
+        box-shadow: 0 0 0 4px var(--color-danger), var(--shadow-lg);
     }
     to {
         opacity: 1;
         transform: scale(1);
-        box-shadow: 0 0 0 4px var(--color-comic-ink), 0 20px 56px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 0 0 4px var(--color-comic-ink), var(--shadow-lg);
     }
 }
 
+/* The ratio reserves the strip's box before the bytes arrive (it was a 0-height container that
+   then shoved the action bar down). `auto` first: once loaded the image's own shape wins, which
+   matters because the two image providers disagree (3:4 vs 2:3 for two panels). On the image,
+   not the container — the container clips, and a ratio there would crop a taller strip. */
 .comic-strip-image {
     width: 100%;
     height: auto;
     display: block;
+    aspect-ratio: auto 3 / 4;
     background: var(--surface-film);
+}
+
+[data-panels="1"] .comic-strip-image {
+    aspect-ratio: auto 4 / 3;
 }
 
 /* Breakpoints are the design system's four (40/48/64/80rem), not ad-hoc pixel values. */
 @media (max-width: 48rem) {
     .comic-strip-container {
-        margin: 1rem 0;
-        border-radius: 8px;
+        margin: var(--space-md) 0;
+        border-radius: var(--radius-sm);
     }
 }
 
@@ -48,98 +57,4 @@
         margin: 1rem -1rem;
         width: calc(100% + 2rem);
     }
-}
-
-
-/* The overlay canvas has to sit exactly over the image, so the container becomes the positioning
-   context. The image keeps its own layout; the canvas is stretched to match. */
-.comic-strip-container {
-    position: relative;
-}
-
-.fx-comic-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    border-radius: inherit;
-    /* Only revealed once the shader confirms it uploaded a texture (data-comic-fx="on" is set by
-       comic-fx.js). A failed attach therefore shows the untouched <img>, never a blank panel. */
-    opacity: 0;
-    transition: opacity 220ms ease;
-}
-
-.fx-comic-canvas[data-comic-fx="on"] {
-    opacity: 1;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .fx-comic-canvas {
-        display: none;
-    }
-}
-
-/* Where the burst ink lands. A second canvas rather than reusing .fx-comic-canvas because that
-   one is a WebGL surface owned by the pooled atlas and is cleared and redrawn every frame by the
-   post-process; this is a plain 2D context driven by the Verlet solver, and the two have nothing
-   to share but their position.
-
-   Above the post-process canvas: the ink falls in FRONT of the printed page, which is the whole
-   claim the effect is making. */
-.fx-ink-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    border-radius: inherit;
-    z-index: 1;
-}
-
-/* The reaction pile, above the ink.
-
-   Ordering is the claim each layer makes: the printed page at the bottom, ink thrown at it in
-   front of that, and the reactions people left in front of everything — they are the most recent
-   thing to happen to the comic and the only layer the viewer put there themselves.
-
-   Reactions are not `overflow`-clipped to the strip on purpose: `border-radius: inherit` keeps
-   them inside the rounded corners, and a body that settles against the bottom edge should look
-   like it is resting on the panel rather than being cut off by it. */
-.fx-reaction-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    border-radius: inherit;
-    z-index: 2;
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .fx-ink-canvas,
-    /* Reduced motion takes the tumbling bodies away. The reaction still registers — the tally in
-       the bar is the part that carries the information, and it is unaffected. */
-    .fx-reaction-canvas {
-        display: none;
-    }
-}
-
-/* The wet-ink reveal surface (js/ink-field.js, WebGPU).
-
-   Between the post-process and the reactions. It has to be above BOTH the image and the shader
-   canvas, because while it is developing it is standing in for blank paper — covering only one
-   of them would leave a fully-drawn copy of the comic showing through underneath, which is the
-   same trap the CSS mask avoids by living on the container rather than on a child.
-
-   No reduced-motion rule: js/ink-field.js refuses to start below the `full` tier, and reduced
-   motion pins the tier to `off`. A canvas that never gets a frame is already invisible. */
-.fx-ink-field-canvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    border-radius: inherit;
-    z-index: 1;
 }

@@ -98,7 +98,7 @@
     private string GetTooltipText()
     {
         return IsEnabled
-            ? (IsLoading ? "Comic generation in progress" : "Click to generate a comic based on reviews")
+            ? (IsLoading ? "Opening comic" : IsCached ? "Open comic" : "Click to generate a comic based on reviews")
             : "This restaurant has no reviews yet, so there's nothing to draw from";
     }
 

@@ -29,7 +29,7 @@
             {
                 <div class="alert alert-danger" role="alert">
                     <p>@_error</p>
-                    <button type="button" class="btn btn-secondary" @onclick="LoadAsync">Try again</button>
+                    <button type="button" class="btn btn-primary" @onclick="LoadAsync">Try again</button>
                 </div>
             }
 
@@ -84,7 +84,7 @@
                             <dl class="moderation-facts">
                                 <div><dt>Reports</dt><dd>@item.ReportCount</dd></div>
                                 <div><dt>Top reason</dt><dd>@item.TopReason</dd></div>
-                                <div><dt>Last activity</dt><dd>@FormatWhen(item.LastReportedAt)</dd></div>
+                                <div><dt>Last activity</dt><dd>@RelativeTime.Format(item.LastReportedAt)</dd></div>
                                 <div><dt>Comic</dt><dd>@(item.HasLiveComic ? "cached" : "expired")</dd></div>
                             </dl>
 
@@ -215,23 +215,5 @@
         {
             _isBusy = false;
         }
-    }
-
-    private static string FormatWhen(DateTimeOffset when)
-    {
-        if (when == default)
-        {
-            return "—";
-        }
-
-        var elapsed = DateTimeOffset.UtcNow - when;
-
-        return elapsed switch
-        {
-            { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
-            { TotalHours: < 24 } => $"{(int)elapsed.TotalHours}h ago",
-            { TotalDays: < 7 } => $"{(int)elapsed.TotalDays}d ago",
-            _ => when.ToLocalTime().ToString("MMM d")
-        };
     }
 }
