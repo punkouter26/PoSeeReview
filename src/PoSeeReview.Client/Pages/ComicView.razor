@@ -519,10 +519,8 @@
                 or System.Net.HttpStatusCode.UnprocessableEntity
                 or System.Net.HttpStatusCode.NotFound);
 
-            // Three different 422s arrive with one status and one title; the stream event has
-            // no error-type field, so the server's fixed detail text is the only tell.
-            var tooNormal = ex.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity
-                && ex.Message.Contains("too ordinary", StringComparison.OrdinalIgnoreCase);
+            // Three different 422s arrive with one status and one title; the error type tells them apart.
+            var tooNormal = ex.Data["errorType"] is "insufficient_strangeness";
 
             if (tooNormal)
             {

@@ -106,7 +106,8 @@ public class ApiClient
                     throw new HttpRequestException(
                         evt.ErrorDetail ?? evt.ErrorTitle ?? "Comic generation failed.",
                         null,
-                        (System.Net.HttpStatusCode)evt.ErrorStatus);
+                        (System.Net.HttpStatusCode)evt.ErrorStatus)
+                    { Data = { ["errorType"] = evt.ErrorType } };
             }
         }
 

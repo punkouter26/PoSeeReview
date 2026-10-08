@@ -468,6 +468,7 @@ internal static class ComicsEndpoints
                 {
                     Kind = ComicGenerationEventDto.ErrorKind,
                     ErrorStatus = status,
+                    ErrorType = errorType,
                     ErrorTitle = title,
                     ErrorDetail = detail
                 });

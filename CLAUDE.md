@@ -82,6 +82,7 @@ $env:BASE_URL = "https://app-poseereview.azurewebsites.net"; node SCRIPTS/post-d
 src/PoSeeReview.Api        ASP.NET Core host; also serves the WASM client
   Features/<Slice>/        endpoints + services + entities + repositories together:
                            Auth, Comics, Restaurants, Leaderboard, Diagnostics, Moderation
+  Configuration/           Key Vault wiring, secret managers, infrastructure DI
   Storage/                 cross-slice TableStorageRepository, BlobStorageService
   Identity/                ICurrentRequestIdentityAccessor + HttpContext impl
   Telemetry/               App Insights + OpenTelemetry, RoleNameTelemetryInitializer
@@ -120,7 +121,7 @@ source-generated `AppJsonContext` trim-safe).
 
 ### Authentication (BFF cookie proxy)
 
-The WASM client never handles tokens. Session = `.PoSeeReview.Auth` cookie (HttpOnly,
+The WASM client never handles tokens. Session = `__Host-PoSeeReview.Auth` cookie (HttpOnly,
 SameSite=Strict, Secure). Routes: `/auth/login/microsoft` (Entra `/common` OIDC), `/auth/login/fake`
 (guest cookie, 404 in Prod), `/auth/logout`, `/auth/me`.
 
@@ -158,7 +159,8 @@ App Service. `MapFallbackToFile("index.html")` must be a real endpoint in the ma
 `MapWhen` branch) or its `AllowAnonymous` is ignored and `/` 401s.
 
 Rate limiting: global fixed window (`RateLimiting:GlobalPermitLimit`, 240/min) per IP, plus
-`comics-post` at 3/min on the paid generation stream. The SPA document and `/auth` call
+`comics-post` at 3/min on the paid generation stream, partitioned per signed-in user (IP when
+anonymous) — an unpartitioned policy is one bucket for the whole app. The SPA document and `/auth` call
 `.DisableRateLimiting()` — a 429 on `index.html` is a blank white page with no retry.
 
 Tables (`PoSeeReview{Comics,Restaurants,Leaderboard,Reports,HallOfFame,Budget,ShareLinks,Moderation}`)
@@ -172,8 +174,13 @@ repositories never call `CreateIfNotExists`, and startup fails fast if storage i
 POST; the host serves the client, so there is no older API to fall back to.
 
 - The stream is a 200 before generation can fail, so the real status travels in `ErrorStatus`
-  (`ComicsEndpoints.DescribeFailure`). A mid-stream failure is surfaced, never retried — a retry
-  pays for the same comic twice.
+  and the cause in `ErrorType` (`ComicsEndpoints.DescribeFailure`) — three different 422s share one
+  status. A mid-stream failure is surfaced, never retried — a retry pays for the same comic twice;
+  the image `HttpClient` has a timeout and no resilience handler for the same reason. After the
+  budget is reserved the pipeline runs on `CancellationToken.None`: a disconnect must not cancel a
+  paid call.
+- `Comics:MinimumStrangenessScore` (15) rejects ordinary places before the image call (422
+  `insufficient_strangeness`, refunded). The moderation gate is re-read just before publishing.
 - Phases reach the response through a `Channel`, never straight from `IProgress.Report` — BCL
   `Progress<T>` posts to the thread pool here and races the completion write.
 - `ComicGenerationPhase` members map 1:1 to pipeline steps and are ordered by
@@ -261,18 +268,22 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   `/moderation` have no nav entry.
 - **Components.** `ComicRow` is every list of comics; `StateCard` is every empty/error/404 screen;
   `PageShell` is the one-row page header. Add to these rather than hand-rolling a layout.
-- **Radzen** is still referenced (package, `material-base.css` in `@layer vendor`, `--rz-*` token
-  mapping) but no component renders a Radzen control any more.
+- **State services.** `DiscoveryState` keeps the last search so Back restores it without a refetch
+  (text searches also live in `?q=`); `ToastService` drives the one `<Toast />` in `MainLayout`;
+  `ShareService.ShareComicAsync` is the only share path and always uses the short link.
+- **Live board.** `/leaderboard` re-fetches every 60s while the tab is visible. No SignalR.
+- **Duel.** `/duel/{a}/{b}` shows `GET /share/duel/{a}/{b}/card.png` (404 if either comic is gone or
+  withheld); crawlers get Open Graph HTML for it from `SocialPreviewMiddleware`.
 - **`AnalyticsService`** only writes debug logs; nothing is sent anywhere.
 
 ### Design system (`wwwroot/css/app.css`)
 
 Read its header comment before adding CSS.
 
-- **Cascade layers**: `reset, vendor, tokens, base, page, shared, utilities`. `page` (the scoped-CSS
+- **Cascade layers**: `reset, tokens, base, page, shared, utilities`. `page` (the scoped-CSS
   bundle, pulled in via `@import … layer(page)`) sits **before** `shared`, so a scoped sheet cannot
   fork `.btn`. Element selectors go in `base`; class components in `shared` — layer order beats
-  specificity. Never add a plain `<link>` for vendor or scoped CSS: unlayered CSS beats every layer.
+  specificity. Never add a plain `<link>` for scoped or third-party CSS: unlayered CSS beats every layer.
 - `page` cannot change a `.btn`'s padding; `.btn` reads `--btn-pad-x` for that.
 - **Tokens**: surface/ink split (`--color-accent` background vs `--color-accent-ink` text; fix a
   failing colour by pairing it, not darkening it). `--color-border` decorative vs
@@ -295,8 +306,8 @@ Read its header comment before adding CSS.
 `propagateAudioState()` fans a sound-preference change out to haptics.
 
 Live modules: `gfx-core.js`, `gradient.js`, `audio.js`, `haptics.js`, `comic-reveal.js`,
-`panel-scrub.js`, `view-transitions.js`, `scroll-guard.js`, `modal.js` (+ `pwa.js`, `theme-tokens.js`
-loaded by `index.html`).
+`panel-scrub.js`, `view-transitions.js`, `scroll-guard.js`, `modal.js` (+ `share-utils.js`, a classic
+script loaded by `index.html`).
 
 - **`gfx-core.js`**: one shared `requestAnimationFrame` loop (never start a private rAF), a 20ms
   frame budget that steps the tier down after **1500ms** of sustained overrun (milliseconds, not
@@ -304,21 +315,26 @@ loaded by `index.html`).
   by reduced motion or no WebGL2. `createSurface` gives one WebGL2 context per canvas.
   `poseeFx.stats()` in the console is the frame-budget readout.
 - **Backdrop** (`gradient.js`, `full` tier): built from `--color-surface` / `--color-brand-surface`
-  / `--color-brand`, re-read on a theme flip. `.page` stands aside only while
+  / `--color-brand`, re-read on a theme flip (OS scheme or `data-theme`). It leans on score, pointer,
+  scroll and the audio level, restarts itself when the tier returns to `full`, and a lost WebGL
+  context drops back to the CSS background. `startGradient` returns a handle whenever it is given a
+  canvas, even below `full`, so it can resume. `.page` stands aside only while
   `:root[data-fx-backdrop="on"]`, set only while the shader is genuinely drawing — every failure path
   keeps the CSS background.
 - **Nothing may throw into .NET.** `FxService` swallows `JSException` and returns a benign default
-  (0 handle = not running). `SafeAsync<T>` needs its `[DynamicallyAccessedMembers]` annotation or
+  (0 handle = not running, except the gradient, above). `SafeAsync<T>` needs its `[DynamicallyAccessedMembers]` annotation or
   the trimmed client fails `IL2091`.
 - **Audio** is synthesised (no assets), defaults **on**, and cannot start before a trusted gesture;
   `unlock()` **races** the resume against a short deadline — Chrome leaves an unhonoured resume
-  pending forever, which once hung the whole discovery search. Reduced motion forces silence.
+  pending forever, which once hung the whole discovery search. Reduced motion forces silence as a
+  runtime gate that never overwrites the stored preference. Master volume is `0.22 × volume`
+  (`posee_audio_volume`). The score count-up is one `playScoreRoll` scheduled on the audio clock.
   `signature(placeId, score)` seeds a per-restaurant motif (seed by place id, never name);
   `panel-scrub.js` replays its notes as panels cross mid-screen. Narration (`speechSynthesis`) must
   `cancel()` before `speak()` and on teardown — the queue is browser-global.
 - **Haptics** follow the sound preference and can be switched off on their own, never on on their
-  own. Three fixed patterns (tap / confirm / error). Switches for tier, sound and haptics live on
-  `/diagnostics`.
+  own. Three fixed patterns (tap / confirm / error). Sound, haptics and volume live in the account
+  menu; the tier switch is on the Development-only `/diagnostics`.
 - **Ink development** (`comic-reveal.js`): a freshly drawn comic develops top-down via a
   `mask-image` driven by the registered `--comic-reveal` property (initial value 1 = fully visible).
   **Every exit path must clear `data-comic-reveal`**, which is why `ComicStrip.DisposeAsync`
@@ -337,12 +353,13 @@ loaded by `index.html`).
 `manifest.webmanifest`, `service-worker.js`, `offline.html`. The worker is **network-first** because
 Blazor verifies `_framework/*` against `blazor.boot.json` integrity hashes and those files are not
 fingerprinted — cache-first means a white screen after a deploy. `/api`, `/auth`, `/diag`, `/health`
-are never cached. `pwa.js` still captures `beforeinstallprompt`, but nothing renders an install
-prompt any more.
+are never cached, with one exception: `GET /api/comics/{placeId}/image` is stale-while-revalidate in
+its own 30-entry cache so `/my-comics` works offline, and a 404 or 451 evicts the entry.
 
 ### Endpoints worth knowing
 
-`/health` (+ `/live`, `/ready`); `/diag` (masked keys, integration status, Dev **and** Prod — behind
+`/health` (+ `/live`, `/ready`; the Google Maps check is key-presence only — it used to fire a
+billed call per anonymous hit); `/diag` (masked keys, integration status, Dev **and** Prod — behind
 `UserAgentValidationMiddleware`, so anonymous scripted fetches get a 400); `/diag/mock-status`
 drives the client's "USING MOCK DATA" banner.
 
@@ -354,7 +371,8 @@ drives the client's "USING MOCK DATA" banner.
   `AppJsonContext`**. The client does not set `IsTrimmable` (Router/LayoutView need reflection).
 - NuGet audit warnings (NU1901/2/3) are never suppressed. `Microsoft.OpenApi` carries a direct pin;
   `Testcontainers.Azurite` is pinned at 4.14.0 to clear an `SSH.NET` advisory — do not downgrade.
-- UI: no inline styles; scoped `.razor.css` + tokens. **Never hardcode a colour in scoped CSS.**
+- UI: no inline styles, except a `style` that sets only a custom property (`--score-target`, `--i`);
+  scoped `.razor.css` + tokens. **Never hardcode a colour in scoped CSS.**
   Shared primitives (`.btn*`, `.alert*`, `.chip-toggle`, `.toast`) live in `app.css`.
 - After deleting a JS module, grep `fx.js` **and** `FxService.cs` for its names — `guard()` swallows
   a `ReferenceError`, so a dangling reference fails silently.

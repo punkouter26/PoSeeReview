@@ -38,6 +38,9 @@ public class ComicGenerationEventDto
     /// </summary>
     public int ErrorStatus { get; set; }
 
+    /// <summary>Stable machine-readable cause, e.g. <c>insufficient_strangeness</c>. Three 422s share one status.</summary>
+    public string? ErrorType { get; set; }
+
     public string? ErrorTitle { get; set; }
 
     public string? ErrorDetail { get; set; }
