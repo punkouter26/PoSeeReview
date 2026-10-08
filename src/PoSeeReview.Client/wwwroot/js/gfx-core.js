@@ -243,8 +243,6 @@ document.addEventListener('visibilitychange', () => {
 });
 
 export const gfx = {
-    TIERS,
-
     init() {
         state.reducedMotion = detectReducedMotion();
         state.webgl2 = detectWebGl2();
@@ -267,8 +265,6 @@ export const gfx = {
             autoDowngraded: state.tierWasAutoDowngraded
         };
     },
-
-    tier: () => state.tier,
 
     /** True when the requested level is at or below what this device is currently running. */
     allows(level) {
@@ -317,17 +313,6 @@ export const gfx = {
     /** Frame-budget readout. Console: `poseeFx.stats()`. */
     stats() {
         return { ...state.stats, tier: state.tier, autoDowngraded: state.tierWasAutoDowngraded };
-    },
-
-    resetStats() {
-        Object.assign(state.stats, {
-            fps: 0, frameMs: 0, worstFrameMs: 0, droppedFrames: 0, sampledFrames: 0,
-            cpuMs: 0, activeTasks: state.tasks.size
-        });
-        state.frameMsAccumulator = 0;
-        state.cpuMsAccumulator = 0;
-        state.frameMsCount = 0;
-        state.overBudgetStreak = 0;
     }
 };
 

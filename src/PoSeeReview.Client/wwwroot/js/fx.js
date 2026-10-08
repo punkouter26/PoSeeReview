@@ -59,11 +59,14 @@ function reflectTier(tier) {
 reflectTier(info.tier);
 gfx.onTierChanged(reflectTier);
 
-gfx.onTierChanged(() => {
-    if (!audio.isEnabled()) {
-        propagateAudioState(false);
-    }
-});
+/** Heard and felt when sound or haptics is switched ON: proof the switch did something. */
+function toggleTick() {
+    audio.tapAt(window.innerWidth / 2);
+    haptics.tap();
+}
+
+// At most this many rows of a reshuffled board make a sound; the rest only move.
+const MAX_VOICED_MOVES = 4;
 
 export const fx = {
     // ── Capability + tier ────────────────────────────────────────────────────────────────
@@ -77,7 +80,7 @@ export const fx = {
     }),
     setTier: (tier) => guard(() => gfx.setTier(tier), 'off'),
     stats: () => guard(() => gfx.stats(), null),
-    resetStats: () => guard(() => gfx.resetStats()),
+    pageVisible: () => guard(() => document.visibilityState === 'visible', false),
 
     // ── Audio ────────────────────────────────────────────────────────────────────────────
     audioEnabled: () => guard(() => audio.isEnabled(), false),
@@ -85,8 +88,12 @@ export const fx = {
     setAudioEnabled: (enabled) => guardAsync(async () => {
         const applied = await audio.setEnabled(enabled);
         propagateAudioState(applied);
+        if (applied) toggleTick();
         return applied;
     }, false),
+
+    volume: () => guard(() => audio.volume(), 1),
+    setVolume: (volume) => guard(() => audio.setVolume(volume), 1),
 
     /** Call from a real click handler or the AudioContext will not leave 'suspended'. */
     unlockAudio: () => guardAsync(async () => {
@@ -138,6 +145,11 @@ export const fx = {
         audio.scoreLand(score);
         haptics.confirm();
     }),
+    /** The whole count-up and its landing chord in one call, timed by the audio clock. */
+    playScoreRoll: (score, durationMs) => guard(() => {
+        audio.scoreRoll(score, durationMs);
+        setTimeout(() => guard(() => haptics.confirm()), Math.max(0, durationMs ?? 0));
+    }),
     playShareStinger: () => guard(() => {
         audio.shareStinger();
         haptics.confirm();
@@ -158,15 +170,22 @@ export const fx = {
 
     // ── Haptics ──────────────────────────────────────────────────────────────────────────
     hapticsDescribe: () => guard(() => haptics.describe(), { supported: false, enabled: false, explicit: false }),
-    setHapticsEnabled: (enabled) => guard(() => haptics.setEnabled(enabled), false),
+    setHapticsEnabled: (enabled) => guard(() => {
+        const active = haptics.setEnabled(enabled);
+        if (active) toggleTick();
+        return active;
+    }, false),
 
     // ── Narration ────────────────────────────────────────────────────────────────────────
     canNarrate: () => guard(() => audio.canNarrate(), false),
     narrate: (text) => guard(() => audio.narrate(text), false),
     stopNarration: () => guard(() => audio.stopNarration()),
+    /** Resolves when the current utterance is over, or at once if nothing is speaking. */
+    narrationEnded: () => guardAsync(() => audio.narrationEnded()),
 
     // ── Background gradient ──────────────────────────────────────────────────────────────
-    startGradient: (canvas, score) => guard(() => gradient.start(canvas, { score }), 0),
+    // The backdrop's audio meter is handed over here: gradient.js does not import audio.js.
+    startGradient: (canvas, score) => guard(() => gradient.start(canvas, { score, level: audio.level }), 0),
     setGradientScore: (id, score) => guard(() => gradient.setScore(id, score)),
     stopGradient: (id) => guard(() => gradient.stop(id)),
 
@@ -216,10 +235,12 @@ export const fx = {
     animateBoardMoves: (container) => guard(() => {
         if (!container || !gfx.allows('lite')) return;
         const rows = [...container.querySelectorAll('[data-delta]')];
+        let voiced = 0;
         rows.forEach((row, order) => {
             const delta = Number(row.dataset.delta);
             if (!delta) return;
-            const height = row.getBoundingClientRect().height;
+            const rect = row.getBoundingClientRect();
+            const height = rect.height;
             const delay = 250 + order * 70;
             const duration = 650 + Math.min(6, Math.abs(delta)) * 70;
             row.style.zIndex = delta > 0 ? '2' : '1';
@@ -227,8 +248,13 @@ export const fx = {
                 [{ transform: `translateY(${delta * height}px)` }, { transform: 'none' }],
                 { duration, delay, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
             animation.finished.then(() => { row.style.zIndex = ''; }).catch(() => { });
-            // The buzz lands as the row settles, not as it sets off: the arrival is the news.
-            if (Math.abs(delta) >= 3) setTimeout(() => guard(() => haptics.tap()), delay + duration * 0.7);
+            // The cue and the buzz land as the row settles, not as it sets off: the arrival is
+            // the news. The per-row delay is what keeps several movers from stacking into noise.
+            const settle = delay + duration * 0.7;
+            if (voiced++ < MAX_VOICED_MOVES) {
+                audio.rankMove(delta, rect.left + rect.width / 2, settle / 1000);
+            }
+            if (Math.abs(delta) >= 3) setTimeout(() => guard(() => haptics.tap()), settle);
         });
     }),
 

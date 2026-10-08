@@ -17,6 +17,11 @@
 import { gfx } from './gfx-core.js';
 
 const STORAGE_KEY = 'posee_audio_enabled';
+const VOLUME_KEY = 'posee_audio_volume';
+
+// Headroom: several voices can overlap during the score reveal, and summing oscillators at unity
+// gain clips hard. The user's volume scales this, never replaces it.
+const MASTER_TRIM = 0.22;
 
 // How long unlock() will wait for a resume that may never arrive. See the note in unlock().
 const RESUME_GRACE_MS = 200;
@@ -28,10 +33,15 @@ const state = {
     reverbSend: null,  // Shared send bus into the convolver.
     convolver: null,
     wet: null,
-    enabled: true,
+    analyser: null,    // Tap off the master bus, read by level(). Not on the audible path.
+    levelBuffer: null,
+    enabled: true,     // The stored preference. on() is what is actually in force.
+    silenced: false,   // Reduced motion. A runtime gate: it never rewrites the preference.
+    volume: 1,
     unlocked: false,
     // Guards against a burst of identical sounds (a fast count-up) stacking into clipping.
-    lastPlayedAt: new Map()
+    lastPlayedAt: new Map(),
+    utterance: null    // Held so the engine cannot collect it mid-sentence.
 };
 
 // Only an explicit "false" is off. An absent key means the user has never decided, and the
@@ -43,6 +53,21 @@ function readStoredEnabled() {
         return true;
     }
 }
+
+function readStoredVolume() {
+    try {
+        const stored = parseFloat(localStorage.getItem(VOLUME_KEY));
+        return Number.isFinite(stored) ? Math.max(0, Math.min(1, stored)) : 1;
+    } catch {
+        return 1;
+    }
+}
+
+const on = () => state.enabled && !state.silenced;
+
+// narrationEnded() hands out this promise; endNarration resolves it. Resolving twice is harmless.
+let narrationDone = Promise.resolve();
+let endNarration = () => { };
 
 /**
  * A room, synthesised rather than downloaded. Exponentially decaying stereo noise is the
@@ -90,11 +115,14 @@ function ensureContext() {
         const ctx = state.ctx;
 
         state.master = ctx.createGain();
-        // Headroom: several voices can overlap during the score reveal, and summing oscillators
-        // at unity gain clips hard.
-        state.master.gain.value = 0.22;
+        state.master.gain.value = MASTER_TRIM * state.volume;
 
         state.master.connect(ctx.destination);
+
+        state.analyser = ctx.createAnalyser();
+        state.analyser.fftSize = 256;
+        state.levelBuffer = new Float32Array(state.analyser.fftSize);
+        state.master.connect(state.analyser);
 
         // Dry path: every voice pans into here.
         state.dry = ctx.createGain();
@@ -161,7 +189,7 @@ function makeOutput(pan = 0, send = 0.25) {
 }
 
 function canPlay() {
-    return state.enabled && state.unlocked && state.ctx && state.ctx.state === 'running';
+    return on() && state.unlocked && state.ctx && state.ctx.state === 'running';
 }
 
 /** Rate-limits one sound key so rapid repeats thin out instead of piling up. */
@@ -360,13 +388,55 @@ function motif(seed, score = 50) {
 }
 
 export const audio = {
-    /** Reads the stored preference. Does NOT create a context — that needs a user gesture. */
+    /**
+     * Reads the stored preferences. Does NOT create a context — that needs a user gesture.
+     * Call after gfx.init(): reduced motion is read from it, as "no unrequested stimulus".
+     */
     init() {
         state.enabled = readStoredEnabled();
-        return { enabled: state.enabled, unlocked: state.unlocked };
+        state.volume = readStoredVolume();
+        state.silenced = gfx.describe().reducedMotion;
+        return { enabled: on(), unlocked: state.unlocked };
     },
 
-    isEnabled: () => state.enabled,
+    /** What is in force, not what is stored: false under reduced motion whatever the preference. */
+    isEnabled: on,
+
+    volume: () => state.volume,
+
+    setVolume(volume) {
+        const value = Number(volume);
+        if (!Number.isFinite(value)) return state.volume;
+
+        state.volume = Math.max(0, Math.min(1, value));
+        try {
+            localStorage.setItem(VOLUME_KEY, String(state.volume));
+        } catch {
+            // Session-only preference.
+        }
+        if (state.master) {
+            // Approached, not set: a stepped gain under a sounding note is an audible click.
+            state.master.gain.setTargetAtTime(MASTER_TRIM * state.volume, state.ctx.currentTime, 0.03);
+        }
+        return state.volume;
+    },
+
+    /**
+     * Peak of what is on the master bus right now, 0..1. Read once a frame by the backdrop, so it
+     * allocates nothing and answers 0 without touching the graph when nothing can be sounding.
+     */
+    level() {
+        if (!canPlay() || !state.analyser?.getFloatTimeDomainData) return 0;
+        const data = state.levelBuffer;
+        state.analyser.getFloatTimeDomainData(data);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) {
+            const sample = Math.abs(data[i]);
+            if (sample > peak) peak = sample;
+        }
+        // A loud cue peaks around 0.12 after the master trim.
+        return Math.min(1, peak * 8);
+    },
 
     /**
      * Must be called from inside a real user-gesture handler. Browsers only allow an
@@ -374,7 +444,7 @@ export const audio = {
      * await continuation silently leaves it suspended.
      */
     async unlock() {
-        if (!state.enabled) {
+        if (!on()) {
             return false;
         }
 
@@ -412,7 +482,7 @@ export const audio = {
             // Session-only preference.
         }
 
-        if (state.enabled) {
+        if (on()) {
             await this.unlock();
         } else {
             // Narration is a separate output that does not pass through the context, so
@@ -429,7 +499,7 @@ export const audio = {
             }
         }
 
-        return state.enabled;
+        return on();
     },
 
     /**
@@ -459,7 +529,7 @@ export const audio = {
      * Resolution chord when the count lands. Voiced by score: a low strangeness resolves to a
      * plain major triad, a high one adds a major seventh and a tritone above for unease.
      */
-    scoreLand(score) {
+    scoreLand(score, delay = 0) {
         if (!canPlay()) return;
 
         const root = 261.63; // C4
@@ -472,25 +542,54 @@ export const audio = {
         // stranger room than a mundane one.
         const room = 0.22 + strange * 0.45;
 
-        voice({ type: 'sine', freq: root, attack: 0.01, decay: 0.9, peak: 0.5, pan: 0, send: room });
-        voice({ type: 'sine', freq: root * 1.5, attack: 0.01, decay: 0.85, peak: 0.36, delay: 0.03, pan: -0.45, send: room });
-        voice({ type: 'sine', freq: root * 2, attack: 0.01, decay: 0.8, peak: 0.30, delay: 0.06, pan: 0.45, send: room });
+        voice({ type: 'sine', freq: root, attack: 0.01, decay: 0.9, peak: 0.5, delay, pan: 0, send: room });
+        voice({ type: 'sine', freq: root * 1.5, attack: 0.01, decay: 0.85, peak: 0.36, delay: delay + 0.03, pan: -0.45, send: room });
+        voice({ type: 'sine', freq: root * 2, attack: 0.01, decay: 0.8, peak: 0.30, delay: delay + 0.06, pan: 0.45, send: room });
 
         if (strange > 0.6) {
             // Major seventh — bright but unresolved.
-            voice({ type: 'sine', freq: root * 1.888, attack: 0.02, decay: 0.7, peak: 0.22, delay: 0.09, pan: -0.7, send: room });
+            voice({ type: 'sine', freq: root * 1.888, attack: 0.02, decay: 0.7, peak: 0.22, delay: delay + 0.09, pan: -0.7, send: room });
         }
         if (strange > 0.85) {
             // Tritone. Deliberately uncomfortable; only the genuinely bizarre earns it. Panned
             // opposite the seventh so the two dissonances pull the image apart rather than
             // fighting in the centre.
-            voice({ type: 'sine', freq: root * 1.414, attack: 0.02, decay: 0.65, peak: 0.18, delay: 0.12, pan: 0.7, send: room });
+            voice({ type: 'sine', freq: root * 1.414, attack: 0.02, decay: 0.65, peak: 0.18, delay: delay + 0.12, pan: 0.7, send: room });
         }
 
         noise({
             duration: 0.25, peak: 0.10, filterHz: 900 + strange * 2600,
-            filterType: 'lowpass', delay: 0.02, send: room
+            filterType: 'lowpass', delay: delay + 0.02, send: room
         });
+    },
+
+    /**
+     * The whole count-up in one call: the ticks `scoreTick` plays one at a time, then the landing
+     * chord, all placed on the context clock. A tick per interop round trip arrived whenever the
+     * renderer got to it; scheduled here they are evenly spaced whatever the main thread is doing.
+     */
+    scoreRoll(score, durationMs) {
+        if (!canPlay() || throttled('roll', 300)) return;
+
+        const seconds = Math.max(0, Math.min(5000, durationMs ?? 0)) / 1000;
+        // One tick per ~60ms and never more than the number has values: a 3 does not rattle.
+        const ticks = Math.max(0, Math.min(24, Math.round(seconds / 0.06), Math.floor(score)));
+
+        for (let i = 0; i < ticks; i++) {
+            const progress = (i + 1) / (ticks + 1);
+            voice({
+                type: 'square',
+                freq: PENTATONIC[Math.min(PENTATONIC.length - 1, Math.floor(progress * PENTATONIC.length))],
+                attack: 0.001,
+                decay: 0.045,
+                peak: 0.10 + progress * 0.06,
+                delay: progress * seconds,
+                pan: (progress * 2 - 1) * 0.5,
+                send: 0.18
+            });
+        }
+
+        this.scoreLand(score, seconds);
     },
 
     /** Short rising stinger on a completed share. Rises in pitch and travels left to right. */
@@ -676,6 +775,20 @@ export const audio = {
         });
     },
 
+    /**
+     * A leaderboard row settling into a new rank: a short glide, up for a climb and down for a
+     * fall, panned to the row. Barely there — a board can move several rows at once, and the
+     * caller staggers them with `delay` (seconds) and caps how many sound.
+     */
+    rankMove(delta, clientX, delay = 0) {
+        if (!canPlay() || !delta) return;
+        const climbed = delta > 0;
+        voice({
+            type: 'sine', startFreq: climbed ? 440 : 587.33, endFreq: climbed ? 587.33 : 440,
+            attack: 0.004, decay: 0.12, peak: 0.07, delay, pan: panForClientX(clientX), send: 0.22
+        });
+    },
+
     /** Confirmation for something added to a collection. Two rising ticks, deliberately small. */
     confirm() {
         if (!canPlay() || throttled('confirm', 300)) return;
@@ -743,8 +856,8 @@ export const audio = {
      * narrative is the joke, and it currently exists only as text under an image that a screen
      * reader describes as a comic strip.
      */
-    narrate(text, options = {}) {
-        if (!state.enabled || !this.canNarrate()) return false;
+    narrate(text) {
+        if (!on() || !this.canNarrate()) return false;
 
         const value = String(text ?? '').trim();
         if (!value) return false;
@@ -753,29 +866,35 @@ export const audio = {
             // Always cancel first. Chrome queues utterances indefinitely, so a user tapping
             // narrate twice would otherwise hear the whole thing twice, back to back.
             window.speechSynthesis.cancel();
+            endNarration();
 
-            const utterance = new SpeechSynthesisUtterance(value.slice(0, 800));
-            utterance.rate = options.rate ?? 1.02;
-            utterance.pitch = options.pitch ?? 1.0;
-            utterance.volume = options.volume ?? 0.9;
+            const spoken = value.slice(0, 800);
+            const utterance = new SpeechSynthesisUtterance(spoken);
+            utterance.rate = 1.02;
+            utterance.volume = 0.9 * state.volume;
+
+            narrationDone = new Promise((resolve) => { endNarration = resolve; });
+            const done = endNarration;
+            utterance.onend = done;
+            utterance.onerror = done;
+            // Chrome can collect an utterance mid-speech and then never fires its events, and a
+            // backgrounded tab can stall the queue outright. Nothing may wait on this forever.
+            setTimeout(done, 10000 + spoken.length * 150);
+            state.utterance = utterance;
+
             window.speechSynthesis.speak(utterance);
             return true;
         } catch {
+            endNarration();
             return false;
         }
     },
 
     stopNarration() {
         try { window.speechSynthesis?.cancel(); } catch { /* nothing speaking */ }
+        endNarration();
     },
+
+    /** Resolves when the current utterance ends, errors or is cancelled. Never rejects. */
+    narrationEnded: () => narrationDone
 };
-
-// Audio is independent of the GPU tier by design: it stays available at 'lite' and 'off',
-// because a device that cannot run shaders can still comfortably run four oscillators. The one
-// exception is an explicit reduced-motion request, which we read as "no unrequested stimulus".
-gfx.onTierChanged(() => {
-    if (gfx.describe().reducedMotion && state.enabled) {
-        audio.setEnabled(false);
-    }
-});
-

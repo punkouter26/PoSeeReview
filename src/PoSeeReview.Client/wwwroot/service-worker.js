@@ -14,6 +14,10 @@
 // origin, no CORS headers), so those responses would be opaque — cacheable only as blobs of
 // unknown status, taking real quota for something that cannot be inspected. They pass straight
 // through.
+//
+// ONE EXCEPTION, and it is narrow on purpose: `GET /api/comics/{placeId}/image`, the same-origin
+// re-serve of a comic's image, is kept stale-while-revalidate so /my-comics has pictures offline.
+// See comicImage() for why that is safe against a takedown. Nothing else under /api is cached.
 // ============================================================================================
 
 // Bump on any change to cached assets (wwwroot JS/CSS/icons). A new VERSION orphans the old
@@ -21,9 +25,14 @@
 // stops running yesterday's audio.js/fx.js — network-first still answers from the runtime
 // cache whenever a request fails, and a re-deployed file the worker never re-requested stays
 // stale in that cache until this string changes.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = `posee-shell-${VERSION}`;
 const RUNTIME_CACHE = `posee-runtime-${VERSION}`;
+
+// Not versioned: these are the user's offline comics, and a JS deploy is no reason to drop them.
+const IMAGE_CACHE = 'posee-comic-images';
+const IMAGE_CACHE_MAX = 30;
+const COMIC_IMAGE = /^\/api\/comics\/[^/]+\/image$/;
 
 // The smallest set that makes an offline launch show this app rather than the browser's error
 // page. Everything else is cached opportunistically as it is fetched.
@@ -55,7 +64,8 @@ self.addEventListener('activate', event => {
     event.waitUntil((async () => {
         const keys = await caches.keys();
         await Promise.all(keys
-            .filter(key => key.startsWith('posee-') && key !== SHELL_CACHE && key !== RUNTIME_CACHE)
+            .filter(key => key.startsWith('posee-')
+                && key !== SHELL_CACHE && key !== RUNTIME_CACHE && key !== IMAGE_CACHE)
             .map(key => caches.delete(key)));
         await self.clients.claim();
     })());
@@ -103,6 +113,12 @@ self.addEventListener('fetch', event => {
         return;
     }
 
+    // Checked before the /api rule below, which it is the single exception to.
+    if (COMIC_IMAGE.test(url.pathname)) {
+        event.respondWith(comicImage(event));
+        return;
+    }
+
     if (isNeverCached(url)) {
         return;
     }
@@ -136,6 +152,47 @@ async function handleNavigation(request) {
             ?? (await caches.match('/offline.html'))
             ?? Response.error();
     }
+}
+
+/**
+ * Stale-while-revalidate for one comic image. A cached copy answers at once; the network is
+ * asked every time regardless, and what it says wins for next time.
+ *
+ * The revalidation is what makes caching this tolerable at all. A 404 (expired) or 451
+ * (withheld) deletes the entry, so a takedown reaches the device the next time it is online —
+ * the stale copy is shown at most once more. Any other failure, including being offline, leaves
+ * the copy alone: that is the case the cache exists for.
+ */
+async function comicImage(event) {
+    const { request } = event;
+    const cache = await caches.open(IMAGE_CACHE);
+    const cached = await cache.match(request);
+
+    const refresh = (async () => {
+        const response = await fetch(request);
+        try {
+            // Only an actual image: a 200 that is really a sign-in page must not be kept as one.
+            if (response.ok && response.headers.get('content-type')?.startsWith('image/')) {
+                // put() replaces the entry and re-appends it, so keys() stays oldest-first.
+                await cache.put(request, response.clone());
+                const keys = await cache.keys();
+                await Promise.all(keys.slice(0, Math.max(0, keys.length - IMAGE_CACHE_MAX))
+                    .map(key => cache.delete(key)));
+            } else if (response.status === 404 || response.status === 451) {
+                await cache.delete(request);
+            }
+        } catch {
+            // Quota, or a response the cache refuses. The image itself still goes to the page.
+        }
+        return response;
+    })();
+
+    if (!cached) {
+        return refresh;
+    }
+
+    event.waitUntil(refresh.catch(() => { }));
+    return cached;
 }
 
 async function networkFirst(request, cacheName) {

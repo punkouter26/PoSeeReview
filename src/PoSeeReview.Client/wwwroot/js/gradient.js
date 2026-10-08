@@ -1,6 +1,8 @@
 // Strangeness-reactive background. A single fullscreen triangle running domain-warped value
 // noise, lit by three moving lights, with hue, warp strength and speed driven by the current
-// comic's score — so a 92 visibly seethes and a 30 drifts.
+// comic's score — so a 92 visibly seethes and a 30 drifts. The fill light leans toward the
+// pointer, scrolling nudges the field along, and the key light swells with whatever the app is
+// playing. All three are uniforms into the one existing pass; none of them adds a texture read.
 //
 // LIGHTING, AND WHY IT IS AFFORDABLE HERE.
 //
@@ -31,6 +33,9 @@ uniform vec3  uColorB;
 uniform vec3  uColorC;
 uniform vec3  uKeyLight;   // rgb tint of the shadow-casting light
 uniform float uAmbient;
+uniform vec2  uPointer;    // 0..1, origin bottom-left, eased
+uniform float uScroll;     // 0..1 down the page, eased
+uniform float uLevel;      // 0..1 audio level, eased
 `;
 
 const BACKDROP_GLSL = `
@@ -79,7 +84,7 @@ struct PoseeScene {
 PoseeScene posee_scene() {
     PoseeScene s;
     s.energy = uStrange;
-    s.t = uTime * (0.02 + s.energy * 0.10);
+    s.t = uTime * (0.02 + s.energy * 0.10) + uScroll * 0.6;
     s.warpAmount = 0.15 + s.energy * 0.85;
     s.aspect = uResolution.x / max(uResolution.y, 1.0);
     s.centre = vec2(s.aspect, 1.0) * 0.5;
@@ -102,7 +107,8 @@ vec3 posee_backdrop(vec2 p, PoseeScene s) {
     vec3 normal = normalize(vec3((n - hX) / eps, (n - hY) / eps, 0.55));
 
     vec3 keyPos  = vec3(s.centre + vec2(cos(uTime * 0.13), sin(uTime * 0.17)) * 0.42, 0.55);
-    vec3 fillPos = vec3(s.centre + vec2(cos(-uTime * 0.09 + 2.1), sin(-uTime * 0.11 + 2.1)) * 0.55, 0.40);
+    vec2 fillOrbit = s.centre + vec2(cos(-uTime * 0.09 + 2.1), sin(-uTime * 0.11 + 2.1)) * 0.55;
+    vec3 fillPos = vec3(mix(fillOrbit, uPointer * vec2(s.aspect, 1.0), 0.35), 0.40);
     vec3 rimPos  = vec3(s.centre + vec2(cos(uTime * 0.21 + 4.2), sin(uTime * 0.19 + 4.2)) * 0.68, 0.28);
 
     vec3 surface = vec3(p, n * 0.35);
@@ -133,9 +139,9 @@ vec3 posee_backdrop(vec2 p, PoseeScene s) {
     albedo = mix(albedo, uColorC, smoothstep(0.55, 1.0, n) * (0.25 + uStrange * 0.55));
 
     vec3 color = albedo * uAmbient;
-    color += albedo * uKeyLight * keyDiffuse * 1.30;
+    color += albedo * uKeyLight * keyDiffuse * (1.30 + uLevel * 0.45);
     color += albedo * uColorC   * fillDiffuse * 0.55;
-    color += uColorC * rimDiffuse * 0.22;
+    color += uColorC * rimDiffuse * (0.22 + uLevel * 0.15);
 
     return color;
 }
@@ -172,8 +178,17 @@ void main() {
     fragColor = vec4(clamp(color + dither, 0.0, 1.0), 1.0);
 }`;
 
-const instances = new Map();
-let nextId = 1;
+// There is one backdrop, so there is one scene and one handle. The scene outlives its GL program:
+// a tier downgrade or a lost context PAUSES it (program gone, loop gone, CSS background back) and
+// keeps the canvas and score, so climbing back to 'full' or a restored context can resume it.
+const HANDLE = 1;
+let scene = null;
+
+// Warm key against the cool violet field: the complementary split is what stops a single-hue
+// noise field from reading as flat.
+const KEY_LIGHT = [1.00, 0.86, 0.62];
+
+const clamp01 = (value) => Math.min(1, Math.max(0, value));
 
 function parseColor(hex, fallback) {
     const match = /^#?([0-9a-f]{6})$/i.exec((hex ?? '').trim());
@@ -251,106 +266,184 @@ function readSceneTokens() {
     }
 }
 
+/**
+ * @param {HTMLCanvasElement} canvas
+ * @param {{ score?: number, level?: () => number }} options `level` is the audio meter, passed in
+ *        by fx.js: this module does not know the app makes noise.
+ * @returns {number} handle, or 0 with no canvas. A handle does not promise the shader is drawing
+ *          — below 'full' the scene is remembered and waits.
+ */
 export function start(canvas, options = {}) {
-    if (!canvas || !gfx.allows('full')) {
+    if (!canvas) {
         return 0;
     }
+    stop(HANDLE);
 
-    const surface = createSurface(canvas, { maxDpr: 1.25 });
-    if (!surface) {
-        return 0;
-    }
+    const strange = clamp01((options.score ?? 40) / 100);
+    scene = {
+        canvas,
+        level: typeof options.level === 'function' ? options.level : null,
+        surface: null,
+        program: null,
+        vao: null,
+        uniforms: null,
+        task: null,
+        startTime: performance.now(),
+        strange,
+        targetStrange: strange,
+        colorA: [0, 0, 0], colorB: [0, 0, 0], colorC: [0, 0, 0],
+        targetA: [0, 0, 0], targetB: [0, 0, 0], targetC: [0, 0, 0],
+        ambient: 0.62,
+        pointer: [0.5, 0.5],
+        targetPointer: [0.5, 0.5],
+        scroll: 0,
+        targetScroll: 0,
+        audioLevel: 0
+    };
 
-    const { gl } = surface;
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    canvas.addEventListener('webglcontextrestored', resume);
+    resume();
+    return HANDLE;
+}
 
-    let program;
+function resume() {
+    const s = scene;
+    if (!s || s.task || !gfx.allows('full')) return;
+
+    s.surface ??= createSurface(s.canvas, { maxDpr: 1.25 });
+    if (!s.surface) return;
+
+    const { gl } = s.surface;
+    if (gl.isContextLost()) return;
+
     try {
-        program = compileProgram(gl, FULLSCREEN_VERTEX_SHADER, FRAGMENT_SHADER);
+        s.program = compileProgram(gl, FULLSCREEN_VERTEX_SHADER, FRAGMENT_SHADER);
     } catch (err) {
         // A driver that refuses this shader is not an app error — the CSS gradient stays.
         console.warn('[gradient] shader unavailable; falling back to CSS', err);
-        surface.release();
-        return 0;
+        return;
     }
 
-    const uniforms = {
-        time: gl.getUniformLocation(program, 'uTime'),
-        resolution: gl.getUniformLocation(program, 'uResolution'),
-        strange: gl.getUniformLocation(program, 'uStrange'),
-        colorA: gl.getUniformLocation(program, 'uColorA'),
-        colorB: gl.getUniformLocation(program, 'uColorB'),
-        colorC: gl.getUniformLocation(program, 'uColorC'),
-        keyLight: gl.getUniformLocation(program, 'uKeyLight'),
-        ambient: gl.getUniformLocation(program, 'uAmbient')
-    };
+    s.uniforms = Object.fromEntries(
+        ['Time', 'Resolution', 'Strange', 'ColorA', 'ColorB', 'ColorC', 'KeyLight', 'Ambient',
+            'Pointer', 'Scroll', 'Level']
+            .map((name) => [name, gl.getUniformLocation(s.program, `u${name}`)]));
 
     // WebGL2 requires a bound VAO even when every vertex is generated from gl_VertexID.
-    const vao = gl.createVertexArray();
+    s.vao = gl.createVertexArray();
 
-    const scene = readSceneTokens();
-    const id = nextId++;
-    const instance = {
-        gl,
-        surface,
-        program,
-        vao,
-        canvas,
-        startTime: performance.now(),
-        strange: Math.min(1, Math.max(0, (options.score ?? 40) / 100)),
-        targetStrange: Math.min(1, Math.max(0, (options.score ?? 40) / 100)),
-        colorA: [...scene.colors[0]],
-        colorB: [...scene.colors[1]],
-        colorC: [...scene.colors[2]],
-        // Targets start equal to the live values, so a gradient nobody retints never eases.
-        targetA: [...scene.colors[0]],
-        targetB: [...scene.colors[1]],
-        targetC: [...scene.colors[2]],
-        ambient: scene.ambient,
-        // Warm key against the cool violet field: the complementary split is what stops a
-        // single-hue noise field from reading as flat.
-        keyLight: parseColor(options.keyLight, [1.00, 0.86, 0.62]),
-        stop: null
-    };
+    // Snapped, not eased: nothing was on screen to ease from.
+    const tokens = readSceneTokens();
+    for (const [live, target, value] of [
+        [s.colorA, s.targetA, tokens.colors[0]],
+        [s.colorB, s.targetB, tokens.colors[1]],
+        [s.colorC, s.targetC, tokens.colors[2]]
+    ]) {
+        live.splice(0, 3, ...value);
+        target.splice(0, 3, ...value);
+    }
+    s.ambient = tokens.ambient;
 
-    instance.stop = gfx.addTask(`gradient#${id}`, (now) => {
-        if (!surface.beginFrame()) {
-            stop(id);
-            return;
-        }
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
 
-        // Ease toward the target so a score change is a transition, not a jump cut.
-        instance.strange += (instance.targetStrange - instance.strange) * 0.04;
+    s.task = gfx.addTask('gradient', draw);
+    notifyActive(true);
+}
 
-        // Colours ease toward their targets too, so a theme flip is not a hard cut.
-        easeColor(instance.colorA, instance.targetA);
-        easeColor(instance.colorB, instance.targetB);
-        easeColor(instance.colorC, instance.targetC);
+function draw(now) {
+    const s = scene;
+    const { gl } = s.surface;
+    if (!s.surface.beginFrame()) return;
 
-        gl.useProgram(program);
-        gl.bindVertexArray(vao);
-        gl.uniform1f(uniforms.time, (now - instance.startTime) / 1000);
-        gl.uniform2f(uniforms.resolution, surface.width, surface.height);
-        gl.uniform1f(uniforms.strange, instance.strange);
-        gl.uniform3fv(uniforms.colorA, instance.colorA);
-        gl.uniform3fv(uniforms.colorB, instance.colorB);
-        gl.uniform3fv(uniforms.colorC, instance.colorC);
-        gl.uniform3fv(uniforms.keyLight, instance.keyLight);
-        gl.uniform1f(uniforms.ambient, instance.ambient);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.bindVertexArray(null);
+    // Ease toward the target so a score change is a transition, not a jump cut.
+    s.strange += (s.targetStrange - s.strange) * 0.04;
 
-        surface.present();
-    });
+    // Colours ease toward their targets too, so a theme flip is not a hard cut.
+    easeColor(s.colorA, s.targetA);
+    easeColor(s.colorB, s.targetB);
+    easeColor(s.colorC, s.targetC);
 
-    instances.set(id, instance);
-    notifyActive();
-    return id;
+    s.pointer[0] += (s.targetPointer[0] - s.pointer[0]) * 0.06;
+    s.pointer[1] += (s.targetPointer[1] - s.pointer[1]) * 0.06;
+    s.scroll += (s.targetScroll - s.scroll) * 0.08;
+
+    // Fast up, slow down, like a meter: a note is over in a few frames and the light should
+    // swell with it and then let go, not flicker.
+    const level = s.level ? clamp01(s.level()) : 0;
+    s.audioLevel += (level - s.audioLevel) * (level > s.audioLevel ? 0.5 : 0.06);
+
+    const u = s.uniforms;
+    gl.useProgram(s.program);
+    gl.bindVertexArray(s.vao);
+    gl.uniform1f(u.Time, (now - s.startTime) / 1000);
+    gl.uniform2f(u.Resolution, s.surface.width, s.surface.height);
+    gl.uniform1f(u.Strange, s.strange);
+    gl.uniform3fv(u.ColorA, s.colorA);
+    gl.uniform3fv(u.ColorB, s.colorB);
+    gl.uniform3fv(u.ColorC, s.colorC);
+    gl.uniform3fv(u.KeyLight, KEY_LIGHT);
+    gl.uniform1f(u.Ambient, s.ambient);
+    gl.uniform2fv(u.Pointer, s.pointer);
+    gl.uniform1f(u.Scroll, s.scroll);
+    gl.uniform1f(u.Level, s.audioLevel);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+
+    s.surface.present();
+}
+
+/** Stops drawing and hands the ground back to CSS, keeping what resume() needs. */
+function pause() {
+    const s = scene;
+    if (!s?.task) return;
+
+    s.task();
+    s.task = null;
+    window.removeEventListener('pointermove', onPointerMove);
+    window.removeEventListener('scroll', onScroll);
+    notifyActive(false);
+
+    try {
+        // All no-ops on a lost context. Shrinking and clearing drops the fullscreen backing
+        // store and the last frame with it, so the canvas's own CSS background shows through.
+        const { gl } = s.surface;
+        gl.deleteProgram(s.program);
+        gl.deleteVertexArray(s.vao);
+        s.canvas.width = s.canvas.height = 1;
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+    } catch {
+        // The loop is already stopped, which is the part that matters.
+    }
+    s.program = s.vao = s.uniforms = null;
+}
+
+function onContextLost(event) {
+    // Without preventDefault the browser never offers the context back.
+    event.preventDefault();
+    pause();
+}
+
+function onPointerMove(event) {
+    if (!scene) return;
+    scene.targetPointer[0] = clamp01(event.clientX / (window.innerWidth || 1));
+    // GL's origin is the bottom-left corner; the pointer's is the top-left.
+    scene.targetPointer[1] = 1 - clamp01(event.clientY / (window.innerHeight || 1));
+}
+
+function onScroll() {
+    if (!scene) return;
+    const page = document.scrollingElement;
+    const range = page ? page.scrollHeight - page.clientHeight : 0;
+    scene.targetScroll = range > 0 ? clamp01(page.scrollTop / range) : 0;
 }
 
 export function setScore(id, score) {
-    const instance = instances.get(id);
-    if (instance) {
-        instance.targetStrange = Math.min(1, Math.max(0, (score ?? 0) / 100));
+    if (scene) {
+        scene.targetStrange = clamp01((score ?? 0) / 100);
     }
 }
 
@@ -360,31 +453,30 @@ export function setScore(id, score) {
  * mode's ground under a dark page is the most visible bug this file can have.
  */
 function refreshTheme() {
-    const scene = readSceneTokens();
-    for (const instance of instances.values()) {
-        instance.targetA = [...scene.colors[0]];
-        instance.targetB = [...scene.colors[1]];
-        instance.targetC = [...scene.colors[2]];
-        instance.ambient = scene.ambient;
-    }
+    if (!scene) return;
+    const tokens = readSceneTokens();
+    scene.targetA = [...tokens.colors[0]];
+    scene.targetB = [...tokens.colors[1]];
+    scene.targetC = [...tokens.colors[2]];
+    scene.ambient = tokens.ambient;
 }
 
 try {
-    // Covers the OS-level flip. An explicit [data-theme] override is only set by ThemeUiTests
-    // today; if a real control ever sets it, it should call refreshTheme itself rather than
-    // this file growing a MutationObserver on the document element.
+    // The OS-level flip, and an explicit [data-theme] on <html>, which beats it.
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', refreshTheme);
+    new MutationObserver(refreshTheme)
+        .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 } catch {
     // Backdrop keeps the colours it started with.
 }
 
-function notifyActive() {
+function notifyActive(drawing) {
     // The handshake that lets `.page` stand aside. app.css keys the page's own opaque background
     // off the ABSENCE of this flag, so the ground is only ever handed over to a shader that is
     // genuinely drawing — every failure path (no WebGL2, reduced motion, a downgraded tier, a
     // lost context) leaves the CSS background exactly where it was.
     try {
-        if (instances.size > 0) {
+        if (drawing) {
             document.documentElement.dataset.fxBackdrop = 'on';
         } else {
             delete document.documentElement.dataset.fxBackdrop;
@@ -395,24 +487,14 @@ function notifyActive() {
 }
 
 export function stop(id) {
-    const instance = instances.get(id);
-    if (!instance) return;
+    if (!scene) return;
 
-    instance.stop?.();
-    instance.gl.deleteProgram(instance.program);
-    instance.gl.deleteVertexArray(instance.vao);
-    instance.surface.release();
-    instances.delete(id);
-    notifyActive();
+    pause();
+    scene.canvas.removeEventListener('webglcontextlost', onContextLost);
+    scene.canvas.removeEventListener('webglcontextrestored', resume);
+    scene.surface?.release();
+    scene = null;
 }
 
-// A downgrade out of 'full' has to tear these down, not just stop drawing: the point of the
-// downgrade is to give the GPU back.
-gfx.onTierChanged((tier) => {
-    if (tier !== 'full') {
-        for (const id of [...instances.keys()]) {
-            stop(id);
-        }
-    }
-});
-
+// A downgrade out of 'full' gives the GPU back; a return to 'full' picks the scene up again.
+gfx.onTierChanged((tier) => (tier === 'full' ? resume() : pause()));
