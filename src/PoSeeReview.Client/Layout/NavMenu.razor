@@ -1,11 +1,9 @@
 @using System.Net.Http.Json
 @using PoSeeReview.Client.Services
-@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
-@using PoSeeReview.Shared
 @using PoSeeReview.Shared.Dtos
-@inject IWebAssemblyHostEnvironment HostEnvironment
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject FxService Fx
 @implements IDisposable
 
 <div class="top-row">
@@ -29,24 +27,21 @@
         <nav class="nav-links" aria-label="Primary navigation">
             <div class="nav-item">
                 <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                    <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span><span class="nav-label"> Home</span>
+                    <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.5 14.5v-3.505c0-.245.25-.495.5-.495h2c.25 0 .5.25.5.5v3.5a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4a.5.5 0 0 0 .5-.5Z"/></svg>
+                    <span class="nav-label">Home</span>
                 </NavLink>
             </div>
             <div class="nav-item">
                 <NavLink class="nav-link" href="leaderboard">
-                    <span class="bi bi-trophy-fill" aria-hidden="true"></span><span class="nav-label"> Hall of Fame</span>
+                    <svg class="nav-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2 2a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 .5.5v1a3.5 3.5 0 0 1-3.362 3.496A5.002 5.002 0 0 1 8.5 10.9V12h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-1.1a5.002 5.002 0 0 1-2.138-4.404A3.5 3.5 0 0 1 2 3V2Zm1 1a2.5 2.5 0 0 0 2.45 2.5A5.03 5.03 0 0 1 5 3H3Zm8 0a5.03 5.03 0 0 1-.45 2.5A2.5 2.5 0 0 0 13 3h-2Z"/></svg>
+                    <span class="nav-label">Hall of Fame</span>
                 </NavLink>
             </div>
         </nav>
 
-        @* One account control instead of four. My comics, the signed-in identity and Sign out
-           used to sit side by side in this zone, and
-           because `.nav-links` is `flex: 1; min-width: 0` against a zone that cannot shrink,
-           every one of them came straight out of the primary nav's width on a phone.
-
-           A native popover: light-dismiss, Esc and the top layer come free, with no JS. It is
-           keyed on the route so navigating from inside it (My comics) closes it — a new element
-           is not in the top layer. *@
+        @* One account control. A native popover: light-dismiss, Esc and the top layer come free,
+           with no JS. Keyed on the route so navigating from inside it (My comics) closes it — a
+           new element is not in the top layer. *@
         <AuthorizeView>
             <Authorized Context="auth">
                 <div class="nav-user-zone">
@@ -56,12 +51,33 @@
                         <span class="nav-user-dot" aria-hidden="true"></span>
                         <span class="nav-user-email nav-user-label">@(auth.User.Identity?.Name ?? "User")</span>
                     </button>
-                    <div id="account-menu" class="nav-account-menu" popover @key="Navigation.Uri">
-                        <p class="nav-account-name">@(auth.User.Identity?.Name ?? "User")</p>
-                        <NavLink class="nav-my-comics" href="my-comics">
+                    <div id="account-menu" class="popover-menu nav-account-menu" popover @key="Navigation.Uri">
+                        <p class="popover-menu-title">@(auth.User.Identity?.Name ?? "User")</p>
+                        <NavLink class="popover-menu-item" href="my-comics">
                             <span aria-hidden="true">🗂️</span> My comics
                         </NavLink>
-                        <button type="button" class="nav-logout-btn" @onclick="Logout">Sign out</button>
+
+                        @* Audio defaults on, so the switch has to be somewhere a user can find it. *@
+                        <div class="nav-sound" role="group" aria-label="Sound and haptics">
+                            <button type="button" class="chip-toggle @(_sound ? "chip-toggle--active" : "")"
+                                    aria-pressed="@(_sound ? "true" : "false")" @onclick="ToggleSoundAsync">
+                                Sound
+                            </button>
+                            @if (_haptics.Supported)
+                            {
+                                <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_haptics.Enabled ? "true" : "false")" @onclick="ToggleHapticsAsync">
+                                    Haptics
+                                </button>
+                            }
+                        </div>
+                        <label class="nav-volume">
+                            Volume
+                            <input type="range" min="0" max="100" disabled="@(!_sound)"
+                                   @bind="_volume" @bind:event="oninput" @bind:after="ApplyVolumeAsync" />
+                        </label>
+
+                        <button type="button" class="btn btn-secondary" @onclick="Logout">Sign out</button>
                     </div>
                 </div>
             </Authorized>
@@ -71,6 +87,9 @@
 
 @code {
     private bool _isMockData;
+    private bool _sound;
+    private FxToggleState _haptics;
+    private int _volume = 100;
 
     protected override async Task OnInitializedAsync()
     {
@@ -86,6 +105,32 @@
             _isMockData = false;
         }
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _sound = await Fx.IsAudioEnabledAsync();
+            _haptics = await Fx.GetHapticsAsync();
+            _volume = (int)Math.Round(await Fx.GetVolumeAsync() * 100);
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>The interop call is the first thing the click does: audio only starts on a gesture.</summary>
+    private async Task ToggleSoundAsync()
+    {
+        _sound = await Fx.SetAudioEnabledAsync(!_sound);
+        _haptics = await Fx.GetHapticsAsync();   // Haptics follow sound unless switched off.
+    }
+
+    private async Task ToggleHapticsAsync()
+    {
+        await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
+        _haptics = await Fx.GetHapticsAsync();
+    }
+
+    private Task ApplyVolumeAsync() => Fx.SetVolumeAsync(_volume / 100.0);
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
         StateHasChanged();

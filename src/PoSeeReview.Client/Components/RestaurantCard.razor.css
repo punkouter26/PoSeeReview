@@ -1,7 +1,7 @@
 .restaurant-card {
     padding: var(--space-sm) var(--space-md);
     cursor: default;
-    transition: transform 0.18s ease-out, box-shadow 0.18s ease-out;
+    transition: scale var(--duration-slow) var(--ease-spring-1), transform 0.18s ease-out, box-shadow 0.18s ease-out;
     display: grid;
     grid-template-rows: auto auto 1fr auto;
     gap: var(--space-2xs);
@@ -21,6 +21,13 @@
 .restaurant-card:not(.disabled):hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 24px var(--brand-a18), var(--shadow-sm);
+}
+
+/* `scale`, not `transform`: the entrance animation fills transform for good. Down is instant;
+   the base rule's spring plays on release. */
+.restaurant-card:not(.disabled):active {
+    scale: 0.98;
+    transition-duration: var(--duration-instant);
 }
 
 /* Disabled state for restaurants with no reviews at all */

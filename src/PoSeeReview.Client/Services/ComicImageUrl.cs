@@ -33,9 +33,15 @@ public static class ComicImageUrl
         if (blobUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(placeId))
         {
-            return $"/api/comics/{Uri.EscapeDataString(placeId)}/image";
+            return SameOrigin(placeId);
         }
 
         return blobUrl;
     }
+
+    /// <summary>
+    /// Always this origin. For /my-comics, whose images the service worker keeps for offline —
+    /// it can only cache what the app itself serves.
+    /// </summary>
+    public static string SameOrigin(string placeId) => $"/api/comics/{Uri.EscapeDataString(placeId)}/image";
 }

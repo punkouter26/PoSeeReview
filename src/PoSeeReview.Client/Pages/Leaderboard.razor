@@ -34,7 +34,7 @@
             </button>
             @if (_scope == BoardScope.Live)
             {
-                <button type="button" class="btn btn-icon" @onclick="LoadLeaderboardAsync" disabled="@isLoading"
+                <button type="button" class="btn btn-icon" @onclick="() => LoadLeaderboardAsync()" disabled="@isLoading"
                         title="Refresh" aria-label="Refresh the board">
                     <span aria-hidden="true">&#8635;</span>
                 </button>
@@ -43,18 +43,28 @@
     </Header>
 
     <ChildContent>
-    <div id="@LeaderboardResultsId" aria-live="polite" aria-busy="@(isLoading ? "true" : "false")">
+    @* Not a live region: wrapping every row in aria-live re-read the whole board on each
+       change. aria-busy stays; the short status line below is what gets announced. *@
+    <p class="visually-hidden" role="status">@_boardStatus</p>
+    <div id="@LeaderboardResultsId" aria-busy="@(isLoading ? "true" : "false")">
     @if (isLoading && (_scope == BoardScope.Weekly
                        ? _archive is null
                        : leaderboardEntries == null || leaderboardEntries.Count == 0))
     {
-        <LoadingIndicator Message="Tallying the strangest reviews..." />
+        <ol class="comic-rows">
+            @for (var i = 0; i < SkeletonRows; i++)
+            {
+                <ComicRow Skeleton="true" Href="" Name="">
+                    <Leading><span class="rank-badge medal sk-block"></span></Leading>
+                </ComicRow>
+            }
+        </ol>
     }
     else if (errorMessage != null)
     {
         <StateCard Icon="⚠️" Title="Couldn't load the board" Alert="true">
             <ChildContent>@errorMessage</ChildContent>
-            <Actions><button type="button" class="btn btn-secondary" @onclick="RetryAsync">Try again</button></Actions>
+            <Actions><button type="button" class="btn btn-primary" @onclick="RetryAsync">Try again</button></Actions>
         </StateCard>
     }
     else if (_scope == BoardScope.Weekly)
@@ -124,7 +134,8 @@
                         </span>
                     </Leading>
                     <Actions>
-                        <button type="button" class="btn btn-icon comic-row-action" @onclick="() => ShareComicAsync(entry)"
+                        <button type="button" class="btn btn-icon comic-row-action"
+                                @onclick="() => ShareService.ShareComicAsync(entry.PlaceId, entry.RestaurantName, (int)Math.Round(entry.StrangenessScore))"
                                 title="Share this comic" aria-label="@($"Share the comic for {entry.RestaurantName}")">
                             <span aria-hidden="true">&#128228;</span>
                         </button>
@@ -134,12 +145,6 @@
         </ol>
     }
     </div>
-    @* Outside the results live region on purpose: this is already role="status", and nesting
-       two live regions makes a share confirmation announce twice. *@
-    @if (shareToast != null)
-    {
-        <div class="toast" role="status">@shareToast</div>
-    }
     </ChildContent>
 </PageShell>
 
@@ -147,6 +152,7 @@
     /// <summary>DOM id the results live region uses.</summary>
     private const string LeaderboardResultsId = "leaderboard-results";
     private const int TopTen = 10;
+    private const int SkeletonRows = 5;
 
     /// <summary>Which view is showing — the churning live board or the permanent archive.</summary>
     private enum BoardScope { Live, Weekly }
@@ -164,8 +170,10 @@
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private string? errorMessage;
     private bool isLoading = false;
-    private string? shareToast;
-    private System.Threading.Timer? shareToastTimer;
+    private string? _boardStatus;
+
+    /// <summary>The board is live: comics expire and ranks turn over while the page is open.</summary>
+    private readonly PeriodicTimer _poll = new(TimeSpan.FromSeconds(60));
 
     /// <summary>
     /// Rank change per place since this browser last saw this region's board. Empty on a first
@@ -183,8 +191,27 @@
 
     public ValueTask DisposeAsync()
     {
-        shareToastTimer?.Dispose();
+        _poll.Dispose();
         return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Re-reads whichever view is showing, quietly — no spinner, and a failed poll keeps the
+    /// board that is already on screen. Skipped while the tab is hidden. Ends when
+    /// <see cref="DisposeAsync"/> disposes the timer.
+    /// </summary>
+    private async Task PollAsync()
+    {
+        while (await _poll.WaitForNextTickAsync())
+        {
+            if (isLoading || !await Fx.IsPageVisibleAsync())
+            {
+                continue;
+            }
+
+            await (_scope == BoardScope.Weekly ? LoadArchiveAsync(quiet: true) : LoadLeaderboardAsync(quiet: true));
+            StateHasChanged();
+        }
     }
 
     protected override async Task OnInitializedAsync()
@@ -192,6 +219,7 @@
         _scope = string.Equals(View, "week", StringComparison.OrdinalIgnoreCase) ? BoardScope.Weekly : BoardScope.Live;
 
         await (_scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync());
+        _ = PollAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -227,8 +255,14 @@
         }
     }
 
-    private async Task LoadArchiveAsync()
+    private async Task LoadArchiveAsync(bool quiet = false)
     {
+        if (quiet)
+        {
+            _archive = await ApiClient.GetWeeklyHallOfFameAsync(ArchiveWeeks, TopTen) ?? _archive;
+            return;
+        }
+
         isLoading = true;
         errorMessage = null;
 
@@ -248,11 +282,34 @@
         finally
         {
             isLoading = false;
+            await AnnounceAsync();
         }
     }
 
-    private async Task LoadLeaderboardAsync()
+    /// <summary>The outcome of a load the user asked for: said aloud, and an error cue on failure.</summary>
+    private async Task AnnounceAsync()
     {
+        _boardStatus = errorMessage is null ? "Board updated" : null;
+        if (errorMessage is not null)
+        {
+            await Fx.PlayErrorAsync();
+        }
+    }
+
+    private async Task LoadLeaderboardAsync(bool quiet = false)
+    {
+        if (quiet)
+        {
+            // GetLeaderboardAsync returns null on failure; BoardMemory never throws.
+            if (await ApiClient.GetLeaderboardAsync(string.Empty, TopTen) is { } fresh)
+            {
+                leaderboardEntries = fresh.Entries.Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl)).ToList();
+                await ReportBoardChangeAsync(keepDeltasIfStill: true);
+            }
+
+            return;
+        }
+
         isLoading = true;
         errorMessage = null;
 
@@ -295,6 +352,7 @@
         finally
         {
             isLoading = false;
+            await AnnounceAsync();
         }
     }
 
@@ -321,7 +379,11 @@
     /// against itself and report every row as unchanged, for ever.
     /// </para>
     /// </summary>
-    private async Task ReportBoardChangeAsync()
+    /// <param name="keepDeltasIfStill">
+    /// For a poll: a minute in which nothing moved must not wipe the "since your last visit"
+    /// badges the first load put up.
+    /// </param>
+    private async Task ReportBoardChangeAsync(bool keepDeltasIfStill = false)
     {
         var entries = leaderboardEntries;
         if (entries is null || entries.Count == 0)
@@ -330,6 +392,7 @@
         }
 
         var previous = await BoardMemory.GetAsync("GLOBAL");
+        var shown = _deltas;
 
         _deltas = [];
         if (previous.Count > 0)
@@ -349,6 +412,18 @@
         await BoardMemory.SaveAsync("GLOBAL", entries.Select(e => (e.PlaceId, e.Rank)));
         _movesPending = _deltas.Count > 0;
 
+        if (keepDeltasIfStill)
+        {
+            if (_movesPending)
+            {
+                _boardStatus = "Board updated: rankings changed";
+            }
+            else
+            {
+                _deltas = shown;
+            }
+        }
+
         StateHasChanged();
     }
 
@@ -361,51 +436,4 @@
 
     private Task RetryAsync() =>
         _scope == BoardScope.Weekly ? LoadArchiveAsync() : LoadLeaderboardAsync();
-
-    private async Task ShareComicAsync(LeaderboardEntryDto entry)
-    {
-        try
-        {
-            var comicUrl = $"{Navigation.BaseUri}comic/{entry.PlaceId}";
-            var title = $"Strange Review Comic - {entry.RestaurantName}";
-            var text = $"Check out this weird review comic! Strangeness: {entry.StrangenessScore:F0}/100 🎨 #PoSeeReview";
-
-            var outcome = await ShareService.IsShareSupportedAsync()
-                ? await ShareService.ShareComicAsync(title, text, comicUrl, entry.PlaceId)
-                : ShareOutcome.Unsupported;
-
-            // Every branch now reports back. Copying to the clipboard with no confirmation —
-            // what this did before — is indistinguishable from a dead button.
-            switch (outcome)
-            {
-                case ShareOutcome.Shared:
-                    ShowShareToast("Shared!");
-                    break;
-                case ShareOutcome.Cancelled:
-                    break;
-                default:
-                    await ShareService.CopyToClipboardAsync(comicUrl);
-                    ShowShareToast("✓ Link copied to clipboard");
-                    break;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error sharing comic for {PlaceId}", entry.PlaceId);
-            ShowShareToast("Couldn't share that comic.");
-        }
-    }
-
-    private void ShowShareToast(string message)
-    {
-        shareToast = message;
-        StateHasChanged();
-
-        shareToastTimer?.Dispose();
-        shareToastTimer = new System.Threading.Timer(_ =>
-        {
-            shareToast = null;
-            InvokeAsync(StateHasChanged);
-        }, null, 3000, System.Threading.Timeout.Infinite);
-    }
 }

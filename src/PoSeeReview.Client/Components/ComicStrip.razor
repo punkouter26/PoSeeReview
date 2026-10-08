@@ -11,7 +11,7 @@
     for good; the scroll-driven tilt needs an element whose transform nobody else owns.
 *@
 <div class="comic-strip-tilt">
-    <div @ref="_container" class="comic-strip-container">
+    <div @ref="_container" class="comic-strip-container" data-panels="@PanelCount">
         <img src="@ImageUrl"
              alt="@AltText(RestaurantName, Captions)"
              class="comic-strip-image"
@@ -48,10 +48,10 @@
     }
 
     /// <summary>
-    /// How many stacked panels to develop in sequence. Two is the server's cap
-    /// (<c>ComicTextOverlayService.GetPanelBounds</c> stacks two panels vertically).
+    /// One caption per panel, so the captions are the panel count. Two is the server's cap and
+    /// what older, caption-less comics were.
     /// </summary>
-    private const int PanelCount = 2;
+    private int PanelCount => Captions.Count == 1 ? 1 : 2;
 
     /// <summary>
     /// Place id, used to seed the per-panel notes so scrolling the strip replays this comic's own

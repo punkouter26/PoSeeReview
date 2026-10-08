@@ -10,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject FxService Fx
 @inject AnalyticsService Analytics
+@inject DiscoveryState Discovery
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
@@ -82,12 +83,14 @@
         <div class="restaurants-grid" aria-hidden="true">
             @for (var i = 0; i < 6; i++)
             {
+                @* The card's four rows: name + rating, address, meta, button. *@
                 <div class="skeleton-card">
                     <div class="sk-row">
                         <div class="sk-block sk-title"></div>
                         <div class="sk-block sk-badge"></div>
                     </div>
-                    <div class="sk-block sk-address"></div>
+                    <div class="sk-block sk-text sk-address"></div>
+                    <div class="sk-block sk-text sk-meta"></div>
                     <div class="sk-block sk-btn"></div>
                 </div>
             }
@@ -149,6 +152,10 @@
     private string _loadingMessage = "Getting your location...";
     private string _errorMessage = string.Empty;
     private List<RestaurantDto> _restaurants = new();
+
+    /// <summary>A text search lives in the URL, so it survives Back, refresh and a shared link.</summary>
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Q { get; set; }
     private string _searchQuery = string.Empty;
     private string _searchPlaceholder = "City or ZIP";
     private string _lastSearch = string.Empty;
@@ -197,11 +204,35 @@
     /// city is re-run and left in the box, so typing a location is a real alternative to sharing
     /// GPS rather than something the app forgets between visits. With nothing remembered the page
     /// stays Idle and requests no permission — the card is the first thing the user sees.
+    /// <para>
+    /// Coming Back from a comic is neither: the results are still in <see cref="DiscoveryState"/>
+    /// and go straight back on screen, with no refetch, skeletons, locating cue or permission prompt.
+    /// </para>
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
         Analytics.Track(FunnelSteps.AppOpened);
+
+        if (Discovery.Restaurants.Count > 0 && (Q is null || Q == Discovery.Query))
+        {
+            _restaurants = Discovery.Restaurants;
+            _searchQuery = _lastSearch = Discovery.Query ?? string.Empty;
+            _lastAttempt = Discovery.Query is null ? DiscoveryAttempt.Location : DiscoveryAttempt.Search;
+            _flowState = LocationFlowState.Ready;
+
+            // The one thing that may have changed while away: the comic just drawn is now free.
+            await RefreshCachedPlacesAsync();
+            return;
+        }
+
         _ = LoadTopComicsAsync();
+
+        if (!string.IsNullOrWhiteSpace(Q))
+        {
+            _searchQuery = Q;
+            await SearchByLocationAsync();
+            return;
+        }
 
         var lastLocation = await JS.InvokeAsync<string?>("localStorage.getItem", LastSearchKey);
         if (!string.IsNullOrWhiteSpace(lastLocation))
@@ -282,6 +313,7 @@
                 else
                 {
                     Fail(result.ErrorMessage);
+                    await Fx.PlayErrorAsync();
                 }
 
                 return;
@@ -298,6 +330,7 @@
         catch (Exception)
         {
             Fail("Unable to access your location. Please try again.");
+            await Fx.PlayErrorAsync();
         }
         finally
         {
@@ -336,11 +369,12 @@
 
             SetRestaurantResults(response.Restaurants);
             _flowState = LocationFlowState.Ready;
-            await AfterResultsAsync();
+            await AfterResultsAsync(query: null);
         }
         catch (Exception ex)
         {
             Fail(DescribeFailure(ex, DiscoveryAttempt.Location, string.Empty));
+            await Fx.PlayErrorAsync();
         }
     }
 
@@ -389,7 +423,7 @@
 
             SetRestaurantResults(response.Restaurants);
             _flowState = LocationFlowState.Ready;
-            await AfterResultsAsync();
+            await AfterResultsAsync(searchTerm);
             await JS.InvokeVoidAsync("localStorage.setItem", LastSearchKey, searchTerm);
             await RememberDiscoveryModeAsync(ZipMode);
             _searchQuery = searchTerm;
@@ -398,6 +432,7 @@
         catch (Exception ex)
         {
             Fail(DescribeFailure(ex, DiscoveryAttempt.Search, searchTerm));
+            await Fx.PlayErrorAsync();
         }
         finally
         {
@@ -407,8 +442,18 @@
         }
     }
 
-    private async Task AfterResultsAsync()
+    /// <param name="query">The text searched; null for a location search.</param>
+    private async Task AfterResultsAsync(string? query)
     {
+        Discovery.Set(query, _restaurants);
+
+        // replace: a search is a state of this page, not a page visit, so Back leaves discovery
+        // rather than stepping through every search made on it.
+        if (query != Q)
+        {
+            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("q", query), replace: true);
+        }
+
         await RefreshCachedPlacesAsync();
         await Fx.PlayArrivalAsync(_restaurants.Count);
     }
@@ -493,6 +538,17 @@
 
     private void ClearSearch()
     {
+        Discovery.Clear();
+        if (Q is not null)
+        {
+            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("q", (string?)null), replace: true);
+        }
+
+        if (_topComics is null)
+        {
+            _ = LoadTopComicsAsync();
+        }
+
         _cachedPlaceIds = [];
         _restaurants = new();
         _lastSearch = string.Empty;

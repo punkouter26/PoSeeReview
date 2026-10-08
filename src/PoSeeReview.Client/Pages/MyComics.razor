@@ -16,7 +16,7 @@
             {
                 <div class="clear-confirm" role="alert">
                     <span>Forget all of them?</span>
-                    <button type="button" class="btn btn-secondary" @onclick="ClearAsync">Yes, clear</button>
+                    <button type="button" class="btn btn-primary" @onclick="ClearAsync">Yes, clear</button>
                     <button type="button" class="btn btn-secondary" @onclick="() => _confirmingClear = false">Cancel</button>
                 </div>
             }
@@ -52,8 +52,8 @@
                 <ComicRow Href="@LinkFor(entry)"
                           Name="@entry.RestaurantName"
                           Score="@entry.StrangenessScore"
-                          ImageUrl="@(entry.IsExpired ? null : ComicImageUrl.For(entry.BlobUrl, entry.PlaceId))"
-                          Meta="@(entry.IsExpired ? "expired — tap to redraw" : FormatSeen(entry.ViewedAt))"
+                          ImageUrl="@(entry.IsExpired ? null : ComicImageUrl.SameOrigin(entry.PlaceId))"
+                          Meta="@(entry.IsExpired ? "expired — tap to redraw" : RelativeTime.Format(entry.ViewedAt))"
                           data-freshness="@entry.Freshness">
                     <Actions>
                         <button type="button" class="btn btn-icon comic-row-action"
@@ -105,20 +105,5 @@
         _confirmingClear = false;
         await History.ClearAsync();
         await ReloadAsync();
-    }
-
-    /// <summary>Relative time, because "yesterday" is more useful here than a timestamp.</summary>
-    private static string FormatSeen(DateTimeOffset viewedAt)
-    {
-        var elapsed = DateTimeOffset.UtcNow - viewedAt;
-
-        return elapsed switch
-        {
-            { TotalMinutes: < 1 } => "just now",
-            { TotalMinutes: < 60 } => $"{(int)elapsed.TotalMinutes}m ago",
-            { TotalHours: < 24 } => $"{(int)elapsed.TotalHours}h ago",
-            { TotalDays: < 7 } => $"{(int)elapsed.TotalDays}d ago",
-            _ => viewedAt.ToLocalTime().ToString("MMM d")
-        };
     }
 }

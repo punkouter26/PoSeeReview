@@ -1,0 +1,14 @@
+@* Always mounted (MainLayout), so the live region exists before its text arrives — a status
+   region inserted together with its message is not reliably announced. *@
+@implements IDisposable
+@inject ToastService Toasts
+
+<div class="toast" role="status">@Toasts.Message</div>
+
+@code {
+    protected override void OnInitialized() => Toasts.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toasts.Changed -= OnChanged;
+}

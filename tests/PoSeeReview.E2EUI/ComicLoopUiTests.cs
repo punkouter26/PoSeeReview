@@ -75,9 +75,10 @@ public sealed class ComicLoopUiTests(PlaywrightFixture fixture)
                 null,
                 new() { Timeout = RenderTimeout });
 
-            // The score ring lands on the real score, not a count-up left mid-way.
-            var score = page.Locator(".ring-score");
-            await Assertions.Expect(score).ToHaveTextAsync(new System.Text.RegularExpressions.Regex("^[1-9]\\d?$|^100$"), new() { Timeout = RenderTimeout });
+            // The ring's digits are CSS-generated (a counter on the animated --score), so the
+            // real score is asserted where it is text: the ring's accessible label.
+            var score = page.Locator(".ring-label .visually-hidden");
+            await Assertions.Expect(score).ToHaveTextAsync(new System.Text.RegularExpressions.Regex("^Strangeness ([1-9]\\d?|100) out of 100$"), new() { Timeout = RenderTimeout });
         }
         else
         {
