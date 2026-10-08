@@ -105,30 +105,14 @@ public partial class ComicGenerationService : IComicGenerationService
         _logger.GeneratingComic(placeId.Value, forceRegenerate);
 
         var overallStopwatch = Stopwatch.StartNew();
+        var requestedAt = _timeProvider.GetUtcNow();
 
-        // Check cache first (unless force regenerate)
-        if (!forceRegenerate)
+        if (!forceRegenerate
+            && await _comicRepository.GetByPlaceIdAsync(placeId) is { } cachedComic
+            && IsCacheUsable(cachedComic))
         {
-            var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
-            if (cachedComic is not null && IsCacheUsable(cachedComic))
-            {
-                _logger.ReturningCachedComic(placeId.Value);
-
-                // Refresh SAS token if it is expired or within 2 hours of expiry
-                if (SasUrl.IsExpiringSoon(cachedComic.ImageUrl, treatUnsignedAzureUrlAsStale: true))
-                {
-                    _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
-                    cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);
-                    await _comicRepository.UpsertAsync(cachedComic);
-                }
-
-                cachedComic.CacheState = ComicCacheState.Cached; // Mark provenance for the caller
-                progress?.Report(ComicGenerationPhase.CacheHit);
-                _telemetryClient.GetMetric("Comics.CacheHit").TrackValue(1);
-                overallStopwatch.Stop();
-                _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(overallStopwatch.Elapsed.TotalMilliseconds);
-                return cachedComic;
-            }
+            _logger.ReturningCachedComic(placeId.Value);
+            return await ServeCachedAsync(cachedComic, "Comics.CacheHit", progress, overallStopwatch);
         }
 
         _telemetryClient.GetMetric("Comics.CacheMiss").TrackValue(1);
@@ -141,22 +125,16 @@ public partial class ComicGenerationService : IComicGenerationService
         await using var generationGate = await _generationLock.AcquireAsync(placeId, cancellationToken);
 
         // Re-read under the gate: the wait may have been exactly as long as the other request's
-        // generation, which is now in the cache.
-        if (!forceRegenerate)
+        // generation, which is now in the cache. A forced regenerate reuses it too, but only if
+        // it was drawn after this request arrived — that is the double-tap on Regenerate, and
+        // anything older is the comic the caller asked to replace.
+        var previous = await _comicRepository.GetByPlaceIdAsync(placeId);
+        if (previous is not null && IsCacheUsable(previous) && (!forceRegenerate || previous.CreatedAt >= requestedAt))
         {
-            var raced = await _comicRepository.GetByPlaceIdAsync(placeId);
-            if (raced is not null && IsCacheUsable(raced))
-            {
-                _logger.LogInformation(
-                    "Comic for placeId {PlaceId} was generated while this request waited — serving it",
-                    placeId.Value);
-                _telemetryClient.GetMetric("Comics.Generation.Deduplicated").TrackValue(1);
-                raced.CacheState = ComicCacheState.Cached;
-                progress?.Report(ComicGenerationPhase.CacheHit);
-                overallStopwatch.Stop();
-                _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(overallStopwatch.Elapsed.TotalMilliseconds);
-                return raced;
-            }
+            _logger.LogInformation(
+                "Comic for placeId {PlaceId} was generated while this request waited — serving it",
+                placeId.Value);
+            return await ServeCachedAsync(previous, "Comics.Generation.Deduplicated", progress, overallStopwatch);
         }
 
         // Fetch restaurant details with reviews
@@ -242,11 +220,16 @@ public partial class ComicGenerationService : IComicGenerationService
             throw new InsufficientStrangenessException(strangenessScore, _options.MinimumStrangenessScore);
         }
 
+        // Normalised here rather than at the overlay step so the wait for the artwork can show
+        // them: they are final once the analysis returns, and the image call is the long pole.
+        var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
+        var scenes = ChatPrompts.NormalizeScenes(analysis.Scenes, captions, panelCount);
+
         // Pre-publish content screen. Positioned here for two reasons: it is the first point at
         // which the model-authored prose exists, and it is still before the paid image call, so
-        // a refusal costs nothing. The app publishes AI-written text about real, named businesses
-        // and until now nothing looked at it between the model and the reader.
-        var screen = await _contentSafetyScreener.ScreenAsync(narrative, cancellationToken);
+        // a refusal costs nothing. The captions are screened with the narrative: they are the
+        // words actually painted onto the image.
+        var screen = await _contentSafetyScreener.ScreenAsync(string.Join('\n', [narrative, .. captions]), cancellationToken);
 
         if (screen.IsBlocked)
         {
@@ -265,18 +248,13 @@ public partial class ComicGenerationService : IComicGenerationService
             _telemetryClient.GetMetric("Comics.ContentFlagged").TrackValue(1);
         }
 
-        // Normalised here rather than at the overlay step so the wait for the artwork can show
-        // them: they are final once the analysis returns, and the image call is the long pole.
-        var captions = ChatPrompts.NormalizeCaptions(analysis.Captions, narrative, panelCount);
-        var scenes = ChatPrompts.NormalizeScenes(analysis.Scenes, captions, panelCount);
-
         // Generate comic image (panel count capped at 2)
         progress?.Report(new ComicGenerationProgress(ComicGenerationPhase.GeneratingArtwork, strangenessScore, captions));
         var imageStopwatch = Stopwatch.StartNew();
         byte[] imageBytes;
         try
         {
-            imageBytes = await _imageGenerationService.GenerateComicImageAsync(narrative, scenes, cancellationToken);
+            imageBytes = await _imageGenerationService.GenerateComicImageAsync(scenes, cancellationToken);
         }
         catch (ImageDeclinedException ex)
         {
@@ -306,6 +284,16 @@ public partial class ComicGenerationService : IComicGenerationService
 
         _logger.LogInformation("Added text overlay to comic: {Size} bytes", imageBytes.Length);
         _telemetryClient.GetMetric("Comics.Generation.TextOverlayDurationMs").TrackValue(overlayStopwatch.Elapsed.TotalMilliseconds);
+
+        // Asked again, immediately before anything is stored. The verdict the endpoint read is
+        // ten seconds old by now, and a takedown that landed during the draw would otherwise be
+        // undone by the comic, board row and archive entry written below.
+        var verdict = await _moderationGate.EvaluateAsync(placeId, cancellationToken);
+        if (!verdict.IsServable)
+        {
+            _logger.LogWarning("PlaceId {PlaceId} was withheld during generation — nothing published", placeId.Value);
+            throw new ContentWithheldException(verdict.IsSuppressed);
+        }
 
         // Upload to blob storage
         progress?.Report(ComicGenerationPhase.Publishing);
@@ -354,6 +342,13 @@ public partial class ComicGenerationService : IComicGenerationService
         {
             // Don't fail comic generation if leaderboard update fails
             _logger.LogWarning(ex, "Failed to update leaderboard for {PlaceId}", placeId);
+        }
+
+        // Every draw mints a new comic id, so the artwork it replaces is now unreferenced by the
+        // comic row and the board. Best effort: DeleteBlobAsync logs instead of throwing.
+        if (previous is not null && !string.IsNullOrWhiteSpace(previous.ImageUrl))
+        {
+            await _blobStorageService.DeleteBlobAsync(previous.ImageUrl);
         }
 
         _logger.ComicGenerationComplete(placeId.Value);
@@ -440,54 +435,18 @@ public partial class ComicGenerationService : IComicGenerationService
     }
 
     /// <summary>
-    /// Prioritizes reviews by rating for comic generation.
-    /// Focuses EXCLUSIVELY on negative reviews (1-3 stars) when available.
-    /// NOTE: Google Maps API only returns 5 reviews maximum - we cannot access all 1000+ reviews.
+    /// Every negative review (1-3 stars) first, lowest rating then longest text; positive reviews
+    /// only top the list up to <see cref="ComicOptions.MaximumReviewsForAnalysis"/>. Google
+    /// returns at most five reviews per place, so this orders what there is.
     /// </summary>
-    /// <param name="reviews">List of all reviews (typically only 5 from Google API)</param>
-    /// <returns>Prioritized list with ALL negative reviews first, positive only as fallback</returns>
     private List<Review> PrioritizeReviewsByRating(List<Review> reviews)
     {
-        // Separate negative (1-3 stars) and positive (4-5 stars) reviews
-        var negativeReviews = reviews.Where(r => r.Rating <= 3).ToList();
-        var positiveReviews = reviews.Where(r => r.Rating >= 4).ToList();
+        var byRatingThenLength = reviews.OrderBy(r => r.Rating).ThenByDescending(r => r.Text?.Length ?? 0).ToList();
+        var negative = byRatingThenLength.Where(r => r.Rating <= 3).ToList();
 
-        // Sort each group by length (more content is better)
-        var sortedNegative = negativeReviews
-            .OrderBy(r => r.Rating) // 1-star first, then 2, then 3
-            .ThenByDescending(r => r.Text?.Length ?? 0)
-            .ToList();
-
-        var sortedPositive = positiveReviews
-            .OrderBy(r => r.Rating) // 4-star before 5-star
-            .ThenByDescending(r => r.Text?.Length ?? 0)
-            .ToList();
-
-        // Build final list: ALL negative reviews first, then positive as fallback
-        var prioritized = new List<Review>();
-        prioritized.AddRange(sortedNegative);
-
-        // Only add positive reviews if we need more to reach minimum
-        if (prioritized.Count < _options.MaximumReviewsForAnalysis)
-        {
-            var needed = _options.MaximumReviewsForAnalysis - prioritized.Count;
-            prioritized.AddRange(sortedPositive.Take(needed));
-        }
-
-        _logger.LogWarning("⚠️ Google API limitation: Only {TotalCount} reviews available (not all {TotalReviewsText}). Using {NegativeCount} negative (1-3★) and {PositiveCount} positive (4-5★)",
-            reviews.Count,
-            "1000+",
-            prioritized.Count(r => r.Rating <= 3),
-            prioritized.Count(r => r.Rating >= 4));
-
-        _logger.LogInformation("Review breakdown: {OneStarCount} 1★, {TwoStarCount} 2★, {ThreeStarCount} 3★, {FourStarCount} 4★, {FiveStarCount} 5★",
-            prioritized.Count(r => r.Rating == 1),
-            prioritized.Count(r => r.Rating == 2),
-            prioritized.Count(r => r.Rating == 3),
-            prioritized.Count(r => r.Rating == 4),
-            prioritized.Count(r => r.Rating == 5));
-
-        return prioritized;
+        return [.. negative, .. byRatingThenLength
+            .Where(r => r.Rating >= 4)
+            .Take(Math.Max(0, _options.MaximumReviewsForAnalysis - negative.Count))];
     }
 
     /// <summary>
@@ -500,22 +459,30 @@ public partial class ComicGenerationService : IComicGenerationService
 
         var cachedComic = await _comicRepository.GetByPlaceIdAsync(placeId);
 
-        if (cachedComic is not null && IsCacheUsable(cachedComic))
+        return cachedComic is not null && IsCacheUsable(cachedComic) ? await AsCachedAsync(cachedComic) : null;
+    }
+
+    /// <summary>Marks a usable cached comic as such, re-signing its image URL when the SAS is about to lapse.</summary>
+    private async Task<Comic> AsCachedAsync(Comic comic)
+    {
+        if (SasUrl.IsExpiringSoon(comic.ImageUrl, treatUnsignedAzureUrlAsStale: true))
         {
-            _logger.LogInformation("Found valid cached comic for placeId: {PlaceId}", placeId);
-
-            if (SasUrl.IsExpiringSoon(cachedComic.ImageUrl, treatUnsignedAzureUrlAsStale: true))
-            {
-                _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", placeId);
-                cachedComic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(cachedComic.ImageUrl);
-                await _comicRepository.UpsertAsync(cachedComic);
-            }
-
-            cachedComic.CacheState = ComicCacheState.Cached;
-            return cachedComic;
+            _logger.LogInformation("SAS token for cached comic {PlaceId} is expired/expiring — refreshing", comic.PlaceId);
+            comic.ImageUrl = await _blobStorageService.RefreshSasUrlAsync(comic.ImageUrl);
+            await _comicRepository.UpsertAsync(comic);
         }
 
-        _logger.LogInformation("No valid cached comic for placeId: {PlaceId}", placeId);
-        return null;
+        comic.CacheState = ComicCacheState.Cached;
+        return comic;
+    }
+
+    private async Task<Comic> ServeCachedAsync(
+        Comic comic, string metricName, IProgress<ComicGenerationProgress>? progress, Stopwatch stopwatch)
+    {
+        var served = await AsCachedAsync(comic);
+        progress?.Report(ComicGenerationPhase.CacheHit);
+        _telemetryClient.GetMetric(metricName).TrackValue(1);
+        _telemetryClient.GetMetric("Comics.Generation.RequestDurationMs").TrackValue(stopwatch.Elapsed.TotalMilliseconds);
+        return served;
     }
 }

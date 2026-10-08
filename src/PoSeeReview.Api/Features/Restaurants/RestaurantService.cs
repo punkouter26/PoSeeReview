@@ -26,7 +26,6 @@ public class RestaurantService : IRestaurantService
 
     /// <summary>
     /// Finds nearby restaurants within 5km radius using Google Maps API
-    /// Returns cached results if available (24-hour TTL)
     /// </summary>
     public async Task<List<Restaurant>> GetNearbyRestaurantsAsync(
         double latitude,
@@ -48,20 +47,10 @@ public class RestaurantService : IRestaurantService
             "Getting nearby restaurants at ({Latitude}, {Longitude}), limit {Limit}",
             latitude, longitude, limit);
 
-        // Search via Google Maps API
+        // Not written to the restaurant cache: the cache is only ever read for a place's
+        // reviews, a search result has none, and upserting it wiped the reviews a comic had
+        // already paid Place Details for.
         var restaurants = await _googleMapsService.SearchNearbyAsync(latitude, longitude, cancellationToken: cancellationToken);
-
-        // Calculate distance from user location for each restaurant
-        foreach (var restaurant in restaurants)
-        {
-            restaurant.Reviews = new List<Review>(); // Don't load reviews for nearby search (performance)
-        }
-
-        // Cache each restaurant (upsert will set CachedAt)
-        foreach (var restaurant in restaurants)
-        {
-            await _repository.UpsertRestaurantAsync(restaurant);
-        }
 
         // Return top N by distance
         return restaurants

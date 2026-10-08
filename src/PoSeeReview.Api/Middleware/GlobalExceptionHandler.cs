@@ -42,9 +42,7 @@ internal sealed class GlobalExceptionHandler(
 
         var (statusCode, problemType) = exception switch
         {
-            ArgumentNullException => (HttpStatusCode.BadRequest, "https://tools.ietf.org/html/rfc7231#section-6.5.1"),
             ArgumentException => (HttpStatusCode.BadRequest, "https://tools.ietf.org/html/rfc7231#section-6.5.1"),
-            InvalidOperationException => (HttpStatusCode.BadRequest, "https://tools.ietf.org/html/rfc7231#section-6.5.1"),
             UnauthorizedAccessException => (HttpStatusCode.Unauthorized, "https://tools.ietf.org/html/rfc7235#section-3.1"),
             KeyNotFoundException => (HttpStatusCode.NotFound, "https://tools.ietf.org/html/rfc7231#section-6.5.4"),
             _ => (HttpStatusCode.InternalServerError, "https://tools.ietf.org/html/rfc7231#section-6.6.1")
@@ -79,7 +77,7 @@ internal sealed class GlobalExceptionHandler(
 
     /// <summary>
     /// Map an exception to a (provider, phase, error_type) tuple. Walks the InnerException chain
-    /// once — Polly-retry-wrapped AI calls usually have the original SDK exception two levels down.
+    /// once — SDK-wrapped AI calls usually have the original SDK exception two levels down.
     /// </summary>
     private static (string Provider, string Phase, string ErrorType) Classify(Exception exception)
     {
@@ -110,7 +108,7 @@ internal sealed class GlobalExceptionHandler(
         {
             KeyNotFoundException => ("restaurant", "lookup", "restaurant_not_found"),
             InsufficientReviewsException => ("restaurant", "validate", "insufficient_reviews"),
-            ArgumentException or ArgumentNullException or InvalidOperationException => ("api", "validate", "bad_request"),
+            ArgumentException => ("api", "validate", "bad_request"),
             UnauthorizedAccessException => ("api", "auth", "unauthorized"),
             _ => ("unknown", "unhandled", exception.GetType().Name)
         };

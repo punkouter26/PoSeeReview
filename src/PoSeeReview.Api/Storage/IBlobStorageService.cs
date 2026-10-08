@@ -21,7 +21,7 @@ public interface IBlobStorageService
     Task DeleteComicImageAsync(string comicId);
 
     /// <summary>
-    /// Deletes a blob by its URL
+    /// Deletes a blob by its URL. Best effort: a failure is logged, never thrown.
     /// </summary>
     /// <param name="blobUrl">Full URL of the blob to delete</param>
     Task DeleteBlobAsync(string blobUrl);

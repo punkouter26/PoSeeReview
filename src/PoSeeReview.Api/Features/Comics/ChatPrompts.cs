@@ -71,18 +71,27 @@ Return JSON in exactly this shape:
 {"absurdity": 6, "specificity": 7, "storyPotential": 8, "narrative": "...", "panels": [{"scene": "...", "caption": "..."}]}
 """;
 
+    /// <summary>Model output is capped in code: strict schema mode rejects <c>maxLength</c>.</summary>
+    public const int MaxNarrativeChars = 600;
+
+    /// <summary>A scene is one sentence for the illustrator; anything longer is not a scene.</summary>
+    public const int MaxSceneChars = 300;
+
+    /// <summary>The caption limit the prompt states, enforced: captions are painted onto the image.</summary>
+    public const int MaxCaptionWords = 15;
+
     /// <summary>
-    /// Strips control characters that could escape the delimiter tags used in
-    /// <see cref="BuildAnalysisPrompt"/>, and truncates to <see cref="MaxReviewCharsPerEntry"/>.
+    /// Strips what could escape the delimiter tags used in <see cref="BuildAnalysisPrompt"/> —
+    /// angle brackets, so a review cannot close its own <c>&lt;review&gt;</c> tag, and control
+    /// characters — and truncates to <see cref="MaxReviewCharsPerEntry"/>.
     /// </summary>
     public static string SanitizeReviewText(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
-        // Remove control characters (except standard whitespace) then trim
         var cleaned = new string(text
-            .Where(c => !char.IsControl(c) || c is '\n' or '\r' or '\t')
+            .Where(c => c is not ('<' or '>') && (!char.IsControl(c) || c is '\n' or '\r' or '\t'))
             .ToArray());
 
         // Truncate to cap token costs and limit injection payload size
@@ -106,8 +115,10 @@ Return JSON in exactly this shape:
     /// <summary>
     /// Strict schema for providers that enforce one (Azure). Mirrors the shape the system message
     /// shows, so a provider that only honours <c>json_object</c> is asked for the same thing.
-    /// Ranges are clamped in code rather than declared here: strict-mode keyword support varies
-    /// by API version, and the lenient providers need the clamp anyway.
+    /// Ranges, lengths and the panel count are enforced in <see cref="ToAnalysis"/> rather than
+    /// declared here: strict mode rejects a schema carrying <c>maxLength</c>, support for
+    /// <c>maxItems</c> and numeric bounds varies by API version, and a rejected schema fails
+    /// every generation — while the lenient providers need the clamp anyway.
     /// </summary>
     public static readonly BinaryData AnalysisJsonSchema = BinaryData.FromString("""
 {
@@ -154,7 +165,7 @@ Return JSON in exactly this shape:
     {
         var panels = result.Panels ?? [];
         var panelCount = Math.Clamp(panels.Count, 1, 2);
-        var narrative = result.Narrative ?? string.Empty;
+        var narrative = Truncate((result.Narrative ?? string.Empty).Trim(), MaxNarrativeChars);
         var captions = NormalizeCaptions([.. panels.Select(p => p.Caption ?? string.Empty)], narrative, panelCount);
 
         return new StrangenessAnalysis(
@@ -191,28 +202,26 @@ Return JSON in exactly this shape:
     /// alternative was a second paid completion to improve a subtitle that already exists in
     /// the sentence the narrative is made of.
     /// </para>
+    /// <para>
+    /// Index-aligned with the scenes: a blank caption is replaced in place. Dropping blanks
+    /// before counting slid panel 2's caption onto panel 1's picture.
+    /// </para>
     /// </summary>
     public static List<string> NormalizeCaptions(IReadOnlyList<string>? captions, string narrative, int panelCount)
     {
-        var cleaned = (captions ?? [])
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Select(c => c.Trim())
-            .Take(panelCount)
-            .ToList();
-
-        if (cleaned.Count >= panelCount)
-        {
-            return cleaned;
-        }
-
         var fallback = FallbackDialogue(narrative ?? string.Empty, panelCount);
-        for (var i = cleaned.Count; i < panelCount; i++)
-        {
-            cleaned.Add(fallback[i]);
-        }
 
-        return cleaned;
+        return [.. Enumerable.Range(0, panelCount).Select(i =>
+            CapWords(captions is not null && i < captions.Count && !string.IsNullOrWhiteSpace(captions[i])
+                ? captions[i]
+                : fallback[i]))];
     }
+
+    private static string CapWords(string caption) =>
+        string.Join(' ', caption.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Take(MaxCaptionWords));
+
+    private static string Truncate(string text, int maxChars) =>
+        text.Length <= maxChars ? text : text[..maxChars].TrimEnd();
 
     /// <summary>
     /// Guarantees one scene per panel. A missing scene falls back to that panel's caption, which
@@ -222,7 +231,7 @@ Return JSON in exactly this shape:
     public static List<string> NormalizeScenes(IReadOnlyList<string?>? scenes, IReadOnlyList<string> captions, int panelCount) =>
         [.. Enumerable.Range(0, panelCount).Select(i =>
             scenes is not null && i < scenes.Count && !string.IsNullOrWhiteSpace(scenes[i])
-                ? scenes[i]!.Trim()
+                ? Truncate(scenes[i]!.Trim(), MaxSceneChars)
                 : captions[i])];
 }
 

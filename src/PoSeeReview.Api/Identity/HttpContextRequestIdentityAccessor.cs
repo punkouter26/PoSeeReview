@@ -20,9 +20,9 @@ public class HttpContextRequestIdentityAccessor(
         }
 
         // Header-based identity override is a Dev/Test affordance for local tooling and E2E.
-        // NEVER trust a client-supplied header for identity in Production — the authenticated
+        // NEVER trust a client-supplied header for identity anywhere else — the authenticated
         // cookie principal is the only source of truth there.
-        if (!environment.IsProduction())
+        if (environment.AllowsFakeAuth())
         {
             if (context.Request.Headers.TryGetValue(CanonicalHeader, out var canonicalDevUserId)
                 && !string.IsNullOrWhiteSpace(canonicalDevUserId))

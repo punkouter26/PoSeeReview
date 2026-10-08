@@ -1,5 +1,5 @@
+using System.Security.Claims;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace PoSeeReview.Api.Middleware;
 
@@ -16,49 +16,19 @@ internal static class RateLimitingServiceCollectionExtensions
             // costs a handful of requests. 60/min was roughly ten page views and throttled
             // real sessions. The SPA document and /auth/* opt out entirely (see Program.cs).
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-            {
-                var ip = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
-                return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = configuration.GetValue<int>("RateLimiting:GlobalPermitLimit", 240),
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                    QueueLimit = 0,
-                    AutoReplenishment = true
-                });
-            });
+                PerMinute(
+                    context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+                    configuration.GetValue("RateLimiting:GlobalPermitLimit", 240)));
 
-            // Stricter per-endpoint limiter for the expensive comic-generation endpoint.
-            options.AddFixedWindowLimiter("comics-post", limiterOptions =>
-            {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:ComicsPostPermitLimit", 3);
-                limiterOptions.Window = TimeSpan.FromMinutes(1);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = 0;
-                limiterOptions.AutoReplenishment = true;
-            });
+            // Per caller, not app-wide: a single shared bucket let one user at 3 requests a
+            // minute lock generation for everybody else.
+            options.AddPolicy("comics-post", context =>
+                PerMinute(PartitionKey(context), configuration.GetValue("RateLimiting:ComicsPostPermitLimit", 3)));
 
             // Reporting is cheap for the server and must stay available to an angry user with a
             // real complaint, but it writes a row per call and is worth a ceiling.
-            options.AddFixedWindowLimiter("reports-post", limiterOptions =>
-            {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:ReportsPostPermitLimit", 10);
-                limiterOptions.Window = TimeSpan.FromMinutes(1);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = 0;
-                limiterOptions.AutoReplenishment = true;
-            });
-
-            // Funnel events fire several times per session by design, so this is generous — it
-            // exists to bound a client bug looping on a report, not to shape normal traffic.
-            options.AddFixedWindowLimiter("analytics-post", limiterOptions =>
-            {
-                limiterOptions.PermitLimit = configuration.GetValue<int>("RateLimiting:AnalyticsPostPermitLimit", 120);
-                limiterOptions.Window = TimeSpan.FromMinutes(1);
-                limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-                limiterOptions.QueueLimit = 0;
-                limiterOptions.AutoReplenishment = true;
-            });
+            options.AddPolicy("reports-post", context =>
+                PerMinute(PartitionKey(context), configuration.GetValue("RateLimiting:ReportsPostPermitLimit", 10)));
 
             options.OnRejected = (context, _) =>
             {
@@ -77,4 +47,22 @@ internal static class RateLimitingServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// The authenticated user, falling back to the remote IP. The limiter runs after
+    /// authentication, so the principal is already populated.
+    /// </summary>
+    internal static string PartitionKey(HttpContext context) =>
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { Length: > 0 } userId
+            ? $"user:{userId}"
+            : $"ip:{context.Connection.RemoteIpAddress?.ToString() ?? "anonymous"}";
+
+    private static RateLimitPartition<string> PerMinute(string key, int permitLimit) =>
+        RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
 }

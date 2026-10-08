@@ -56,35 +56,4 @@ public sealed class ComicReportRepository(
 
         return count;
     }
-
-    /// <summary>
-    /// Reports received since <paramref name="since"/>, newest first, capped at
-    /// <paramref name="limit"/>. A cross-partition scan, so it is an operator tool rather than
-    /// anything on a user-facing path.
-    /// </summary>
-    public async Task<IReadOnlyList<ComicReportEntity>> GetRecentAsync(
-        DateTimeOffset since,
-        int limit,
-        CancellationToken cancellationToken = default)
-    {
-        var filter = TableClient.CreateQueryFilter<ComicReportEntity>(e => e.ReportedAt >= since);
-
-        var results = new List<ComicReportEntity>();
-        await foreach (var entity in _table.QueryAsync<ComicReportEntity>(filter, cancellationToken: cancellationToken))
-        {
-            results.Add(entity);
-
-            // Bounded even when the filter matches a lot: this runs on an operator page, not a
-            // background job, and an unbounded scan there is a self-inflicted timeout.
-            if (results.Count >= limit * 4)
-            {
-                break;
-            }
-        }
-
-        return results
-            .OrderByDescending(r => r.ReportedAt)
-            .Take(limit)
-            .ToList();
-    }
 }

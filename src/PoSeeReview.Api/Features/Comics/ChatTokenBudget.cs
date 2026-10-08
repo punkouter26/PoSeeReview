@@ -35,22 +35,32 @@ internal static class ChatTokenBudget
     public static ChatCompletionOptions Build(
         float temperature,
         int? maxCompletionTokens,
-        bool isReasoningModel,
-        ChatResponseFormat? responseFormat = null)
+        bool isReasoningModel)
     {
         var options = new ChatCompletionOptions
         {
             Temperature = temperature,
-            ResponseFormat = responseFormat ?? ChatResponseFormat.CreateJsonObjectFormat()
+            // The schema, not json_object, for every provider: Azure enforces it, and Ollama's
+            // OpenAI-compatible endpoint accepts it and constrains decoding the same way.
+            ResponseFormat = ChatResponseFormat.CreateJsonSchemaFormat(
+                "comic_analysis", ChatPrompts.AnalysisJsonSchema, jsonSchemaIsStrict: true)
         };
 
-        if (CanApplyCap(maxCompletionTokens, isReasoningModel))
+        var cap = maxCompletionTokens ?? DefaultMaxCompletionTokens;
+        if (CanApplyCap(cap, isReasoningModel))
         {
-            options.MaxOutputTokenCount = maxCompletionTokens!.Value;
+            options.MaxOutputTokenCount = cap;
         }
 
         return options;
     }
+
+    /// <summary>
+    /// The cap used when none is configured and the model family accepts one. Three ratings, a
+    /// short narrative and two panels fit in a third of this; it exists so a runaway completion
+    /// has a ceiling rather than the deployment's maximum.
+    /// </summary>
+    public const int DefaultMaxCompletionTokens = 900;
 
     /// <summary>
     /// Whether a configured cap will actually reach the wire: it needs a value, and it needs a

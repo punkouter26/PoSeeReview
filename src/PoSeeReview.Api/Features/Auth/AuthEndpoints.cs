@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication;
+using PoSeeReview.Api.Identity;
 using PoSeeReview.Shared.Dtos;
 
 namespace PoSeeReview.Api.Features.Auth;
@@ -36,8 +37,8 @@ internal static class AuthEndpoints
 
         group.MapGet("/login/fake", async (string? returnUrl, HttpContext http, IWebHostEnvironment environment) =>
         {
-            // Guest bypass exists only outside Production (NET_RULES 4.4).
-            if (environment.IsProduction())
+            // Guest bypass exists only in Development and Test (NET_RULES 4.4).
+            if (!environment.AllowsFakeAuth())
             {
                 return Results.NotFound();
             }

@@ -1,6 +1,7 @@
 using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
 using PoSeeReview.Api.Identity;
+using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Dtos;
@@ -33,7 +34,8 @@ internal static class ModerationEndpoints
     {
         var group = app.MapGroup("/api/moderation")
             .WithTags("Moderation")
-            .RequireAuthorization(ModerationOptions.PolicyName);
+            .RequireAuthorization(ModerationOptions.PolicyName)
+            .RequireValidPlaceId();
 
         group.MapGet("/queue", GetQueueAsync);
         group.MapPost("/{placeId}/hide", HideAsync);
@@ -64,11 +66,6 @@ internal static class ModerationEndpoints
         ICurrentRequestIdentityAccessor identityAccessor,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return BadPlaceId(http);
-        }
-
         await repository.SetStateAsync(
             PlaceId.From(placeId),
             hidden: true,
@@ -94,11 +91,6 @@ internal static class ModerationEndpoints
         ICurrentRequestIdentityAccessor identityAccessor,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return BadPlaceId(http);
-        }
-
         await repository.SetStateAsync(
             PlaceId.From(placeId),
             hidden: false,
@@ -118,11 +110,6 @@ internal static class ModerationEndpoints
         ICurrentRequestIdentityAccessor identityAccessor,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return BadPlaceId(http);
-        }
-
         await repository.SetStateAsync(
             PlaceId.From(placeId),
             hidden: true,
@@ -159,11 +146,6 @@ internal static class ModerationEndpoints
         ILogger<ModerationRepository> logger,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return BadPlaceId(http);
-        }
-
         var id = PlaceId.From(placeId);
         var actor = Actor(identityAccessor);
         var reason = Note(action, "Removed by a moderator.");
@@ -173,24 +155,8 @@ internal static class ModerationEndpoints
         // gone and the next request draws it again.
         await repository.SetStateAsync(id, hidden: true, suppressed: true, reason, actor, http.RequestAborted);
 
-        var comic = await comicRepository.GetByPlaceIdAsync(id);
-        if (comic is not null)
-        {
-            await comicRepository.DeleteAsync(id);
-
-            if (!comic.Id.IsEmpty)
-            {
-                await blobStorageService.DeleteComicImageAsync(comic.Id.Value);
-            }
-        }
-
-        var entry = await leaderboardRepository.GetByPlaceIdAsync(id);
-        if (entry is not null)
-        {
-            await leaderboardRepository.DeleteAsync(id, entry.Region);
-        }
-
-        await hallOfFameArchive.DeleteAllForPlaceAsync(id, http.RequestAborted);
+        await PlaceErasure.EraseAsync(
+            id, comicRepository, blobStorageService, leaderboardRepository, hallOfFameArchive, http.RequestAborted);
 
         logger.LogWarning("Moderator {Actor} removed all content for {PlaceId}", actor, id);
 
@@ -222,11 +188,4 @@ internal static class ModerationEndpoints
 
         return reason.Length == 0 ? fallback : reason;
     }
-
-    private static IResult BadPlaceId(HttpContext http) => Results.Problem(
-        type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-        title: "Bad Request",
-        statusCode: StatusCodes.Status400BadRequest,
-        detail: "Place ID is required",
-        instance: http.Request.Path);
 }

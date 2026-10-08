@@ -31,12 +31,12 @@ public class ComicOptions
 
     /// <summary>
     /// Minimum strangeness score (0–100) a restaurant must reach before a comic is generated;
-    /// anything lower is rejected as too ordinary. Scores are never negative, so 0 — the
-    /// default — disables the gate entirely and every restaurant gets a comic. Raise it to
-    /// reinstate the "too ordinary → 422" rejection. The leaderboard's own admission
-    /// threshold lives in LeaderboardOptions and is unaffected.
+    /// anything lower is rejected as too ordinary (422) before the paid image call, and the
+    /// reserved budget unit is refunded. 15 sits just above what an ordinary complaint scores, so
+    /// "the food was cold" no longer buys an image. 0 disables the gate. The leaderboard's own
+    /// admission threshold lives in LeaderboardOptions and is unaffected.
     /// </summary>
-    public int MinimumStrangenessScore { get; set; }
+    public int MinimumStrangenessScore { get; set; } = 15;
 
     /// <summary>
     /// Version stamp for the prompt and model behind a comic, folded into the cache check.

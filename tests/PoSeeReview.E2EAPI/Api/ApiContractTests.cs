@@ -34,6 +34,11 @@ public class ApiContractTests : IClassFixture<CustomWebApplicationFactory<Progra
     {
         var response = await _client.GetAsync("/api/comics/ChIJNonExistentPlace123456789");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        // Every response carries the baseline security headers, errors included.
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("frame-ancestors 'none'", response.Headers.GetValues("Content-Security-Policy").Single());
+        Assert.Equal("strict-origin-when-cross-origin", response.Headers.GetValues("Referrer-Policy").Single());
     }
 
 }

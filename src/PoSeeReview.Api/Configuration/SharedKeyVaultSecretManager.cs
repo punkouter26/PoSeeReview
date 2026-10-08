@@ -1,7 +1,7 @@
 using Azure.Extensions.AspNetCore.Configuration.Secrets;
 using Azure.Security.KeyVault.Secrets;
 
-namespace PoSeeReview.Api;
+namespace PoSeeReview.Api.Configuration;
 
 /// <summary>
 /// Loads shared secrets from the Key Vault (kv-poshared) — those NOT prefixed with any Po-app name.

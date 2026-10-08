@@ -2,7 +2,7 @@ using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 using Serilog;
 
-namespace PoSeeReview.Api;
+namespace PoSeeReview.Api.Configuration;
 
 internal static class KeyVaultConfigurationExtensions
 {

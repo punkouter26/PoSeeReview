@@ -5,7 +5,6 @@ using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
-using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Features.Moderation;
 
@@ -66,38 +65,15 @@ internal static class TakedownsEndpoints
         });
 
         var placeId = PlaceId.From(request.PlaceId);
-        var region = RegionCode.From(request.Region);
 
         // Suppressed BEFORE anything is erased. Without this the endpoint deleted a comic and
         // the next visitor regenerated the same one about the same named business on the next
         // tap — a takedown that undid itself. Doing it first also means a failure part-way
         // through the erases leaves the safe half-state rather than the reversible one.
-        await moderationGate.SuppressAsync(
-            placeId, $"Takedown request received for {request.Region}.", cancellationToken);
+        await moderationGate.SuppressAsync(placeId, "Takedown request received.", cancellationToken);
 
-        var existingComic = await comicRepository.GetByPlaceIdAsync(placeId);
-        if (existingComic != null)
-        {
-            await comicRepository.DeleteAsync(placeId);
-
-            if (!existingComic.Id.IsEmpty)
-            {
-                await blobStorageService.DeleteComicImageAsync(existingComic.Id.Value);
-            }
-
-            await leaderboardRepository.DeleteAsync(placeId, region);
-            logger.LogInformation("Removed cached comic and leaderboard entry for {PlaceId}", request.PlaceId);
-        }
-        else
-        {
-            logger.LogInformation("No cached comic found for {PlaceId} during takedown", request.PlaceId);
-        }
-
-        // Runs whether or not a live comic existed. The weekly archive is built to outlive the
-        // 24-hour comic, so it is precisely the copy that survives when everything else has
-        // already expired — and leaving it would mean a completed takedown that still shows the
-        // restaurant's name and score on a page designed never to expire.
-        await hallOfFameArchive.DeleteAllForPlaceAsync(placeId, cancellationToken);
+        await PlaceErasure.EraseAsync(
+            placeId, comicRepository, blobStorageService, leaderboardRepository, hallOfFameArchive, cancellationToken);
 
         return Results.Accepted(value: new
         {

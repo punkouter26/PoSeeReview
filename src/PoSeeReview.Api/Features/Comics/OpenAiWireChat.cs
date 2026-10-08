@@ -4,13 +4,9 @@ using OpenAI.Chat;
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// The call body for OpenAI-wire-compatible chat providers (today: Ollama) — messages, lenient
-/// JSON parse, clamping and usage accounting.
-/// <para>
-/// <see cref="AzureOpenAIChatService"/> deliberately does NOT use this: it parses strictly rather
-/// than leniently (a hosted deployment honours <c>response_format</c>, so a malformed response is
-/// a real fault and should be loud) and it routes its retry policy through Polly.
-/// </para>
+/// The one analysis call body, shared by every chat provider (Azure OpenAI, Ollama) — messages,
+/// response schema, empty-completion guard, JSON parse and usage accounting. A provider supplies
+/// its <see cref="ChatClient"/> and its token budget, and nothing else.
 /// </summary>
 internal static class OpenAiWireChat
 {
@@ -25,7 +21,7 @@ internal static class OpenAiWireChat
         bool isReasoningModel,
         CancellationToken cancellationToken)
     {
-        var validReviews = reviews.Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
+        var validReviews = (reviews ?? []).Where(r => !string.IsNullOrWhiteSpace(r)).ToList();
         if (validReviews.Count == 0)
         {
             throw new ArgumentException("No valid reviews provided", nameof(reviews));
@@ -44,9 +40,9 @@ internal static class OpenAiWireChat
 
         var completion = response.Value;
 
-        // A completion with no parts is not hypothetical: a reasoning deployment whose budget is
-        // spent thinking returns zero content parts, and indexing [0] turned that into an
-        // IndexOutOfRangeException pointing at the SDK rather than at the model.
+        // A completion with no parts is not hypothetical: a content-filtered completion, or a
+        // reasoning deployment whose budget is spent thinking, returns zero content parts, and
+        // indexing [0] turned that into an exception pointing at the SDK rather than the model.
         if (completion.Content.Count == 0)
         {
             throw new InvalidOperationException("Chat provider returned an empty completion.");
@@ -62,8 +58,8 @@ internal static class OpenAiWireChat
     }
 
     /// <summary>
-    /// Tolerant JSON parse: open models sometimes wrap JSON in a ```json fence, or bracket it
-    /// with a sentence of preamble, despite the <c>response_format</c> hint.
+    /// Tolerant JSON parse, the fallback for a model that ignores the schema: open models
+    /// sometimes wrap JSON in a ```json fence, or bracket it with a sentence of preamble.
     /// </summary>
     private static T? DeserializeLenient<T>(string content) where T : class
     {

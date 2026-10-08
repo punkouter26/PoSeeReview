@@ -1,31 +1,17 @@
 # PoSeeReview.E2EAPI
 
-## Purpose
+HTTP contract tests against the real host, started in memory by `WebApplicationFactory`.
 
-These are **in-memory API tests** that use a `WebApplicationFactory` with **fake service implementations** (no real Azure dependencies required). They run without Azurite, Azure Storage, or any network access.
+- **Storage** is a Testcontainers Azurite instance, so Docker must be running.
+- **AI and Maps are not called**: the comic and restaurant services are replaced with fakes and
+  `AiMockDelegatingHandler` intercepts any provider HTTP call that slips through.
+- **Auth** uses the Dev/Test-only `X-Fake-User` / `X-Fake-Roles` headers.
 
-**Use this project for:**
-- Fast feedback on HTTP routing, request/response serialization, and controller logic
-- Testing error handling paths where real storage would be awkward to configure
-- CI checks that must run without infrastructure
+Put a test here when it is about routing, status codes, auth or response shape. A test that needs
+the real pipeline over real tables and blobs belongs in `PoSeeReview.Integration`.
 
-## How it differs from `PoSeeReview.Integration`
-
-| | E2EAPI (this project) | IntegrationTests |
-|---|---|---|
-| Storage | In-memory fakes | Real Azurite emulator |
-| Azure dependencies | None | Docker (Azurite) required |
-| Speed | Fast | Slower |
-| Scope | Controller + serialization | Full stack including repositories |
-| Requires Docker | ❌ | ✅ |
-
-## Where to add new tests
-
-- **New API contract tests** (status codes, response shape, routing) → add here
-- **Tests requiring real Table/Blob Storage** → add to `PoSeeReview.Integration`
-
-## Running
-
-```bash
+```powershell
 dotnet test tests/PoSeeReview.E2EAPI
 ```
+
+Quota: 25 tests, enforced by `SCRIPTS/check-test-quota.mjs`.

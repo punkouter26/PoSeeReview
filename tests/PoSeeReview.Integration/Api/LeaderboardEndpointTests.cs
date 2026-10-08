@@ -3,6 +3,7 @@ using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using PoSeeReview.Api.Features.Leaderboard;
+using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Api;
 using PoSeeReview.Shared.Dtos;
@@ -176,6 +177,34 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
 
         // Verify all entries are from CA region only
         Assert.All(result.Entries, entry => Assert.Equal("CA", entry.Region));
+    }
+
+    [Fact]
+    public async Task GetLeaderboard_OmitsAPlaceModerationIsWithholding()
+    {
+        // Hide was only enforced under /api/comics: the board kept showing a withheld place's
+        // name, score and artwork. A region of its own, so the 60-second output cache is cold.
+        var region = "US-OR-TEST";
+        await SeedLeaderboardEntries(region, 3);
+
+        using var scope = _factory.Services.CreateScope();
+        var moderation = scope.ServiceProvider.GetRequiredService<ModerationRepository>();
+        var hiddenPlace = PlaceId.From("ChIJTestSeed001");
+        await moderation.SetStateAsync(hiddenPlace, hidden: true, suppressed: false, "test", "test");
+
+        try
+        {
+            var content = await _client.GetFromJsonAsync<LeaderboardResponse>($"/api/leaderboard?region={region}");
+
+            Assert.NotNull(content);
+            Assert.Equal(["ChIJTestSeed000", "ChIJTestSeed002"], content.Entries.Select(e => e.PlaceId));
+            Assert.Equal([1, 2], content.Entries.Select(e => e.Rank));
+        }
+        finally
+        {
+            // The seed ids are shared by every region in this class.
+            await moderation.SetStateAsync(hiddenPlace, hidden: false, suppressed: false, "test", "test");
+        }
     }
 
     private async Task SeedLeaderboardEntries(string region, int count)

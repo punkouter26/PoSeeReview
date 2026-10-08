@@ -108,14 +108,16 @@ public class ExpiredComicCleanupService : BackgroundService
                 break;
             }
 
+            var deletedThisPass = 0;
+
             foreach (var comic in expiredComics)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    await comicRepository.DeleteAsync(comic.PlaceId);
-
+                    // Blob before row: the row is the only pointer to the blob, so deleting it
+                    // first turns a failed blob delete into an orphan nothing ever retries.
                     if (!comic.Id.IsEmpty)
                     {
                         // Do not delete the blob if a leaderboard entry still references it.
@@ -139,7 +141,8 @@ public class ExpiredComicCleanupService : BackgroundService
                         }
                     }
 
-                    totalDeleted++;
+                    await comicRepository.DeleteAsync(comic.PlaceId);
+                    deletedThisPass++;
                 }
                 catch (Exception ex)
                 {
@@ -152,7 +155,10 @@ public class ExpiredComicCleanupService : BackgroundService
                 }
             }
 
-            if (expiredComics.Count < _batchSize)
+            totalDeleted += deletedThisPass;
+
+            // A pass that deleted nothing would refetch the same failing batch forever.
+            if (deletedThisPass == 0 || expiredComics.Count < _batchSize)
             {
                 break;
             }

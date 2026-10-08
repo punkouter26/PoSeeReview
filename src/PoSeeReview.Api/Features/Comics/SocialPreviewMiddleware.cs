@@ -7,9 +7,10 @@ using PoSeeReview.Shared.Ids;
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Answers link-preview crawlers on <c>/comic/{placeId}</c> with a real Open Graph document.
+/// Answers link-preview crawlers on <c>/comic/{placeId}</c> and <c>/duel/{a}/{b}</c> with a real
+/// Open Graph document.
 /// <para>
-/// Everything else on that route falls through untouched to the SPA fallback, so a human still
+/// Everything else on those routes falls through untouched to the SPA fallback, so a human still
 /// gets the Blazor client. That is the whole reason this is middleware rather than an endpoint:
 /// a mapped endpoint at <c>/comic/{placeId}</c> would out-rank <c>MapFallbackToFile</c> and this
 /// class would then own serving <c>index.html</c> — including reproducing how static web assets
@@ -22,98 +23,121 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </summary>
 internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<SocialPreviewMiddleware> logger)
 {
-    private const string RoutePrefix = "/comic/";
-
     public async Task InvokeAsync(HttpContext context)
     {
-        if (!TryGetPlaceId(context.Request, out var placeId)
+        if (RoutePlaceIds(context.Request) is not { } placeIds
             || !SocialCrawlers.IsSocialCrawler(context.Request.Headers.UserAgent.ToString()))
         {
             await next(context);
             return;
         }
 
-        Comic? comic = null;
+        var comics = new List<Comic>(placeIds.Length);
         try
         {
-            // Resolved here rather than as an InvokeAsync parameter: UseMiddleware injects those
-            // from RequestServices before the body runs, which would build the entire scoped
-            // comic-generation graph (restaurant service, chat, image and blob clients) for every
-            // request this middleware sees — including every static asset, since it is registered
-            // ahead of UseStaticFiles.
+            // Resolved here rather than as InvokeAsync parameters: UseMiddleware injects those
+            // from RequestServices before the body runs, which would build scoped services for
+            // every request this middleware sees — including every static asset, since it is
+            // registered ahead of UseStaticFiles.
             var comicRepository = context.RequestServices.GetRequiredService<IComicRepository>();
-            comic = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
+            var moderationGate = context.RequestServices.GetRequiredService<IContentModerationGate>();
+
+            foreach (var placeId in placeIds.Select(PlaceId.From))
+            {
+                // A withheld comic's name and narrative must not reach a crawler either. The
+                // gate fails open on a storage error, like every other read of it.
+                if ((await moderationGate.EvaluateAsync(placeId, context.RequestAborted)).IsServable
+                    && await comicRepository.GetByPlaceIdAsync(placeId) is { } comic
+                    && comic.ExpiresAt > DateTimeOffset.UtcNow)
+                {
+                    comics.Add(comic);
+                }
+            }
         }
         catch (Exception ex)
         {
             // A preview is decoration. Failing to build one must never turn a shared link into an
             // error page, so fall through to the SPA exactly as if no comic were cached.
-            logger.LogWarning(ex, "Social preview lookup failed for placeId {PlaceId}", placeId);
+            logger.LogWarning(ex, "Social preview lookup failed for {Path}", context.Request.Path);
         }
 
-        if (comic is null || comic.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (comics.Count != placeIds.Length)
         {
-            logger.LogInformation("No live comic for placeId {PlaceId}; serving the app shell to the crawler", placeId);
+            logger.LogInformation("No live comic for {Path}; serving the app shell to the crawler", context.Request.Path);
             await next(context);
             return;
         }
 
         var origin = $"{context.Request.Scheme}://{context.Request.Host}";
-        var canonicalUrl = $"{origin}{RoutePrefix}{Uri.EscapeDataString(placeId)}";
+        var idPath = string.Join('/', placeIds.Select(Uri.EscapeDataString));
+
         // Our own card, not the blob. The blob URL carries a SAS signature that lapses in about
         // a week, so every share older than that unfurled as an empty card; this one is composed
         // on demand from whatever the comic still is.
-        var cardUrl = $"{origin}/share/{Uri.EscapeDataString(placeId)}/card.png";
+        var document = comics is [var single]
+            ? BuildDocument(
+                title: $"{single.RestaurantName} — strangeness {single.StrangenessScore}/100",
+                description: Summarize(single.Narrative),
+                pageUrl: $"{origin}/comic/{idPath}",
+                cardUrl: $"{origin}/share/{idPath}/card.png",
+                imageAlt: $"Strangeness score card for {single.RestaurantName}, drawn from its reviews",
+                linkText: "Open this comic on PoSeeReview")
+            : BuildDocument(
+                title: $"{comics[0].RestaurantName} vs {comics[1].RestaurantName} — strangeness duel",
+                description: $"{comics[0].RestaurantName} scored {comics[0].StrangenessScore}/100 and "
+                    + $"{comics[1].RestaurantName} scored {comics[1].StrangenessScore}/100. Whose reviews are stranger?",
+                pageUrl: $"{origin}/duel/{idPath}",
+                cardUrl: $"{origin}/share/duel/{idPath}/card.png",
+                imageAlt: $"Strangeness duel card: {comics[0].RestaurantName} against {comics[1].RestaurantName}",
+                linkText: "Open this duel on PoSeeReview");
 
         context.Response.StatusCode = StatusCodes.Status200OK;
         context.Response.ContentType = "text/html; charset=utf-8";
         // Comics expire in 24h, so let a crawler re-fetch rather than pin a card to a comic that
-        // may already be gone. og:image no longer needs this protection — it points at
-        // /share/{placeId}/card.png on this origin instead of a SAS-signed blob URL that used to
-        // 403 the moment its signature lapsed — but the tags themselves still go stale.
+        // may already be gone.
         context.Response.Headers.CacheControl = "public, max-age=900";
 
-        await context.Response.WriteAsync(BuildDocument(comic, canonicalUrl, cardUrl), Encoding.UTF8);
-    }
-
-    private static bool TryGetPlaceId(HttpRequest request, out string placeId)
-    {
-        placeId = string.Empty;
-
-        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
-        {
-            return false;
-        }
-
-        var path = request.Path.Value;
-        if (path is null || !path.StartsWith(RoutePrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        // Exactly one segment after /comic/ — /comic/abc/anything is not a comic page.
-        var candidate = path[RoutePrefix.Length..].Trim('/');
-        if (candidate.Length == 0 || candidate.Contains('/'))
-        {
-            return false;
-        }
-
-        placeId = Uri.UnescapeDataString(candidate);
-        return true;
+        await context.Response.WriteAsync(document, Encoding.UTF8);
     }
 
     /// <summary>
-    /// Both the restaurant name and the narrative are derived from third-party review text, so
-    /// every interpolation here is HTML-encoded. An unescaped quote in a restaurant name would
-    /// break out of a <c>content="..."</c> attribute.
+    /// The place ids a preview route names — one after <c>/comic/</c>, two after <c>/duel/</c> —
+    /// or null when this is not such a route. An id that is not shaped like one is not a route.
     /// </summary>
-    private static string BuildDocument(Comic comic, string canonicalUrl, string cardUrl)
+    private static string[]? RoutePlaceIds(HttpRequest request)
     {
-        var title = Encode($"{comic.RestaurantName} — strangeness {comic.StrangenessScore}/100");
-        var description = Encode(Summarize(comic.Narrative));
+        if (!HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method))
+        {
+            return null;
+        }
+
+        var path = request.Path.Value ?? string.Empty;
+        var (prefix, expected) = path.StartsWith("/comic/", StringComparison.OrdinalIgnoreCase) ? ("/comic/", 1)
+            : path.StartsWith("/duel/", StringComparison.OrdinalIgnoreCase) ? ("/duel/", 2)
+            : (string.Empty, 0);
+
+        if (expected == 0)
+        {
+            return null;
+        }
+
+        string[] ids = [.. path[prefix.Length..].Trim('/').Split('/').Select(Uri.UnescapeDataString)];
+
+        return ids.Length == expected && ids.All(PlaceId.IsValid) ? ids : null;
+    }
+
+    /// <summary>
+    /// Restaurant names and narratives are derived from third-party review text, so every
+    /// interpolation here is HTML-encoded. An unescaped quote in a restaurant name would break
+    /// out of a <c>content="..."</c> attribute.
+    /// </summary>
+    private static string BuildDocument(
+        string title, string description, string pageUrl, string cardUrl, string imageAlt, string linkText)
+    {
+        title = Encode(title);
+        description = Encode(description);
         var image = Encode(cardUrl);
-        var url = Encode(canonicalUrl);
-        var name = Encode(comic.RestaurantName);
+        var url = Encode(pageUrl);
 
         return $"""
             <!DOCTYPE html>
@@ -131,7 +155,7 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
             <meta property="og:image" content="{image}">
             <meta property="og:image:width" content="1200">
             <meta property="og:image:height" content="630">
-            <meta property="og:image:alt" content="Strangeness score card for {name}, drawn from its reviews">
+            <meta property="og:image:alt" content="{Encode(imageAlt)}">
             <meta name="twitter:card" content="summary_large_image">
             <meta name="twitter:title" content="{title}">
             <meta name="twitter:description" content="{description}">
@@ -140,7 +164,7 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
             <body>
             <h1>{title}</h1>
             <p>{description}</p>
-            <p><a href="{url}">Open this comic on PoSeeReview</a></p>
+            <p><a href="{url}">{Encode(linkText)}</a></p>
             </body>
             </html>
             """;
@@ -152,7 +176,7 @@ internal sealed class SocialPreviewMiddleware(RequestDelegate next, ILogger<Soci
         var text = narrative.Trim();
         if (text.Length == 0)
         {
-            return "A four-panel comic strip drawn from real restaurant reviews.";
+            return "A comic strip drawn from real restaurant reviews.";
         }
 
         return text.Length <= 200 ? text : text[..200].TrimEnd() + "…";

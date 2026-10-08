@@ -4,7 +4,6 @@ using System.Diagnostics;
 using FluentValidation;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using PoSeeReview.Api.Caching;
 using PoSeeReview.Api.Features.Auth;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features;
@@ -14,7 +13,7 @@ using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Shared;
-using PoSeeReview.Api;
+using PoSeeReview.Api.Configuration;
 using Scalar.AspNetCore;
 using Serilog.Events;
 using PoSeeReview.Api.Platform;
@@ -123,6 +122,21 @@ try
     // Must run before anything that reads the client IP/scheme (rate limiter, logging, redirects).
     app.UseForwardedHeaders();
 
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHsts();
+    }
+
+    // No script/style CSP: Blazor WASM needs wasm-unsafe-eval and the client has inline bits.
+    app.Use((context, next) =>
+    {
+        var headers = context.Response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+        return next(context);
+    });
+
     // Add custom middleware
     // Removed RequestLoggingMiddleware - using Serilog's UseSerilogRequestLogging instead
     app.UseExceptionHandler();
@@ -154,7 +168,7 @@ try
             branch => branch.UseHttpsRedirection());
     }
 
-    // Link-preview crawlers on /comic/{placeId} get a real Open Graph document; everyone else
+    // Link-preview crawlers on /comic/{placeId} and /duel/{a}/{b} get a real Open Graph document; everyone else
     // falls through to the SPA. Sits after the HTTPS branch so the canonical URL it emits is
     // https, and before UseRateLimiter/UseAuthentication because a 429 or 401 on a preview fetch
     // unfurls as the same blank card as no tags at all.

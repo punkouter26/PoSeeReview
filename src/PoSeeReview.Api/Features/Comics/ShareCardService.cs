@@ -43,17 +43,49 @@ public sealed class ShareCardService(
     /// <summary>Height of the bottom band that carries the name and wordmark.</summary>
     private const int ScrimHeight = 190;
 
-    public async Task<byte[]?> RenderAsync(Comic comic, CancellationToken cancellationToken = default)
+    public Task<byte[]?> RenderAsync(Comic comic, CancellationToken cancellationToken = default) =>
+        ComposeAsync([comic], "POSEEREVIEW  ·  STRANGENESS SCORE", cancellationToken);
+
+    /// <summary>Two comics side by side, each with its own name and score, for a shared duel.</summary>
+    public Task<byte[]?> RenderDuelAsync(Comic left, Comic right, CancellationToken cancellationToken = default) =>
+        ComposeAsync([left, right], "POSEEREVIEW  ·  STRANGENESS DUEL", cancellationToken);
+
+    /// <summary>
+    /// One column per comic. The single card and the duel card are the same drawing at two
+    /// widths, so they share every helper and only the scale differs.
+    /// </summary>
+    private async Task<byte[]?> ComposeAsync(Comic[] comics, string wordmark, CancellationToken cancellationToken)
     {
         try
         {
             using var card = new Image<Rgba32>(CardWidth, CardHeight);
             card.Mutate(ctx => ctx.Fill(BrandDark));
 
-            await DrawArtworkAsync(card, comic, cancellationToken);
+            var isDuel = comics.Length > 1;
+            var scale = isDuel ? 0.75f : 1f;
+            var columns = comics
+                .Select((comic, i) => (Comic: comic, Area: new Rectangle(i * CardWidth / comics.Length, 0, CardWidth / comics.Length, CardHeight)))
+                .ToList();
+
+            foreach (var (comic, area) in columns)
+            {
+                await DrawArtworkAsync(card, comic, area, cancellationToken);
+            }
+
             DrawScrim(card);
-            DrawScoreBadge(card, comic.StrangenessScore);
-            DrawCaption(card, comic.RestaurantName);
+
+            foreach (var (comic, area) in columns)
+            {
+                DrawScoreBadge(card, comic.StrangenessScore, area, scale);
+                DrawName(card, comic.RestaurantName, area, scale, isDuel);
+            }
+
+            if (isDuel)
+            {
+                DrawVersus(card);
+            }
+
+            DrawWordmark(card, wordmark);
 
             using var output = new MemoryStream();
             await card.SaveAsPngAsync(output, cancellationToken);
@@ -64,20 +96,20 @@ public sealed class ShareCardService(
             // A preview is decoration. Failing to build one returns null so the caller can 404
             // and let the crawler fall back to the text tags, which is a worse card but not a
             // broken page.
-            logger.LogWarning(ex, "Failed to render the share card for {PlaceId}", comic.PlaceId);
+            logger.LogWarning(ex, "Failed to render the share card for {PlaceId}", comics[0].PlaceId);
             return null;
         }
     }
 
     /// <summary>
-    /// Draws the comic itself, cropped to fill the card.
+    /// Draws the comic itself, cropped to fill its column.
     /// <para>
     /// A missing blob is not a failure: the comic may have been cleaned up while its Hall of
     /// Fame row lives on. The card still renders — brand ground, score, name — which is exactly
     /// the case the old blob-URL <c>og:image</c> could not survive.
     /// </para>
     /// </summary>
-    private async Task DrawArtworkAsync(Image<Rgba32> card, Comic comic, CancellationToken cancellationToken)
+    private async Task DrawArtworkAsync(Image<Rgba32> card, Comic comic, Rectangle area, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(comic.ImageUrl))
         {
@@ -95,14 +127,14 @@ public sealed class ShareCardService(
 
         artwork.Mutate(ctx => ctx.Resize(new ResizeOptions
         {
-            Size = new Size(CardWidth, CardHeight),
+            Size = area.Size,
             // Crop rather than pad: a comic letterboxed onto brand purple reads as a mistake,
             // and the panels nearest the centre are the ones worth showing in a thumbnail.
             Mode = ResizeMode.Crop,
             Position = AnchorPositionMode.Center
         }));
 
-        card.Mutate(ctx => ctx.DrawImage(artwork, 1f));
+        card.Mutate(ctx => ctx.DrawImage(artwork, area.Location, 1f));
     }
 
     /// <summary>
@@ -130,71 +162,75 @@ public sealed class ShareCardService(
         });
     }
 
-    private static void DrawScoreBadge(Image<Rgba32> card, int score)
+    private static void DrawScoreBadge(Image<Rgba32> card, int score, Rectangle area, float scale)
     {
-        const int Diameter = 168;
         const int Margin = 40;
+        var radius = 84 * scale;
 
-        var centre = new PointF(CardWidth - Margin - (Diameter / 2f), Margin + (Diameter / 2f));
-        var circle = new SixLabors.ImageSharp.Drawing.EllipsePolygon(centre, Diameter / 2f);
-
-        var scoreFont = ResolveFont(74, FontStyle.Bold);
-        var labelFont = ResolveFont(20, FontStyle.Bold);
+        var centre = new PointF(area.Right - Margin - radius, Margin + radius);
+        var circle = new SixLabors.ImageSharp.Drawing.EllipsePolygon(centre, radius);
 
         card.Mutate(ctx =>
         {
             ctx.Fill(Color.FromRgba(15, 6, 35, 200), circle);
-            ctx.Draw(Accent, 6f, circle);
+            ctx.Draw(Accent, 6f * scale, circle);
 
-            ctx.DrawText(new RichTextOptions(scoreFont)
-            {
-                Origin = new PointF(centre.X, centre.Y - 12),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }, score.ToString(), Accent);
-
-            ctx.DrawText(new RichTextOptions(labelFont)
-            {
-                Origin = new PointF(centre.X, centre.Y + 44),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }, "/ 100", OnDarkMuted);
+            ctx.DrawText(Centred(ResolveFont(74 * scale), centre.X, centre.Y - (12 * scale)), score.ToString(), Accent);
+            ctx.DrawText(Centred(ResolveFont(20 * scale), centre.X, centre.Y + (44 * scale)), "/ 100", OnDarkMuted);
         });
     }
 
-    private static void DrawCaption(Image<Rgba32> card, string restaurantName)
+    private static void DrawName(Image<Rgba32> card, string restaurantName, Rectangle area, float scale, bool isDuel)
     {
-        const int Margin = 48;
-
-        var nameFont = ResolveFont(52, FontStyle.Bold);
-        var markFont = ResolveFont(24, FontStyle.Bold);
-
-        // Third-party text of unbounded length. Wrapped to the card, then hard-capped so a
+        // Third-party text of unbounded length. Wrapped to its column, then hard-capped so a
         // pathological name cannot push the wordmark off the bottom edge.
+        var maxChars = isDuel ? 40 : 70;
         var name = restaurantName.Trim();
-        if (name.Length > 70)
+        if (name.Length > maxChars)
         {
-            name = name[..69].TrimEnd() + "…";
+            name = name[..(maxChars - 1)].TrimEnd() + "…";
         }
+
+        card.Mutate(ctx => ctx.DrawText(new RichTextOptions(ResolveFont(52 * scale))
+        {
+            Origin = new PointF(area.Left + TextMargin, CardHeight - TextMargin - 44),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            WrappingLength = area.Width - (TextMargin * 2) - (isDuel ? 0 : 200)
+        }, name, OnDark));
+    }
+
+    private static void DrawWordmark(Image<Rgba32> card, string wordmark) =>
+        card.Mutate(ctx => ctx.DrawText(new RichTextOptions(ResolveFont(24))
+        {
+            Origin = new PointF(TextMargin, CardHeight - TextMargin - 8),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Bottom
+        }, wordmark, Accent));
+
+    /// <summary>The seam between the two columns of a duel card, and the "VS" that names it.</summary>
+    private static void DrawVersus(Image<Rgba32> card)
+    {
+        var centre = new PointF(CardWidth / 2f, (CardHeight - ScrimHeight) / 2f);
+        var disc = new SixLabors.ImageSharp.Drawing.EllipsePolygon(centre, 52);
 
         card.Mutate(ctx =>
         {
-            ctx.DrawText(new RichTextOptions(markFont)
-            {
-                Origin = new PointF(Margin, CardHeight - Margin - 8),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Bottom
-            }, "POSEEREVIEW  ·  STRANGENESS SCORE", Accent);
-
-            ctx.DrawText(new RichTextOptions(nameFont)
-            {
-                Origin = new PointF(Margin, CardHeight - Margin - 44),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                VerticalAlignment = VerticalAlignment.Bottom,
-                WrappingLength = CardWidth - (Margin * 2) - 200
-            }, name, OnDark);
+            ctx.Fill(Accent, new RectangleF(centre.X - 3, 0, 6, CardHeight));
+            ctx.Fill(BrandDark, disc);
+            ctx.Draw(Accent, 6f, disc);
+            ctx.DrawText(Centred(ResolveFont(44), centre.X, centre.Y), "VS", OnDark);
         });
     }
+
+    private static RichTextOptions Centred(Font font, float x, float y) => new(font)
+    {
+        Origin = new PointF(x, y),
+        HorizontalAlignment = HorizontalAlignment.Center,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
+    private const int TextMargin = 48;
 
     /// <summary>
     /// The card's font family, resolved once per process.
@@ -223,5 +259,5 @@ public sealed class ShareCardService(
         return preferred.Name is not null ? preferred : families[0];
     });
 
-    private static Font ResolveFont(int size, FontStyle style) => CardFontFamily.Value.CreateFont(size, style);
+    private static Font ResolveFont(float size) => CardFontFamily.Value.CreateFont(size, FontStyle.Bold);
 }

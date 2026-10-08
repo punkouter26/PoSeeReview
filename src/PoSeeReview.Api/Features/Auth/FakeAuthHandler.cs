@@ -2,13 +2,14 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Identity;
 
 namespace PoSeeReview.Api.Features.Auth;
 
 /// <summary>
 /// Test/dev-only authentication scheme (NET_RULES 4.4): maps <c>X-Fake-User</c> and
 /// <c>X-Fake-Roles</c> headers to a <see cref="ClaimsPrincipal"/> so automated suites
-/// skip interactive auth loops. Refuses to exist in Production.
+/// skip interactive auth loops. Refuses to exist outside Development and Test.
 /// </summary>
 public sealed class FakeAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -23,10 +24,10 @@ public sealed class FakeAuthHandler : AuthenticationHandler<AuthenticationScheme
         IHostEnvironment environment)
         : base(options, logger, encoder)
     {
-        if (environment.IsProduction())
+        if (!environment.AllowsFakeAuth())
         {
             throw new InvalidOperationException(
-                "FakeAuthHandler must never be registered in Production (NET_RULES 4.4).");
+                "FakeAuthHandler may only be registered in Development or Test (NET_RULES 4.4).");
         }
     }
 

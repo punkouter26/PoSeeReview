@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OutputCaching;
-using PoSeeReview.Api.Caching;
+using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Client.Components;
 using PoSeeReview.Shared.Contracts;

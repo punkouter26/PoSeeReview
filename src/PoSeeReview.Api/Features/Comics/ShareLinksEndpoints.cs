@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Middleware;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Ids;
 
@@ -24,7 +25,7 @@ internal static class ShareLinksEndpoints
 
     public static IEndpointRouteBuilder MapShareLinkEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/share").WithTags("ShareLinks");
+        var group = app.MapGroup("/api/share").WithTags("ShareLinks").RequireValidPlaceId();
 
         // Minting requires a session, like every other business slice: it writes a row.
         group.MapPost("/{placeId}", CreateAsync);
@@ -43,45 +44,17 @@ internal static class ShareLinksEndpoints
     private static async Task<IResult> CreateAsync(
         string placeId,
         ShareLinkRepository repository,
-        ILogger<ShareLinkRepository> logger,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
-        }
-
         var origin = $"{http.Request.Scheme}://{http.Request.Host}";
+        var code = await repository.GetOrCreateCodeAsync(PlaceId.From(placeId), http.RequestAborted);
 
-        try
+        return Results.Ok(new ShareLinkDto
         {
-            var code = await repository.GetOrCreateCodeAsync(PlaceId.From(placeId), http.RequestAborted);
-
-            return Results.Ok(new ShareLinkDto
-            {
-                Code = code,
-                ShortUrl = $"{origin}{ResolverPrefix}/{code}",
-                CanonicalUrl = $"{origin}/comic/{Uri.EscapeDataString(placeId)}"
-            });
-        }
-        catch (Exception ex)
-        {
-            // The caller falls back to the canonical URL, so this is a downgrade rather than a
-            // failure — but it is still a storage problem worth seeing in the logs.
-            logger.LogError(ex, "Failed to mint a short link for {PlaceId}", placeId);
-
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-                title: "Internal Server Error",
-                statusCode: StatusCodes.Status500InternalServerError,
-                detail: "Could not create a short link.",
-                instance: http.Request.Path);
-        }
+            Code = code,
+            ShortUrl = $"{origin}{ResolverPrefix}/{code}",
+            CanonicalUrl = $"{origin}/comic/{Uri.EscapeDataString(placeId)}"
+        });
     }
 
     /// <summary>

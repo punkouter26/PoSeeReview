@@ -4,7 +4,6 @@ using Azure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
-using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Api.Features.Comics;
 
 namespace PoSeeReview.Api.Testing;

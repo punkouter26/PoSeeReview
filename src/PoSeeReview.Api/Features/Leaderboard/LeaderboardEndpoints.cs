@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Azure;
-using PoSeeReview.Api.Caching;
+using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Dtos;
 using PoSeeReview.Shared.Contracts;
@@ -48,6 +48,7 @@ internal static partial class LeaderboardEndpoints
     private static async Task<IResult> GetWeeklyHallOfFame(
         HallOfFameRepository hallOfFame,
         IBlobStorageService blobStorageService,
+        IContentModerationGate moderationGate,
         ILogger<HallOfFameRepository> logger,
         TimeProvider timeProvider,
         HttpContext http,
@@ -79,6 +80,7 @@ internal static partial class LeaderboardEndpoints
         var regionCode = isGlobal ? new RegionCode(string.Empty) : RegionCode.From(region);
         var now = timeProvider.GetUtcNow();
         var response = new HallOfFameResponse { Region = isGlobal ? "ALL" : region!.ToUpperInvariant() };
+        var withheld = new Dictionary<string, bool>(StringComparer.Ordinal);
 
         for (var offset = 0; offset < weeks; offset++)
         {
@@ -88,12 +90,6 @@ internal static partial class LeaderboardEndpoints
             var entities = isGlobal
                 ? await hallOfFame.GetWeekGlobalAsync(weekKey, limit, http.RequestAborted)
                 : await hallOfFame.GetWeekAsync(regionCode, weekKey, limit, http.RequestAborted);
-            if (entities.Count == 0)
-            {
-                // Empty weeks are skipped rather than rendered: a column of "nothing happened"
-                // headings is worse than a shorter archive.
-                continue;
-            }
 
             var week = new HallOfFameWeekDto
             {
@@ -104,6 +100,19 @@ internal static partial class LeaderboardEndpoints
             var rank = 1;
             foreach (var entity in entities)
             {
+                // The archive outlives the comic, so a withheld place would otherwise stay
+                // listed here by name and score. Fails open, like every other gate read.
+                if (!withheld.TryGetValue(entity.PlaceId, out var isWithheld))
+                {
+                    var verdict = await moderationGate.EvaluateAsync(PlaceId.From(entity.PlaceId), http.RequestAborted);
+                    withheld[entity.PlaceId] = isWithheld = !verdict.IsServable;
+                }
+
+                if (isWithheld)
+                {
+                    continue;
+                }
+
                 var imageGone = await IsImageGoneAsync(blobStorageService, logger, entity.ComicBlobUrl);
 
                 week.Entries.Add(new HallOfFameEntryDto
@@ -122,7 +131,12 @@ internal static partial class LeaderboardEndpoints
                 });
             }
 
-            response.Weeks.Add(week);
+            // Empty weeks are skipped rather than rendered: a column of "nothing happened"
+            // headings is worse than a shorter archive.
+            if (week.Entries.Count > 0)
+            {
+                response.Weeks.Add(week);
+            }
         }
 
         return Results.Ok(response);
