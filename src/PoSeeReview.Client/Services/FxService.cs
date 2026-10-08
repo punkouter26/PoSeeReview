@@ -145,6 +145,21 @@ public sealed class FxService(IJSRuntime js)
 
     public Task UnlockAudioAsync() => SafeVoidAsync("poseeFx.unlockAudio");
 
+    /// <summary>Master volume, 0–1. Persisted by the JS side alongside the on/off preference.</summary>
+    public Task<double> GetVolumeAsync() => SafeAsync("poseeFx.volume", 1d);
+
+    public Task<double> SetVolumeAsync(double volume) => SafeAsync("poseeFx.setVolume", volume, volume);
+
+    /// <summary>
+    /// The whole count-up, scheduled on the audio clock in one call — the ticks used to cost an
+    /// interop round trip each. Ends on the same landing chord as <see cref="PlayScoreLandAsync"/>.
+    /// </summary>
+    public Task PlayScoreRollAsync(int score, int durationMs) =>
+        SafeVoidAsync("poseeFx.playScoreRoll", score, durationMs);
+
+    /// <summary>False while the tab is hidden, so a poll can skip a beat nobody would see.</summary>
+    public Task<bool> IsPageVisibleAsync() => SafeAsync("poseeFx.pageVisible", false);
+
     /// <summary>
     /// Click panned to where the pointer was. The practical form for repeated lists: a click
     /// handler already receives <see cref="Microsoft.AspNetCore.Components.Web.MouseEventArgs"/>,
@@ -213,6 +228,9 @@ public sealed class FxService(IJSRuntime js)
     public Task<bool> NarrateAsync(string text) => SafeAsync("poseeFx.narrate", false, text);
 
     public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
+
+    /// <summary>Completes when the current utterance ends, is cancelled, or was never started.</summary>
+    public Task WaitNarrationEndAsync() => SafeVoidAsync("poseeFx.narrationEnded");
 
     // ── Haptics ──────────────────────────────────────────────────────────────────────────
 
