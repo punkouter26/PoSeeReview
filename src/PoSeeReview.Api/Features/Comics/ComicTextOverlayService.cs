@@ -86,44 +86,19 @@ public class ComicTextOverlayService : IComicTextOverlayService
     }
 
     /// <summary>
-    /// Returns approximate bounding rectangle for each panel.
-    /// Matches the layouts requested by GeminiComicService prompts.
+    /// Approximate bounds of each panel, matching the two layouts <see cref="ComicImagePrompt"/>
+    /// asks for: one full-frame panel, or two stacked vertically.
     /// </summary>
     private static List<RectangleF> GetPanelBounds(int width, int height, int panelCount)
     {
-        const int Gutter = 6;
-        var bounds = new List<RectangleF>();
-
-        switch (panelCount)
+        if (panelCount <= 1)
         {
-            case 1:
-                bounds.Add(new RectangleF(0, 0, width, height));
-                break;
-            case 2:
-                // Two panels stacked vertically
-                var h2 = (height - Gutter) / 2f;
-                bounds.Add(new RectangleF(0, 0, width, h2));
-                bounds.Add(new RectangleF(0, h2 + Gutter, width, h2));
-                break;
-            case 3:
-                // Three panels side-by-side horizontally
-                var w3 = (width - 2 * Gutter) / 3f;
-                bounds.Add(new RectangleF(0, 0, w3, height));
-                bounds.Add(new RectangleF(w3 + Gutter, 0, w3, height));
-                bounds.Add(new RectangleF(2 * (w3 + Gutter), 0, w3, height));
-                break;
-            default:
-                // Four panels in 2x2 grid
-                var w4 = (width - Gutter) / 2f;
-                var h4 = (height - Gutter) / 2f;
-                bounds.Add(new RectangleF(0, 0, w4, h4));
-                bounds.Add(new RectangleF(w4 + Gutter, 0, w4, h4));
-                bounds.Add(new RectangleF(0, h4 + Gutter, w4, h4));
-                bounds.Add(new RectangleF(w4 + Gutter, h4 + Gutter, w4, h4));
-                break;
+            return [new RectangleF(0, 0, width, height)];
         }
 
-        return bounds;
+        const int Gutter = 6;
+        var panelHeight = (height - Gutter) / 2f;
+        return [new RectangleF(0, 0, width, panelHeight), new RectangleF(0, panelHeight + Gutter, width, panelHeight)];
     }
 
     /// <summary>

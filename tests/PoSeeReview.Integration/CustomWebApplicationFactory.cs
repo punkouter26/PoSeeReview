@@ -135,7 +135,12 @@ public class CustomWebApplicationFactory<TProgram> : WebApplicationFactory<TProg
                 ["AzureStorage:RestaurantsTableName"] = $"Test{_tablePrefix}Restaurants",
 
                 // Google Maps - use placeholder for tests that don't call real API
-                ["GoogleMaps:ApiKey"] = "test-google-maps-api-key"
+                ["GoogleMaps:ApiKey"] = "test-google-maps-api-key",
+
+                // Without a key the image service cannot be constructed, so the whole comic
+                // pipeline failed in DI and no test here ever reached it. The call itself is
+                // answered by AiMockDelegatingHandler.
+                ["Google:GeminiApiKey"] = "test-gemini-api-key"
             };
 
             // Override with environment variables if explicitly set

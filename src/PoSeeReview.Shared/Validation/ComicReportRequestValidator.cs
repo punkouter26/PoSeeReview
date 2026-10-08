@@ -1,5 +1,6 @@
 using FluentValidation;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Ids;
 
 namespace PoSeeReview.Shared.Validation;
 
@@ -18,7 +19,7 @@ public sealed class ComicReportRequestValidator : AbstractValidator<ComicReportR
 
     public ComicReportRequestValidator()
     {
-        RuleFor(x => x.PlaceId).NotEmpty().MaximumLength(256);
+        RuleFor(x => x.PlaceId).NotEmpty().Matches(PlaceId.Pattern);
         RuleFor(x => x.Reason).IsInEnum();
         RuleFor(x => x.Details).MaximumLength(MaxDetailsLength);
         RuleFor(x => x.ContactEmail)

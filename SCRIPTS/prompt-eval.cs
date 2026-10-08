@@ -42,7 +42,7 @@ if (provider == "azure")
     };
     chat = new AzureOpenAIChatService(
         new AzureOpenAIClient(new Uri(options.Endpoint), new Azure.AzureKeyCredential(options.ApiKey)),
-        Options.Create(options), NullLogger<AzureOpenAIChatService>.Instance, telemetry, costs);
+        Options.Create(options), telemetry, costs);
     label = $"azure/{options.DeploymentName}";
 }
 else
@@ -72,7 +72,7 @@ foreach (var c in cases)
             scores.Add(a.StrangenessScore);
             panels += a.PanelCount;
             ownScenes += scenes.Where((s, i) => s != captions[i]).Count(); // a scene that is not the caption fallback
-            blunted += ComicImagePrompt.Build(a.Narrative, scenes).BluntedTerms.Count;
+            blunted += ComicImagePrompt.Build(scenes).BluntedTerms.Count;
         }
         catch (Exception ex)
         {

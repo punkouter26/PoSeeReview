@@ -55,17 +55,14 @@ public sealed class AzureOpenAIImageService : IImageGenerationService
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateComicImageAsync(string narrative, IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateComicImageAsync(IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(narrative))
-            throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
-
         var panelCount = panelScenes.Count;
-        if (panelCount is < 1 or > 4)
-            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelScenes));
+        if (panelCount is < 1 or > 2)
+            throw new ArgumentException("Panel count must be 1 or 2", nameof(panelScenes));
 
         var stopwatch = Stopwatch.StartNew();
-        var (prompt, bluntedTerms) = ComicImagePrompt.Build(narrative, panelScenes);
+        var (prompt, bluntedTerms) = ComicImagePrompt.Build(panelScenes);
         if (bluntedTerms.Count > 0)
         {
             _telemetryClient.GetMetric("AzureOpenAI.Image.PromptTermsBlunted").TrackValue(bluntedTerms.Count);
@@ -75,8 +72,8 @@ public sealed class AzureOpenAIImageService : IImageGenerationService
         {
             prompt,
             n = 1,
-            // The three sizes gpt-image accepts; each keeps the layout's panels landscape.
-            size = panelCount switch { 1 or 3 => "1536x1024", 2 => "1024x1536", _ => "1024x1024" },
+            // Each keeps the layout's panels landscape.
+            size = panelCount == 1 ? "1536x1024" : "1024x1536",
             quality = _options.ImageQuality,
             // JPEG only for the transfer: the overlay decodes and re-encodes it anyway.
             output_format = "jpeg"

@@ -1,7 +1,6 @@
 using System.Net;
 using System.Text.Json;
 using System.Text;
-using PoSeeReview.Api.Abstractions;
 
 namespace PoSeeReview.Api.Testing;
 

@@ -1,5 +1,6 @@
 using FluentValidation;
 using PoSeeReview.Shared.Dtos;
+using PoSeeReview.Shared.Ids;
 
 namespace PoSeeReview.Shared.Validation;
 
@@ -11,14 +12,11 @@ public sealed class TakedownRequestValidator : AbstractValidator<TakedownRequest
 {
     public TakedownRequestValidator()
     {
-        RuleFor(x => x.PlaceId).NotEmpty().MaximumLength(256);
+        RuleFor(x => x.PlaceId).NotEmpty().Matches(PlaceId.Pattern);
         RuleFor(x => x.ContactEmail).NotEmpty().EmailAddress();
         RuleFor(x => x.RequesterName).NotEmpty().MaximumLength(256);
-        RuleFor(x => x.Region)
-            .NotEmpty()
-            .MaximumLength(64)
-            .Matches("^[A-Z]{2}-[A-Z]{2}-[A-Z]+$")
-            .WithMessage("Region must follow format CC-ST-CITY (e.g., US-WA-Seattle)");
+        // Informational only: the erase finds the board row by place id, whatever its region.
+        RuleFor(x => x.Region).MaximumLength(64);
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(2000);
         RuleFor(x => x.ProofOfAffiliationUrl).MaximumLength(512);
         RuleFor(x => x.AdditionalDetails).MaximumLength(2000);

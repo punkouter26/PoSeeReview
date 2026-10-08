@@ -1,4 +1,4 @@
-namespace PoSeeReview.Api.Abstractions;
+namespace PoSeeReview.Api.Testing;
 
 /// <summary>
 /// Marker for mock/fake service implementations. Every active registration is surfaced

@@ -1,3 +1,4 @@
+using Azure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PoSeeReview.Api.Storage;
@@ -19,6 +20,7 @@ public class LeaderboardService : ILeaderboardService
     private readonly LeaderboardOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly HallOfFameRepository? _hallOfFame;
+    private readonly IContentModerationGate? _moderationGate;
 
     /// <summary>Widest page the repository will return; used so filtering empty comics can still fill <c>limit</c>.</summary>
     private const int MaxProbeCount = 50;
@@ -29,8 +31,10 @@ public class LeaderboardService : ILeaderboardService
         ILogger<LeaderboardService> logger,
         IOptions<LeaderboardOptions> options,
         TimeProvider? timeProvider = null,
-        HallOfFameRepository? hallOfFame = null)
+        HallOfFameRepository? hallOfFame = null,
+        IContentModerationGate? moderationGate = null)
     {
+        _moderationGate = moderationGate;
         _repository = repository;
         _blobStorageService = blobStorageService;
         _logger = logger;
@@ -68,6 +72,14 @@ public class LeaderboardService : ILeaderboardService
                 ? await _repository.GetTopEntriesGlobalAsync(MaxProbeCount)
                 : await _repository.GetTopEntriesAsync(region, MaxProbeCount);
 
+            // A hidden or suppressed place must not keep its name, score and artwork on the
+            // board. The gate fails open, so a storage blip shows the board rather than emptying it.
+            if (_moderationGate is not null)
+            {
+                var verdicts = await Task.WhenAll(entries.Select(e => _moderationGate.EvaluateAsync(e.PlaceId)));
+                entries = [.. entries.Where((_, i) => verdicts[i].IsServable)];
+            }
+
             // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel
             var sasRefreshTasks = entries
                 .Where(e => SasUrl.IsExpiringSoon(e.ComicBlobUrl))
@@ -86,11 +98,19 @@ public class LeaderboardService : ILeaderboardService
                 .Where(e => IsHostedComicUrl(e.ComicBlobUrl) && !SasUrl.IsExpiringSoon(e.ComicBlobUrl))
                 .Select(async entry =>
                 {
-                    if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
+                    try
                     {
-                        _logger.LogWarning("LeaderboardEntry {PlaceId} references a deleted blob — clearing ComicBlobUrl", entry.PlaceId);
-                        entry.ComicBlobUrl = string.Empty;
-                        await _repository.UpsertAsync(entry);
+                        if (!await _blobStorageService.BlobExistsAsync(entry.ComicBlobUrl))
+                        {
+                            _logger.LogWarning("LeaderboardEntry {PlaceId} references a deleted blob — clearing ComicBlobUrl", entry.PlaceId);
+                            entry.ComicBlobUrl = string.Empty;
+                            await _repository.UpsertAsync(entry);
+                        }
+                    }
+                    catch (RequestFailedException ex)
+                    {
+                        // A failed probe is not a missing blob: keep the row as it is.
+                        _logger.LogWarning(ex, "Could not probe the comic blob for {PlaceId}", entry.PlaceId);
                     }
                 });
             await Task.WhenAll(blobCheckTasks);

@@ -4,12 +4,12 @@ namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
 /// The positive-only image prompt shared by the painters that have no negative-prompt channel
-/// (Gemini, Azure gpt-image). FLUX keeps its own because it does have one.
+/// (Gemini, Azure gpt-image).
 /// <para>
-/// <b>The panel breakdown is the chat model's shot list, not a template.</b> It used to be a
-/// fixed "1. Setup / 2. Punchline" under a one-paragraph narrative, which left the painter to
-/// invent what each panel showed while the captions were written from the reviews, so the two
-/// could disagree outright. Each numbered line is now the scene its caption describes.
+/// <b>The panel breakdown is the chat model's shot list, and it is the whole story.</b> Each
+/// numbered line is the scene its caption describes. The narrative is deliberately not quoted
+/// alongside: the scenes already carry it, and a quoted paragraph is an invitation to letter it
+/// into the artwork.
 /// </para>
 /// </summary>
 internal static partial class ComicImagePrompt
@@ -17,27 +17,31 @@ internal static partial class ComicImagePrompt
     /// <summary>
     /// Terms the image safety filters reject. The analysis prompt already asks for scenes in
     /// cartoon terms, so this is the backstop, not the plan: every hit is reported by the caller.
+    /// <para>
+    /// Whole words with their inflections spelled out. A trailing <c>\w*</c> used to turn
+    /// "ratatouille", "rating", "rather", "diet" and "method" into "unusual".
+    /// </para>
     /// </summary>
     [GeneratedRegex(
-        @"\b(?:blood|bloody|kill|murder|dead|death|die|dying|gun|shoot|weapon|knife|stab|fight|attack|drug|cocaine|heroin|meth|naked|nude|sex|sexual|hate|racist|racial|vomit|puke|disgusting|roach|cockroach|rat|mice|vermin|poison|toxic|contaminated)\w*\b",
+        @"\b(?:blood(?:y|ied)?|kill(?:s|ed|ing|ers?)?|murder(?:s|ed|ing|ers?|ous)?|dead(?:ly)?|deaths?|die[sd]?|dying|" +
+        @"guns?|gun(?:shots?|fire|m[ae]n)|shoot(?:s|ing|ings|ers?)?|weapons?|kni(?:fe|ves|fed)|stab(?:s|bed|bing)?|" +
+        @"fight(?:s|ing|ers?)?|attack(?:s|ed|ing|ers?)?|drug(?:s|ged)?|cocaine|heroin|meth|naked|nud(?:e|es|ity)|" +
+        @"sex(?:y|ual|ually)?|hat(?:e|es|ed|ing|eful|red)|racis[tm]s?|racial(?:ly)?|vomit(?:s|ed|ing)?|puk(?:e|es|ed|ing)|" +
+        @"disgust(?:s|ed|ing)?|(?:cock)?roach(?:es)?|rats?|mice|vermin|poison(?:s|ed|ing|ous)?|toxic|" +
+        @"contaminat(?:e|es|ed|ing|ion))\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FlaggedTermRegex();
 
     /// <summary>Builds the prompt, blunting flagged terms, and reports which ones it blunted.</summary>
-    public static (string Prompt, List<string> BluntedTerms) Build(string narrative, IReadOnlyList<string> scenes)
+    public static (string Prompt, List<string> BluntedTerms) Build(IReadOnlyList<string> scenes)
     {
         var blunted = new List<string>();
-        var safeNarrative = Blunt(narrative, blunted);
         var breakdown = string.Join("\n", scenes.Select((scene, i) => $"{i + 1}. {Blunt(scene, blunted)}"));
         var panelCount = scenes.Count;
 
-        var panelLayout = panelCount switch
-        {
-            1 => "Single-panorama comic strip (one wide scene filling the frame)",
-            2 => "Two-panel comic strip with equal landscape panels stacked vertically",
-            3 => "Three-panel strip with cinematic flow (left-to-right storytelling)",
-            _ => "Four-panel comic strip arranged left-to-right, top-to-bottom (1-2 on top row, 3-4 on bottom row)"
-        };
+        var panelLayout = panelCount == 1
+            ? "Single-panorama comic strip (one wide scene filling the frame)"
+            : "Two-panel comic strip with equal landscape panels stacked vertically";
 
         // No negative-prompt channel: forbidden concepts named in the prompt ("NO SPEECH
         // BUBBLES") tend to get PAINTED INTO the artwork as literal lettering. Describe only what
@@ -45,9 +49,6 @@ internal static partial class ComicImagePrompt
         // writing. Captions are added later by the overlay service.
         var prompt = $"""
 Create a vibrant {panelCount}-panel wordless pantomime comic strip in a clean, modern cartoon illustration style, told purely through pictures, in the tradition of silent-film slapstick.
-
-The story (through action and expression only):
-"{safeNarrative}"
 
 Layout: {panelLayout}
 - Consistent characters across panels with matching outfits and visual traits

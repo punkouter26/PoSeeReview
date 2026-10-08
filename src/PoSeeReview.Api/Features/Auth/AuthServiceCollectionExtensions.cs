@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Platform;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -31,9 +32,9 @@ internal static class AuthServiceCollectionExtensions
             })
             .AddPolicyScheme(PolicySchemeName, "Cookie or FakeAuth selector", options =>
             {
-                // Fake headers only exist for the non-prod scheme; everything else is the cookie.
+                // Fake headers only exist for the Dev/Test scheme; everything else is the cookie.
                 options.ForwardDefaultSelector = context =>
-                    !environment.IsProduction() && context.Request.Headers.ContainsKey(FakeAuthHandler.UserHeader)
+                    environment.AllowsFakeAuth() && context.Request.Headers.ContainsKey(FakeAuthHandler.UserHeader)
                         ? FakeAuthHandler.SchemeName
                         : CookieAuthenticationDefaults.AuthenticationScheme;
             })
@@ -93,7 +94,7 @@ internal static class AuthServiceCollectionExtensions
             });
         }
 
-        if (!environment.IsProduction())
+        if (environment.AllowsFakeAuth())
         {
             authBuilder.AddScheme<AuthenticationSchemeOptions, FakeAuthHandler>(FakeAuthHandler.SchemeName, null);
         }

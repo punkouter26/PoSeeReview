@@ -14,8 +14,8 @@ namespace PoSeeReview.Api.Features.Comics;
 /// <b>Why a local tier is worth the wiring.</b> Scoring five short reviews is a small instruct
 /// task, not a reasoning task. Running it against a paid endpoint means the only way to exercise
 /// the comic pipeline is to spend money, so the pipeline is exercised rarely and late. A local
-/// model makes the whole path — prompt, parse, clamp, caption, overlay — testable at zero cost
-/// and available as a fallback when the hosted endpoint is throttled.
+/// model makes the whole path — prompt, parse, clamp, caption, overlay — testable at zero cost.
+/// It is selected by configuration only; nothing falls back to it at runtime.
 /// </para>
 /// <para>
 /// <b>Why not WebGPU in the browser instead.</b> The client is the wrong place for this and it

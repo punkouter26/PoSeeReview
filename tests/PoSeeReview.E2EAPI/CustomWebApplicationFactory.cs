@@ -5,7 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Api;

@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.OutputCaching;
 
-namespace PoSeeReview.Api.Caching;
+namespace PoSeeReview.Api.Middleware;
 
 /// <summary>
 /// Output caching for GETs whose body is the same for every caller (leaderboard, weekly Hall of
-/// Fame, insights).
+/// Fame, share cards).
 /// <para>
 /// The framework's default policy refuses any authenticated request, and deny-by-default auth
 /// makes every business request authenticated, so the default would cache nothing here.
@@ -19,6 +19,8 @@ internal sealed class SharedReadCachePolicy : IOutputCachePolicy
 
     public static readonly TimeSpan Duration = TimeSpan.FromSeconds(60);
 
+    private static readonly string[] VaryByQueryKeys = ["limit", "region", "weeks"];
+
     ValueTask IOutputCachePolicy.CacheRequestAsync(OutputCacheContext context, CancellationToken cancellationToken)
     {
         var isGet = HttpMethods.IsGet(context.HttpContext.Request.Method)
@@ -29,7 +31,8 @@ internal sealed class SharedReadCachePolicy : IOutputCachePolicy
         context.AllowCacheStorage = isGet;
         context.AllowLocking = true;
         context.ResponseExpirationTimeSpan = Duration;
-        context.CacheVaryByRules.QueryKeys = "*";
+        // Named keys only: varying by every key let ?x=1 mint a fresh entry per request.
+        context.CacheVaryByRules.QueryKeys = VaryByQueryKeys;
 
         return ValueTask.CompletedTask;
     }

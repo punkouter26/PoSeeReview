@@ -103,8 +103,7 @@ public sealed class ModerationQueueReader(
             list.Add(row);
 
             // Bounded on rows, not on places: a cross-partition scan on an operator page is a
-            // self-inflicted timeout waiting to happen, and the same reasoning already caps
-            // ComicReportRepository.GetRecentAsync.
+            // self-inflicted timeout waiting to happen.
             if (++scanned >= limit * 10)
             {
                 break;

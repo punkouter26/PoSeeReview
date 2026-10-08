@@ -121,12 +121,11 @@ public class BlobStorageService : IBlobStorageService
         }
         catch (Exception ex)
         {
-            // Log but don't throw - deletion is best-effort for takedown
-            _logger.LogWarning(ex, "Failed to delete blob for takedown: {BlobUrl}", blobUrl);
+            // Best effort: an orphaned blob costs storage, a thrown delete costs a comic.
+            _logger.LogWarning(ex, "Failed to delete blob: {BlobUrl}", blobUrl);
         }
     }
 
-    /// <inheritdoc />
     /// <inheritdoc />
     public async Task<Stream?> OpenComicImageStreamAsync(string blobUrl, CancellationToken cancellationToken = default)
     {
@@ -148,18 +147,12 @@ public class BlobStorageService : IBlobStorageService
         }
     }
 
-    public async Task<bool> BlobExistsAsync(string blobUrl)
-    {
-        if (string.IsNullOrWhiteSpace(blobUrl)) return false;
-        try
-        {
-            return (await ResolveBlobClient(blobUrl).ExistsAsync()).Value;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    /// <summary>
+    /// False only when storage says the blob is gone. A failed probe throws: callers erase
+    /// references on a false, and a storage blip must not read as "deleted".
+    /// </summary>
+    public async Task<bool> BlobExistsAsync(string blobUrl) =>
+        !string.IsNullOrWhiteSpace(blobUrl) && (await ResolveBlobClient(blobUrl).ExistsAsync()).Value;
 
     /// <inheritdoc />
     public Task<string> RefreshSasUrlAsync(string existingBlobUrl)

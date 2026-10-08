@@ -54,47 +54,57 @@ public sealed class TakedownsEndpointValidationTests
     [Fact]
     public async Task SubmitAsync_WhenComicExists_DeletesComicBlobAndLeaderboardEntry()
     {
-        var request = BuildValidRequest("ChIJ-abc123", "US-WA-SEATTLE");
-        var existingComic = new PoSeeReview.Shared.Contracts.Comic { Id = ComicId.From("comic-id-001"), PlaceId = PlaceId.From(request.PlaceId) };
+        var request = BuildValidRequest("ChIJ-abc123", "US-WA-Seattle");
+        var placeId = PlaceId.From(request.PlaceId);
+        var existingComic = new Comic { Id = ComicId.From("comic-id-001"), PlaceId = placeId };
 
-        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(PlaceId.From(request.PlaceId))).ReturnsAsync(existingComic);
+        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(placeId)).ReturnsAsync(existingComic);
+        _mockLeaderboardRepository.Setup(l => l.GetByPlaceIdAsync(placeId)).ReturnsAsync(BoardRow(placeId));
 
         var result = await SubmitAsync(request);
 
         AssertAccepted(result);
-        _mockComicRepository.Verify(r => r.DeleteAsync(PlaceId.From(request.PlaceId)), Times.Once);
+        _mockModerationGate.Verify(g => g.SuppressAsync(placeId, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockComicRepository.Verify(r => r.DeleteAsync(placeId), Times.Once);
         _mockBlobStorageService.Verify(b => b.DeleteComicImageAsync(existingComic.Id.Value), Times.Once);
-        _mockLeaderboardRepository.Verify(l => l.DeleteAsync(PlaceId.From(request.PlaceId), RegionCode.From(request.Region)), Times.Once);
+        _mockLeaderboardRepository.Verify(l => l.DeleteAsync(placeId, RegionCode.From("US")), Times.Once);
+        _mockHallOfFameArchive.Verify(h => h.DeleteAllForPlaceAsync(placeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task SubmitAsync_WhenNoComicExists_ReturnsAcceptedWithoutDeletingAssets()
+    public async Task SubmitAsync_WhenTheComicRowHasExpired_StillErasesTheBoardRowAndArchive()
     {
-        var request = BuildValidRequest("ChIJ-notfound", "US-CA-SANFRANCISCO");
-        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(PlaceId.From(request.PlaceId)))
-            .ReturnsAsync((PoSeeReview.Shared.Contracts.Comic?)null);
+        // The board row outlives the 24-hour comic and is partitioned by country, not by the
+        // request's CC-ST-CITY. Erasing it only alongside a live comic, under the request's
+        // region, meant a takedown of an expired comic left everything public in place.
+        var request = BuildValidRequest("ChIJ-expired", "US-CA-SanFrancisco");
+        var placeId = PlaceId.From(request.PlaceId);
+
+        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(placeId)).ReturnsAsync((Comic?)null);
+        _mockLeaderboardRepository.Setup(l => l.GetByPlaceIdAsync(placeId)).ReturnsAsync(BoardRow(placeId));
 
         var result = await SubmitAsync(request);
 
         AssertAccepted(result);
         _mockComicRepository.Verify(r => r.DeleteAsync(It.IsAny<PlaceId>()), Times.Never);
         _mockBlobStorageService.Verify(b => b.DeleteComicImageAsync(It.IsAny<string>()), Times.Never);
-        _mockLeaderboardRepository.Verify(l => l.DeleteAsync(It.IsAny<PlaceId>(), It.IsAny<RegionCode>()), Times.Never);
+        _mockLeaderboardRepository.Verify(l => l.DeleteAsync(placeId, RegionCode.From("US")), Times.Once);
+        _mockHallOfFameArchive.Verify(h => h.DeleteAllForPlaceAsync(placeId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task SubmitAsync_WhenComicIdIsEmpty_SkipsBlobDeletion()
     {
         var request = BuildValidRequest("ChIJ-partial", "US-NY-NYC");
-        var existingComic = new PoSeeReview.Shared.Contracts.Comic { Id = ComicId.Empty, PlaceId = PlaceId.From(request.PlaceId) };
-        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(PlaceId.From(request.PlaceId))).ReturnsAsync(existingComic);
+        var placeId = PlaceId.From(request.PlaceId);
+        var existingComic = new Comic { Id = ComicId.Empty, PlaceId = placeId };
+        _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(placeId)).ReturnsAsync(existingComic);
 
         var result = await SubmitAsync(request);
 
         AssertAccepted(result);
-        _mockComicRepository.Verify(r => r.DeleteAsync(PlaceId.From(request.PlaceId)), Times.Once);
+        _mockComicRepository.Verify(r => r.DeleteAsync(placeId), Times.Once);
         _mockBlobStorageService.Verify(b => b.DeleteComicImageAsync(It.IsAny<string>()), Times.Never);
-        _mockLeaderboardRepository.Verify(l => l.DeleteAsync(PlaceId.From(request.PlaceId), RegionCode.From(request.Region)), Times.Once);
     }
 
     [Fact]
@@ -102,12 +112,19 @@ public sealed class TakedownsEndpointValidationTests
     {
         var request = BuildValidRequest("ChIJ-any", "US-WA-SEATTLE");
         _mockComicRepository.Setup(r => r.GetByPlaceIdAsync(It.IsAny<PlaceId>()))
-            .ReturnsAsync((PoSeeReview.Shared.Contracts.Comic?)null);
+            .ReturnsAsync((Comic?)null);
 
         var result = await SubmitAsync(request);
 
         AssertAccepted(result);
     }
+
+    private static LeaderboardEntry BoardRow(PlaceId placeId) => new()
+    {
+        PlaceId = placeId,
+        Region = RegionCode.From("US"),
+        RestaurantName = "Test Restaurant"
+    };
 
     private static TakedownRequestDto BuildValidRequest(string placeId, string region) => new()
     {

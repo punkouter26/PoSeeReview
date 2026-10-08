@@ -51,30 +51,32 @@ public sealed class ModerationRepository(
         CancellationToken cancellationToken = default)
     {
         var threshold = Math.Max(1, moderationOptions.Value.AutoHideReportThreshold);
-        var row = await TryGetAsync(placeId, cancellationToken) ?? NewRow(placeId);
+        var shouldHide = false;
 
-        row.ReportCount = Math.Max(row.ReportCount, distinctReporters);
-
-        // Only auto-hide something a human has not already ruled on. A moderator who looked at
-        // a comic and left it up must not be overridden by the next three reporters — that is
-        // how a review queue becomes a voting mechanism.
-        var shouldHide = !row.IsHidden && !row.IsReviewed && row.ReportCount >= threshold;
-
-        if (shouldHide)
+        await MutateAsync(placeId, row =>
         {
-            row.IsHidden = true;
-            row.Reason = $"Auto-hidden after {row.ReportCount} reports, pending review.";
-            row.UpdatedBy = "system";
-        }
+            row.ReportCount = Math.Max(row.ReportCount, distinctReporters);
 
-        row.UpdatedAt = timeProvider.GetUtcNow();
-        await _table.UpsertEntityAsync(row, TableUpdateMode.Replace, cancellationToken);
+            // Only auto-hide something a human has not already ruled on. A moderator who looked
+            // at a comic and left it up must not be overridden by the next three reporters —
+            // that is how a review queue becomes a voting mechanism.
+            shouldHide = !row.IsHidden && !row.IsReviewed && row.ReportCount >= threshold;
+
+            if (shouldHide)
+            {
+                row.IsHidden = true;
+                row.Reason = $"Auto-hidden after {row.ReportCount} reports, pending review.";
+                row.UpdatedBy = "system";
+            }
+
+            return true;
+        }, cancellationToken);
 
         if (shouldHide)
         {
             logger.LogWarning(
                 "Auto-hid {PlaceId} after {Count} distinct reports (threshold {Threshold})",
-                placeId, row.ReportCount, threshold);
+                placeId, distinctReporters, threshold);
         }
 
         return shouldHide;
@@ -99,21 +101,21 @@ public sealed class ModerationRepository(
     /// <inheritdoc />
     public async Task FlagForReviewAsync(PlaceId placeId, string category, CancellationToken cancellationToken = default)
     {
-        var row = await TryGetAsync(placeId, cancellationToken);
-
-        // Never overwrites a human verdict, and never re-flags something already on the queue.
-        // A comic regenerated daily would otherwise reset its own review state every morning.
-        if (row is { IsReviewed: true } || row is { IsHidden: true })
+        await MutateAsync(placeId, row =>
         {
-            return;
-        }
+            // Never overwrites a human verdict, and never re-flags something already on the
+            // queue. A comic regenerated daily would otherwise reset its own review state every
+            // morning.
+            if (row.IsReviewed || row.IsHidden)
+            {
+                return false;
+            }
 
-        row ??= NewRow(placeId);
-        row.Reason = $"Auto-flagged by the content screen ({category}). Not hidden.";
-        row.UpdatedBy = "content-screen";
-        row.UpdatedAt = timeProvider.GetUtcNow();
+            row.Reason = $"Auto-flagged by the content screen ({category}). Not hidden.";
+            row.UpdatedBy = "content-screen";
+            return true;
+        }, cancellationToken);
 
-        await _table.UpsertEntityAsync(row, TableUpdateMode.Replace, cancellationToken);
         logger.LogInformation("Flagged {PlaceId} for review ({Category})", placeId, category);
     }
 
@@ -172,6 +174,47 @@ public sealed class ModerationRepository(
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// Read-modify-write under the row's ETag, for the writers that fire on their own (reports,
+    /// the content screen). A blind replace from a stale read could land after a moderator's
+    /// Suppress and silently undo it; a lost race re-reads and re-decides instead.
+    /// </summary>
+    private async Task MutateAsync(PlaceId placeId, Func<ModerationEntity, bool> mutate, CancellationToken cancellationToken)
+    {
+        const int MaxAttempts = 4;
+
+        for (var attempt = 1; ; attempt++)
+        {
+            var existing = await TryGetAsync(placeId, cancellationToken);
+            var row = existing ?? NewRow(placeId);
+
+            if (!mutate(row))
+            {
+                return;
+            }
+
+            row.UpdatedAt = timeProvider.GetUtcNow();
+
+            try
+            {
+                if (existing is null)
+                {
+                    await _table.AddEntityAsync(row, cancellationToken);
+                }
+                else
+                {
+                    await _table.UpdateEntityAsync(row, existing.ETag, TableUpdateMode.Replace, cancellationToken);
+                }
+
+                return;
+            }
+            catch (RequestFailedException ex) when (ex.Status is 409 or 412 && attempt < MaxAttempts)
+            {
+                // Somebody else wrote the row between the read and the write.
+            }
+        }
     }
 
     private ModerationEntity NewRow(PlaceId placeId) => new()

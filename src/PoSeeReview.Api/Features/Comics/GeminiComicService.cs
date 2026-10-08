@@ -15,6 +15,9 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </summary>
 public sealed class GeminiComicService : IImageGenerationService
 {
+    /// <summary>Telemetry label, and the provider key cost tracking is reported under.</summary>
+    public const string ProviderLabel = "Gemini";
+
     // Verified against ListModels for this project's key on 2026-08-25: NO model exposes the
     // Imagen ":predict" method any more, which is why every generation was failing with
     //   404 "models/imagen-4.0-fast-generate-001 is not found for API version v1beta,
@@ -28,6 +31,7 @@ public sealed class GeminiComicService : IImageGenerationService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<GeminiComicService> _logger;
     private readonly TelemetryClient _telemetryClient;
+    private readonly AiCostTracker _costTracker;
     private readonly string _apiKey;
     private readonly string _model;
 
@@ -35,11 +39,13 @@ public sealed class GeminiComicService : IImageGenerationService
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<GeminiComicService> logger,
-        TelemetryClient telemetryClient)
+        TelemetryClient telemetryClient,
+        AiCostTracker costTracker)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _telemetryClient = telemetryClient ?? throw new ArgumentNullException(nameof(telemetryClient));
+        _costTracker = costTracker ?? throw new ArgumentNullException(nameof(costTracker));
 
         _apiKey = configuration["Google:GeminiApiKey"]
             ?? throw new InvalidOperationException(
@@ -52,17 +58,14 @@ public sealed class GeminiComicService : IImageGenerationService
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> GenerateComicImageAsync(string narrative, IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
+    public async Task<byte[]> GenerateComicImageAsync(IReadOnlyList<string> panelScenes, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(narrative))
-            throw new ArgumentException("Narrative cannot be empty", nameof(narrative));
-
         var panelCount = panelScenes.Count;
-        if (panelCount is < 1 or > 4)
-            throw new ArgumentException("Panel count must be between 1 and 4", nameof(panelScenes));
+        if (panelCount is < 1 or > 2)
+            throw new ArgumentException("Panel count must be 1 or 2", nameof(panelScenes));
 
         var stopwatch = Stopwatch.StartNew();
-        var (prompt, bluntedTerms) = ComicImagePrompt.Build(narrative, panelScenes);
+        var (prompt, bluntedTerms) = ComicImagePrompt.Build(panelScenes);
 
         if (bluntedTerms.Count > 0)
         {
@@ -76,27 +79,24 @@ public sealed class GeminiComicService : IImageGenerationService
                 bluntedTerms.Count, string.Join(", ", bluntedTerms));
         }
 
-        // Transient failures (429/503/timeouts) are handled by the standard resilience handler
-        // configured on the "GeminiApi" HttpClient, so no hand-rolled retry is needed here.
+        // One attempt. The "GeminiApi" HttpClient carries a timeout and nothing else: a re-sent
+        // image POST can be billed again, so a slow or failed call is surfaced, never retried.
         byte[] imageBytes;
         try
         {
-            imageBytes = await GenerateAsync(prompt, AspectRatio(panelCount), cancellationToken);
+            // The frame shape that makes the layout's panels come out landscape: the overlay
+            // places captions by assuming equal panels.
+            imageBytes = await GenerateAsync(prompt, panelCount == 1 ? "4:3" : "3:4", cancellationToken);
         }
-        catch (InvalidOperationException ex) when (IsRefusal(ex))
+        catch (ImageDeclinedException ex)
         {
-            // A refusal is NOT retried with a generic prompt, and that reversal is the point.
-            //
-            // The old behaviour answered a safety decline by paying for a second image of a
-            // cheerful restaurant that had nothing to do with the reviews — then published it
-            // under those reviews' strangeness score, with no marker anywhere that the subject
-            // had been swapped. A user asking about a restaurant where something unpleasant
-            // happened got a stock picture of a happy waiter and no way to tell. Spending money
-            // to make the product lie is the worst of the three available outcomes; refusing is
-            // the only one that is honest, and it is also the one a moderator can act on.
+            // A refusal is NOT answered with a generic prompt, and that reversal is the point:
+            // paying for a second image of a cheerful restaurant and publishing it under these
+            // reviews' score made the product lie. Refusing is the honest outcome, and the one a
+            // moderator can act on.
             _telemetryClient.GetMetric("Gemini.Image.Declined").TrackValue(1);
-            _logger.LogWarning("Gemini declined to draw this comic: {Reason}", ex.Message);
-            throw new ImageDeclinedException(ex.Message);
+            _logger.LogWarning("Gemini declined to draw this comic: {Reason}", ex.Reason);
+            throw;
         }
 
         stopwatch.Stop();
@@ -119,6 +119,11 @@ public sealed class GeminiComicService : IImageGenerationService
     /// a candidate can legitimately come back with only text parts (the model explaining why it
     /// declined) — so the part loop looks for <c>inlineData</c> specifically instead of assuming
     /// position 0 is the image.
+    /// </para>
+    /// <para>
+    /// <b>A refusal is only ever read from a successful response.</b> An HTTP error is a
+    /// failure, whatever words its body contains: matching "blocked" or "safety" in a 403 or
+    /// 429 body used to file a quota error as a content refusal and flag the restaurant.
     /// </para>
     /// </summary>
     private async Task<byte[]> GenerateAsync(string prompt, string aspectRatio, CancellationToken cancellationToken)
@@ -152,8 +157,8 @@ public sealed class GeminiComicService : IImageGenerationService
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogError("Gemini image API error {Status}: {Body}", (int)response.StatusCode, errorBody);
-            throw new InvalidOperationException(
-                $"Gemini image API returned {(int)response.StatusCode}: {errorBody}");
+            throw new HttpRequestException(
+                $"Gemini image API returned {(int)response.StatusCode}", inner: null, response.StatusCode);
         }
 
         using var json = await JsonDocument.ParseAsync(
@@ -162,14 +167,17 @@ public sealed class GeminiComicService : IImageGenerationService
 
         var root = json.RootElement;
 
+        if (root.TryGetProperty("usageMetadata", out var usage))
+        {
+            _costTracker.Track(ProviderLabel, _model, TokenCount(usage, "promptTokenCount"), TokenCount(usage, "candidatesTokenCount"));
+        }
+
         // A prompt rejected outright never reaches the candidate list — it comes back as a
-        // promptFeedback block. Surface it with the word "blocked" so the caller's safety
-        // fallback in GenerateComicImageAsync recognises it and retries with a generic prompt.
+        // promptFeedback block, which is a refusal by definition.
         if (root.TryGetProperty("promptFeedback", out var feedback)
             && feedback.TryGetProperty("blockReason", out var blockReason))
         {
-            throw new InvalidOperationException(
-                $"Gemini blocked the prompt: {blockReason.GetString()}");
+            throw new ImageDeclinedException($"Gemini blocked the prompt: {blockReason.GetString()}");
         }
 
         if (!root.TryGetProperty("candidates", out var candidates)
@@ -177,7 +185,7 @@ public sealed class GeminiComicService : IImageGenerationService
             || candidates.GetArrayLength() == 0)
         {
             _logger.LogWarning("Gemini returned no candidates. Raw response: {Response}", root.GetRawText());
-            throw new InvalidOperationException("Gemini returned no candidates. The prompt may have been filtered.");
+            throw new InvalidOperationException("Gemini returned no candidates.");
         }
 
         var candidate = candidates[0];
@@ -186,8 +194,11 @@ public sealed class GeminiComicService : IImageGenerationService
             && finishReason.GetString() is { } reason
             && reason is not ("STOP" or "MAX_TOKENS"))
         {
-            // SAFETY / PROHIBITED_CONTENT / IMAGE_SAFETY all land here.
-            throw new InvalidOperationException($"Gemini declined to draw the image: {reason}");
+            // SAFETY / IMAGE_SAFETY / PROHIBITED_CONTENT / BLOCKLIST / SPII / RECITATION are the
+            // model declining; anything else (OTHER, NO_IMAGE, ...) is a failed call.
+            throw IsRefusalReason(reason)
+                ? new ImageDeclinedException($"Gemini declined to draw the image: {reason}")
+                : new InvalidOperationException($"Gemini stopped without an image: {reason}");
         }
 
         if (candidate.TryGetProperty("content", out var content)
@@ -209,21 +220,12 @@ public sealed class GeminiComicService : IImageGenerationService
         throw new InvalidOperationException("Gemini returned no image data for this prompt.");
     }
 
-    private static bool IsRefusal(InvalidOperationException ex) =>
-        ex.Message.Contains("safety", StringComparison.OrdinalIgnoreCase)
-        || ex.Message.Contains("declined", StringComparison.OrdinalIgnoreCase)
-        || ex.Message.Contains("blocked", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsRefusalReason(string finishReason) =>
+        finishReason.Contains("SAFETY", StringComparison.Ordinal)
+        || finishReason.Contains("PROHIBITED", StringComparison.Ordinal)
+        || finishReason.Contains("RECITATION", StringComparison.Ordinal)
+        || finishReason is "BLOCKLIST" or "SPII";
 
-    /// <summary>
-    /// The frame shape that makes the requested layout's panels come out landscape. The overlay
-    /// places captions by assuming equal panels, and a square frame asked for two stacked panels
-    /// produced two letterbox strips whose top third the caption box then covered.
-    /// </summary>
-    private static string AspectRatio(int panelCount) => panelCount switch
-    {
-        1 => "4:3",
-        2 => "3:4",
-        3 => "21:9",
-        _ => "1:1"
-    };
+    private static long TokenCount(JsonElement usage, string name) =>
+        usage.TryGetProperty(name, out var value) && value.TryGetInt64(out var count) ? count : 0;
 }

@@ -2,8 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
-using Microsoft.Extensions.Options;
-using PoSeeReview.Api.Identity;
+using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Api.Telemetry;
 using PoSeeReview.Shared.Dtos;
@@ -20,7 +19,7 @@ internal static class ComicsEndpoints
 {
     public static IEndpointRouteBuilder MapComicsEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/comics").WithTags("Comics");
+        var group = app.MapGroup("/api/comics").WithTags("Comics").RequireValidPlaceId();
 
         // The one endpoint that spends money, so it carries the 3/min limiter.
         group.MapPost("/{placeId}/stream", GenerateComicStream).RequireRateLimiting("comics-post");
@@ -30,16 +29,27 @@ internal static class ComicsEndpoints
         // the limiter.
         group.MapGet("/budget", GetBudget);
         group.MapGet("/cached", GetCachedPlaceIds);
-        group.MapGet("/{placeId}/image", DownloadComicImage);
-        group.MapGet("/{placeId}", GetCachedComic);
+        group.MapGet("/{placeId}/image", DownloadComicImage).AddEndpointFilter(RefuseWithheld);
+        group.MapGet("/{placeId}", GetCachedComic).AddEndpointFilter(RefuseWithheld);
 
-        // The link-preview card. Deliberately NOT under /api: UserAgentValidationMiddleware only
+        // The link-preview cards. Deliberately NOT under /api: UserAgentValidationMiddleware only
         // lets social crawlers through on non-/api paths, so an og:image under /api would be
         // fetched by exactly the clients that get a 400 there. Anonymous for the same reason —
         // a 401 on a preview fetch unfurls as the same blank card as no tags at all.
+        // Output-cached because each one is an anonymous blob download plus an ImageSharp render.
+        // The shared policy keeps an entry for 60 seconds, which is also the longest a card for a
+        // comic that has since been withheld can still be served from this cache.
         app.MapGet("/share/{placeId}/card.png", GetShareCard)
             .WithTags("Comics")
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .RequireValidPlaceId()
+            .CacheOutput(SharedReadCachePolicy.Name);
+
+        app.MapGet("/share/duel/{a}/{b}/card.png", GetDuelCard)
+            .WithTags("Comics")
+            .AllowAnonymous()
+            .RequireValidPlaceId("a", "b")
+            .CacheOutput(SharedReadCachePolicy.Name);
 
         // Short links live in this slice because they only ever address a comic — see
         // ShareLinksEndpoints for why they are not under /api.
@@ -61,49 +71,78 @@ internal static class ComicsEndpoints
         IComicGenerationService comicGenerationService,
         ShareCardService shareCardService,
         IContentModerationGate moderationGate,
-        ILogger<ShareCardService> logger,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        var comic = await ServableComicAsync(placeId, comicGenerationService, moderationGate, http.RequestAborted);
+
+        return comic is null
+            ? Results.NotFound()
+            : CardResult(await shareCardService.RenderAsync(comic, http.RequestAborted), http);
+    }
+
+    /// <summary>Two comics side by side, for a shared head-to-head. 404 unless both can be shown.</summary>
+    private static async Task<IResult> GetDuelCard(
+        string a,
+        string b,
+        IComicGenerationService comicGenerationService,
+        ShareCardService shareCardService,
+        IContentModerationGate moderationGate,
+        HttpContext http)
+    {
+        var left = await ServableComicAsync(a, comicGenerationService, moderationGate, http.RequestAborted);
+        var right = left is null
+            ? null
+            : await ServableComicAsync(b, comicGenerationService, moderationGate, http.RequestAborted);
+
+        return left is null || right is null
+            ? Results.NotFound()
+            : CardResult(await shareCardService.RenderDuelAsync(left, right, http.RequestAborted), http);
+    }
+
+    /// <summary>
+    /// The live comic for a card, or null when there is none or moderation is withholding it.
+    /// A plain 404 follows, not a 451: this is a crawler-facing image, a withheld comic should
+    /// simply produce no card, and a legal-reasons status inside an img tag is noise nobody reads.
+    /// </summary>
+    private static async Task<Comic?> ServableComicAsync(
+        string placeId,
+        IComicGenerationService comicGenerationService,
+        IContentModerationGate moderationGate,
+        CancellationToken cancellationToken)
+    {
+        var id = PlaceId.From(placeId);
+
+        return (await moderationGate.EvaluateAsync(id, cancellationToken)).IsServable
+            ? await comicGenerationService.GetCachedComicAsync(id, cancellationToken)
+            : null;
+    }
+
+    private static IResult CardResult(byte[]? png, HttpContext http)
+    {
+        if (png is null)
         {
             return Results.NotFound();
         }
 
-        // A plain 404 here, not a 451. This is a crawler-facing image: a withheld comic should
-        // simply produce no card, and a legal-reasons status inside an img tag is noise nobody
-        // reads.
-        var cardVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
-        if (!cardVerdict.IsServable)
-        {
-            return Results.NotFound();
-        }
+        // Long enough that a crawler re-fetching a popular link does not re-render it, short
+        // enough that a takedown stops being served within the hour. The card is composed
+        // from a comic, so it must not outlive one by much.
+        http.Response.Headers.CacheControl = "public, max-age=3600";
 
-        try
-        {
-            var comic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
-            if (comic is null)
-            {
-                return Results.NotFound();
-            }
+        return Results.File(png, "image/png");
+    }
 
-            var png = await shareCardService.RenderAsync(comic, http.RequestAborted);
-            if (png is null)
-            {
-                return Results.NotFound();
-            }
+    /// <summary>
+    /// Withholds a comic read with a 451 when moderation says so. A filter rather than a line in
+    /// each handler, so a new read under <c>/{placeId}</c> cannot forget it.
+    /// </summary>
+    private static async ValueTask<object?> RefuseWithheld(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var http = context.HttpContext;
+        var verdict = await http.RequestServices.GetRequiredService<IContentModerationGate>()
+            .EvaluateAsync(PlaceId.From(http.Request.RouteValues["placeId"] as string), http.RequestAborted);
 
-            // Long enough that a crawler re-fetching a popular link does not re-render it, short
-            // enough that a takedown stops being served within the hour. The card is composed
-            // from a comic, so it must not outlive one by much.
-            http.Response.Headers.CacheControl = "public, max-age=3600";
-
-            return Results.File(png, "image/png");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to serve the share card for placeId: {PlaceId}", placeId);
-            return Results.NotFound();
-        }
+        return verdict.IsServable ? await next(context) : ModerationRefusal(verdict, http);
     }
 
     /// <summary>
@@ -118,10 +157,12 @@ internal static class ComicsEndpoints
         type: "https://tools.ietf.org/html/rfc7725#section-3",
         title: "Unavailable For Legal Reasons",
         statusCode: StatusCodes.Status451UnavailableForLegalReasons,
-        detail: verdict.IsSuppressed
-            ? "This restaurant has been removed from PoSeeReview after a takedown or a review."
-            : "This comic is unavailable while it is being reviewed.",
+        detail: WithheldDetail(verdict.IsSuppressed),
         instance: http.Request.Path);
+
+    private static string WithheldDetail(bool isSuppressed) => isSuppressed
+        ? "This restaurant has been removed from PoSeeReview after a takedown or a review."
+        : "This comic is unavailable while it is being reviewed.";
 
     /// <summary>
     /// Maps a generation failure onto the status the client already knows how to render. The
@@ -147,6 +188,10 @@ internal static class ComicsEndpoints
         ImageDeclinedException e => (
             StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
             e.Message, "https://tools.ietf.org/html/rfc4918#section-11.2", "image_declined"),
+
+        ContentWithheldException e => (
+            StatusCodes.Status451UnavailableForLegalReasons, "Unavailable For Legal Reasons",
+            WithheldDetail(e.IsSuppressed), "https://tools.ietf.org/html/rfc7725#section-3", "withheld"),
 
         InsufficientStrangenessException => (
             StatusCodes.Status422UnprocessableEntity, "Unprocessable Entity",
@@ -238,13 +283,8 @@ internal static class ComicsEndpoints
     /// What the caller has left to spend today. A free read, so the client can grey out the
     /// generate button before a tap rather than after a 429.
     /// </summary>
-    private static async Task<IResult> GetBudget(
-        GenerationBudgetService budgetService,
-        HttpContext http)
-    {
-        var budget = await budgetService.GetBudgetAsync(http.RequestAborted);
-        return Results.Ok(budget);
-    }
+    private static async Task<IResult> GetBudget(GenerationBudgetService budgetService, HttpContext http) =>
+        Results.Ok(await budgetService.GetBudgetAsync(http.RequestAborted));
 
     /// <summary>
     /// Maximum place ids one lookup will accept. Each one is a point read, and discovery never
@@ -273,6 +313,7 @@ internal static class ComicsEndpoints
     {
         var ids = (placeIds ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(PlaceId.IsValid)
             .Distinct(StringComparer.Ordinal)
             .Take(MaxCachedLookupIds)
             .ToList();
@@ -309,8 +350,6 @@ internal static class ComicsEndpoints
     private static async Task GenerateComicStream(
         string placeId,
         IComicGenerationService comicGenerationService,
-        IComicRepository comicRepository,
-        ICurrentRequestIdentityAccessor identityAccessor,
         GenerationBudgetService budgetService,
         IContentModerationGate moderationGate,
         ILogger<ComicGenerationService> logger,
@@ -322,18 +361,6 @@ internal static class ComicsEndpoints
         // ARR/nginx will otherwise buffer the whole response and deliver every phase at once,
         // which still yields a correct comic but silently reduces this to the old fake spinner.
         http.Response.Headers["X-Accel-Buffering"] = "no";
-
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            await WriteEventAsync(http, new ComicGenerationEventDto
-            {
-                Kind = ComicGenerationEventDto.ErrorKind,
-                ErrorStatus = StatusCodes.Status400BadRequest,
-                ErrorTitle = "Bad Request",
-                ErrorDetail = "Place ID is required"
-            });
-            return;
-        }
 
         using var activity = PoSeeReviewTelemetry.ActivitySource.StartActivity("GenerateComicStream");
         activity?.SetTag("place_id", placeId);
@@ -353,9 +380,7 @@ internal static class ComicsEndpoints
                 Kind = ComicGenerationEventDto.ErrorKind,
                 ErrorStatus = StatusCodes.Status451UnavailableForLegalReasons,
                 ErrorTitle = "Unavailable For Legal Reasons",
-                ErrorDetail = streamVerdict.IsSuppressed
-                    ? "This restaurant has been removed from PoSeeReview after a takedown or a review."
-                    : "This comic is unavailable while it is being reviewed."
+                ErrorDetail = WithheldDetail(streamVerdict.IsSuppressed)
             });
             return;
         }
@@ -394,7 +419,7 @@ internal static class ComicsEndpoints
         }
         catch (Exception ex) when (ex is OperationCanceledException or IOException)
         {
-            // Client hung up mid-stream. RequestAborted already cancelled the pipeline; letting
+            // Client hung up mid-stream. The pipeline is not cancelled (see ProduceAsync); letting
             // this bubble would send UseExceptionHandler off to write a problem document to a
             // socket that is already gone.
             logger.LogInformation("Comic generation stream abandoned by the client for placeId: {PlaceId}", placeId);
@@ -406,19 +431,17 @@ internal static class ComicsEndpoints
         {
             try
             {
+                // CancellationToken.None, not RequestAborted: the budget unit is reserved, so a
+                // client that disconnects must not cancel the paid image call half-way — that
+                // spends the money, refunds nothing and caches nothing. The pipeline runs to
+                // completion and the next request finds the comic in the cache.
                 var progress = new ChannelProgress(events.Writer);
                 var comic = await comicGenerationService.GenerateComicAsync(
-                    PlaceId.From(placeId), forceRegenerate, progress, http.RequestAborted);
-                var currentUserId = identityAccessor.GetCurrentUserId();
-                if (!currentUserId.IsAnonymous && comic.RequestedByUserId != currentUserId)
-                {
-                    comic.RequestedByUserId = currentUserId;
-                    await comicRepository.UpsertAsync(comic);
-                }
+                    PlaceId.From(placeId), forceRegenerate, progress, CancellationToken.None);
 
                 if (comic.CacheState == ComicCacheState.Cached)
                 {
-                    await budgetService.ReleaseAsync(http.RequestAborted);
+                    await budgetService.ReleaseAsync(CancellationToken.None);
                 }
 
                 RecordSuccessMetrics(comic, forceRegenerate, placeId, startTime, activity);
@@ -429,12 +452,6 @@ internal static class ComicsEndpoints
                     Kind = ComicGenerationEventDto.CompleteKind,
                     Comic = comic.ToDto()
                 });
-            }
-            catch (OperationCanceledException) when (http.RequestAborted.IsCancellationRequested)
-            {
-                // Abandoned request: nothing to report to a client that is already gone. The
-                // budget unit is deliberately NOT refunded — the pipeline kept running to
-                // completion on the server, so the paid call happened either way.
             }
             catch (Exception ex)
             {
@@ -512,65 +529,34 @@ internal static class ComicsEndpoints
         string placeId,
         IComicGenerationService comicGenerationService,
         IBlobStorageService blobStorageService,
-        IContentModerationGate moderationGate,
-        ILogger<ComicGenerationService> logger,
         HttpContext http)
     {
-        if (string.IsNullOrWhiteSpace(placeId))
+        var comic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
+
+        if (comic is null || string.IsNullOrWhiteSpace(comic.ImageUrl))
         {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
+            return Results.NotFound();
         }
 
-        var downloadVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
-        if (!downloadVerdict.IsServable)
+        var stream = await blobStorageService.OpenComicImageStreamAsync(comic.ImageUrl, http.RequestAborted);
+        if (stream is null)
         {
-            return ModerationRefusal(downloadVerdict, http);
+            return Results.NotFound();
         }
 
-        try
+        // Sanitised so a restaurant name cannot inject header syntax or path separators into
+        // Content-Disposition. Results.File quotes the value, but the name is third-party
+        // text and this is the one place it reaches a header.
+        // The blob's own extension says what it holds: .png for older comics, .webp since.
+        var (extension, contentType) = Path.GetExtension(new Uri(comic.ImageUrl).AbsolutePath).ToLowerInvariant() switch
         {
-            var comic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
+            ".webp" => ("webp", "image/webp"),
+            ".jpg" => ("jpg", "image/jpeg"),
+            _ => ("png", "image/png")
+        };
+        var fileName = $"{BuildDownloadFileName(comic.RestaurantName)}.{extension}";
 
-            if (comic is null || string.IsNullOrWhiteSpace(comic.ImageUrl))
-            {
-                return Results.NotFound();
-            }
-
-            var stream = await blobStorageService.OpenComicImageStreamAsync(comic.ImageUrl, http.RequestAborted);
-            if (stream is null)
-            {
-                return Results.NotFound();
-            }
-
-            // Sanitised so a restaurant name cannot inject header syntax or path separators into
-            // Content-Disposition. Results.File quotes the value, but the name is third-party
-            // text and this is the one place it reaches a header.
-            // The blob's own extension says what it holds: .png for older comics, .webp since.
-            var (extension, contentType) = Path.GetExtension(new Uri(comic.ImageUrl).AbsolutePath).ToLowerInvariant() switch
-            {
-                ".webp" => ("webp", "image/webp"),
-                ".jpg" => ("jpg", "image/jpeg"),
-                _ => ("png", "image/png")
-            };
-            var fileName = $"{BuildDownloadFileName(comic.RestaurantName)}.{extension}";
-
-            return Results.File(stream, contentType, fileName, enableRangeProcessing: false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to serve comic image for placeId: {PlaceId}", placeId);
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-                title: "Internal Server Error",
-                statusCode: StatusCodes.Status500InternalServerError,
-                detail: "Failed to retrieve the comic image",
-                instance: http.Request.Path);
-        }
+        return Results.File(stream, contentType, fileName, enableRangeProcessing: false);
     }
 
     /// <summary>
@@ -597,70 +583,13 @@ internal static class ComicsEndpoints
     private static async Task<IResult> GetCachedComic(
         string placeId,
         IComicGenerationService comicGenerationService,
-        IContentModerationGate moderationGate,
-        ILogger<ComicGenerationService> logger,
-        HttpContext http)
-    {
-        if (string.IsNullOrWhiteSpace(placeId))
-        {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: "Place ID is required",
-                instance: http.Request.Path);
-        }
-
-        var readVerdict = await moderationGate.EvaluateAsync(PlaceId.From(placeId), http.RequestAborted);
-        if (!readVerdict.IsServable)
-        {
-            return ModerationRefusal(readVerdict, http);
-        }
-
-        try
-        {
-            var cachedComic = await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted);
-
-            if (cachedComic != null && cachedComic.ExpiresAt > DateTimeOffset.UtcNow)
-            {
-                return Results.Ok(cachedComic.ToDto(isCached: true));
-            }
-
-            return Results.Problem(
+        HttpContext http) =>
+        await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted) is { } comic
+            ? Results.Ok(comic.ToDto(isCached: true))
+            : Results.Problem(
                 type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
                 title: "Not Found",
                 statusCode: StatusCodes.Status404NotFound,
                 detail: "No cached comic found",
                 instance: http.Request.Path);
-        }
-        catch (KeyNotFoundException)
-        {
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                title: "Not Found",
-                statusCode: StatusCodes.Status404NotFound,
-                detail: "No comic found for this restaurant",
-                instance: http.Request.Path);
-        }
-        catch (InvalidOperationException ex)
-        {
-            logger.LogWarning(ex, "Cannot generate comic for placeId: {PlaceId}", placeId);
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.1",
-                title: "Bad Request",
-                statusCode: StatusCodes.Status400BadRequest,
-                detail: ex.Message,
-                instance: http.Request.Path);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error retrieving cached comic for placeId: {PlaceId}", placeId);
-            return Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.6.1",
-                title: "Internal Server Error",
-                statusCode: StatusCodes.Status500InternalServerError,
-                detail: "Failed to retrieve cached comic",
-                instance: http.Request.Path);
-        }
-    }
 }

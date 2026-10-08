@@ -15,13 +15,11 @@ using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Api.Storage;
-using Polly.Retry;
-using PoSeeReview.Api.Abstractions;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
 using PoSeeReview.Shared.Enums;
 
-namespace PoSeeReview.Api;
+namespace PoSeeReview.Api.Configuration;
 
 /// <summary>
 /// Extension methods for registering infrastructure services
@@ -220,33 +218,18 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<ComicGenerationLock>();
 
         // Image provider: Gemini (GeminiComicService) or gpt-image on Azure (AzureOpenAIImageService),
-        // both prompted by ComicImagePrompt. A named HttpClient with generous timeouts (image gen
-        // is slow) and the standard resilience handler for retry/timeout/circuit-breaker.
+        // both prompted by ComicImagePrompt. The named HttpClient carries a timeout and NOTHING
+        // else — no retry, no hedging. An image POST that is slow or answers 5xx may already
+        // have been billed, so re-sending it can pay for the same comic twice.
         var imageClientName = imageProvider == AiImageProvider.AzureOpenAI ? "AzureOpenAIImageApi" : "GeminiApi";
         services.AddHttpClient(imageClientName)
             .SetHandlerLifetime(TimeSpan.FromMinutes(5))
-            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90))
-            .AddStandardResilienceHandler(options =>
-            {
-                options.Retry.MaxRetryAttempts = 3;
-                options.Retry.UseJitter = true;
-
-                // Image generation is slow, so budgets stay generous but within the 90s HttpClient
-                // timeout above. SamplingDuration must be >= 2x AttemptTimeout for the standard handler.
-                options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(40);
-                options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
-                options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(90);
-            });
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
 
         if (imageProvider == AiImageProvider.AzureOpenAI)
             services.AddScoped<IImageGenerationService, AzureOpenAIImageService>();
         else
-            services.AddScoped<IImageGenerationService>(sp =>
-                new GeminiComicService(
-                    sp.GetRequiredService<IHttpClientFactory>(),
-                    sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(),
-                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GeminiComicService>>(),
-                    sp.GetRequiredService<Microsoft.ApplicationInsights.TelemetryClient>()));
+            services.AddScoped<IImageGenerationService, GeminiComicService>();
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();

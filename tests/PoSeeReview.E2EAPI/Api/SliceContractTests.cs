@@ -66,6 +66,21 @@ public class SliceContractTests(CustomWebApplicationFactory<Program> factory)
         Assert.Equal(payload.Restaurants.Count, payload.TotalCount);
     }
 
+    // ── Comics: place ids and the duel card ─────────────────────────────────
+
+    [Theory]
+    [InlineData("/share/duel/place-1/place-2/card.png", HttpStatusCode.NotFound)] // well-formed, no comics
+    [InlineData("/share/duel/bad%20id/place-2/card.png", HttpStatusCode.BadRequest)]
+    [InlineData("/share/duel/place-1/bad%3Fid/card.png", HttpStatusCode.BadRequest)]
+    [InlineData("/share/bad%20id/card.png", HttpStatusCode.BadRequest)]
+    [InlineData("/api/comics/bad%20id", HttpStatusCode.BadRequest)]
+    public async Task PlaceIdRoutes_RejectMalformedIds_AndDuelCardNeedsBothComics(string path, HttpStatusCode expected)
+    {
+        var response = await CreateAuthenticatedClient().GetAsync(path);
+
+        Assert.Equal(expected, response.StatusCode);
+    }
+
     // ── Takedowns ───────────────────────────────────────────────────────────
 
     [Fact]

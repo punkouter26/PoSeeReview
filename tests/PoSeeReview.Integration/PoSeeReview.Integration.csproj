@@ -18,6 +18,13 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Without this the runner config never reaches the output folder and is silently ignored:
+       classes then run in parallel, and each factory's Azurite connection string is a
+       process-wide environment variable. -->
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\PoSeeReview.Api\PoSeeReview.Api.csproj" />
   </ItemGroup>

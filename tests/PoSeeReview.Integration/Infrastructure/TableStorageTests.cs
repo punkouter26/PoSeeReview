@@ -25,6 +25,33 @@ public class TableStorageTests : IClassFixture<AzuriteFixture>
     }
 
     [Fact]
+    public async Task ModerationRepository_AutomatedWrites_NeverUndoASuppress()
+    {
+        // Reports and the content screen write under the row's ETag. They used to replace the
+        // row from a stale read, so one landing after a moderator's Suppress could clear it.
+        var options = Microsoft.Extensions.Options.Options.Create(new PoSeeReview.Api.Storage.AzureStorageOptions());
+        await _fixture.ClearTableAsync(options.Value.ModerationTableName);
+
+        var repository = new PoSeeReview.Api.Features.Moderation.ModerationRepository(
+            _fixture.TableServiceClient,
+            options,
+            Microsoft.Extensions.Options.Options.Create(new PoSeeReview.Api.Features.Moderation.ModerationOptions()),
+            TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PoSeeReview.Api.Features.Moderation.ModerationRepository>.Instance);
+        var placeId = PlaceId.From("ChIJmoderation1");
+
+        await repository.FlagForReviewAsync(placeId, "allegation");          // insert
+        Assert.False(await repository.RecordReportAsync(placeId, 1));        // conditional update
+        await repository.SuppressAsync(placeId, "takedown");
+        await repository.RecordReportAsync(placeId, 5);
+        await repository.FlagForReviewAsync(placeId, "allegation");
+
+        var verdict = await repository.EvaluateAsync(placeId);
+        Assert.True(verdict.IsSuppressed);
+        Assert.Equal("takedown", verdict.Reason);
+    }
+
+    [Fact]
 
     [Trait("Category", "Integration")]
     public async Task UpsertRestaurantEntity_ValidEntity_StoresSuccessfully()

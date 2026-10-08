@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -12,7 +11,7 @@ namespace PoSeeReview.Api.Features.Restaurants;
 /// <summary>
 /// Google Maps API integration service for restaurant discovery
 /// </summary>
-public class GoogleMapsService
+public partial class GoogleMapsService
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<GoogleMapsService> _logger;
@@ -256,49 +255,6 @@ public class GoogleMapsService
         return RegionCode.Default;
     }
 
-    // Google Places API (New) response models
-    private class GooglePlacesResponse
-    {
-        [JsonPropertyName("places")]
-        public List<Place>? Places { get; set; }
-    }
-
-    private class Place
-    {
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
-
-        [JsonPropertyName("displayName")]
-        public DisplayName? DisplayName { get; set; }
-
-        [JsonPropertyName("formattedAddress")]
-        public string? FormattedAddress { get; set; }
-
-        [JsonPropertyName("location")]
-        public Location? Location { get; set; }
-
-        [JsonPropertyName("rating")]
-        public double? Rating { get; set; }
-
-        [JsonPropertyName("userRatingCount")]
-        public int? UserRatingCount { get; set; }
-    }
-
-    private class DisplayName
-    {
-        [JsonPropertyName("text")]
-        public string? Text { get; set; }
-    }
-
-    private class Location
-    {
-        [JsonPropertyName("latitude")]
-        public double Latitude { get; set; }
-
-        [JsonPropertyName("longitude")]
-        public double Longitude { get; set; }
-    }
-
     /// <summary>
     /// Gets detailed place information including reviews
     /// </summary>
@@ -306,7 +262,7 @@ public class GoogleMapsService
     {
         _logger.LogInformation("Fetching place details for {PlaceId}", placeId);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, $"https://places.googleapis.com/v1/places/{placeId.Value}");
+        var request = new HttpRequestMessage(HttpMethod.Get, $"https://places.googleapis.com/v1/places/{Uri.EscapeDataString(placeId.Value)}");
         request.Headers.Add("X-Goog-Api-Key", _apiKey);
         request.Headers.Add("X-Goog-FieldMask", "id,displayName,formattedAddress,location,rating,userRatingCount,reviews");
 
@@ -367,100 +323,5 @@ public class GoogleMapsService
         _logger.LogInformation("Fetched {ReviewCount} reviews for place {PlaceId}", restaurant.Reviews.Count, placeId);
 
         return restaurant;
-    }
-
-    // Place Details API response models
-    private class PlaceDetailsResponse
-    {
-        [JsonPropertyName("id")]
-        public string? Id { get; set; }
-
-        [JsonPropertyName("displayName")]
-        public DisplayName? DisplayName { get; set; }
-
-        [JsonPropertyName("formattedAddress")]
-        public string? FormattedAddress { get; set; }
-
-        [JsonPropertyName("location")]
-        public Location? Location { get; set; }
-
-        [JsonPropertyName("rating")]
-        public double? Rating { get; set; }
-
-        [JsonPropertyName("userRatingCount")]
-        public int? UserRatingCount { get; set; }
-
-        [JsonPropertyName("reviews")]
-        public List<PlaceReview>? Reviews { get; set; }
-
-        // Support both wrapper and direct access patterns
-        [JsonPropertyName("place")]
-        public PlaceDetailsResponse? Place { get; set; }
-    }
-
-    private class PlaceReview
-    {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
-
-        [JsonPropertyName("relativePublishTimeDescription")]
-        public string? RelativePublishTimeDescription { get; set; }
-
-        [JsonPropertyName("rating")]
-        public int? Rating { get; set; }
-
-        [JsonPropertyName("text")]
-        public TextContent? Text { get; set; }
-
-        [JsonPropertyName("originalText")]
-        public TextContent? OriginalText { get; set; }
-
-        [JsonPropertyName("authorAttribution")]
-        public AuthorAttribution? AuthorAttribution { get; set; }
-
-        [JsonPropertyName("publishTime")]
-        public string? PublishTime { get; set; }
-    }
-
-    private class TextContent
-    {
-        [JsonPropertyName("text")]
-        public string? Text { get; set; }
-
-        [JsonPropertyName("languageCode")]
-        public string? LanguageCode { get; set; }
-    }
-
-    private class AuthorAttribution
-    {
-        [JsonPropertyName("displayName")]
-        public string? DisplayName { get; set; }
-
-        [JsonPropertyName("uri")]
-        public string? Uri { get; set; }
-
-        [JsonPropertyName("photoUri")]
-        public string? PhotoUri { get; set; }
-    }
-
-    private class GeocodeResponse
-    {
-        [JsonPropertyName("status")]
-        public string? Status { get; set; }
-
-        [JsonPropertyName("results")]
-        public List<GeocodeResult>? Results { get; set; }
-    }
-
-    private class GeocodeResult
-    {
-        [JsonPropertyName("geometry")]
-        public GeocodeGeometry? Geometry { get; set; }
-    }
-
-    private class GeocodeGeometry
-    {
-        [JsonPropertyName("location")]
-        public Location? Location { get; set; }
     }
 }

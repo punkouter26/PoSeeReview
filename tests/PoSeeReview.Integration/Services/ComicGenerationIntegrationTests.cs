@@ -78,7 +78,6 @@ public class ComicGenerationIntegrationTests
             return;
         }
 
-        var logger = new Mock<ILogger<AzureOpenAIChatService>>();
         var telemetryClient = new Microsoft.ApplicationInsights.TelemetryClient(new Microsoft.ApplicationInsights.Extensibility.TelemetryConfiguration());
         var openAiClient = new Azure.AI.OpenAI.AzureOpenAIClient(
             new Uri(openAiOptions.Endpoint!),
@@ -86,7 +85,6 @@ public class ComicGenerationIntegrationTests
         var chatService = new AzureOpenAIChatService(
             openAiClient,
             Microsoft.Extensions.Options.Options.Create(openAiOptions),
-            logger.Object,
             telemetryClient,
             new AiCostTracker(Microsoft.Extensions.Options.Options.Create(new AiPricingOptions()), telemetryClient));
 

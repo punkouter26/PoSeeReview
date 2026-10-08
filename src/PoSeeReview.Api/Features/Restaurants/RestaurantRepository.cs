@@ -56,24 +56,6 @@ public class RestaurantRepository : TableStorageRepository<RestaurantEntity>
     }
 
     /// <summary>
-    /// Gets all valid (non-expired) restaurants in a region
-    /// </summary>
-    public async Task<List<Restaurant>> GetByRegionAsync(RegionCode region)
-    {
-        var partitionKey = RestaurantEntity.CreatePartitionKey(region);
-        var filter = TableClient.CreateQueryFilter<RestaurantEntity>(
-            e => e.PartitionKey == partitionKey);
-
-        var entities = await QueryAsync(filter);
-
-        // Filter out expired cache entries and convert to domain models
-        return entities
-            .Where(e => IsCacheValid(e.CachedAt))
-            .Select(FromEntity)
-            .ToList();
-    }
-
-    /// <summary>
     /// Stores/updates restaurant with current timestamp
     /// </summary>
     public async Task UpsertRestaurantAsync(Restaurant restaurant)

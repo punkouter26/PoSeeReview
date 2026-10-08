@@ -1,0 +1,41 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using PoSeeReview.Api.Features.Comics;
+using PoSeeReview.Api.Storage;
+using PoSeeReview.Shared.Contracts;
+using PoSeeReview.Shared.Ids;
+using SixLabors.ImageSharp;
+
+namespace PoSeeReview.Integration.Services;
+
+/// <summary>
+/// The duel card is a real ImageSharp render with system fonts, so it lives here rather than in
+/// the Unit tier, which also runs on a CI image whose fonts nobody has pinned.
+/// </summary>
+[Trait("Tier", "Integration")]
+public sealed class DuelCardTests
+{
+    [Fact]
+    public async Task RenderDuelAsync_ComposesAFullSizePng_EvenWhenTheArtworkIsGone()
+    {
+        var blobs = new Mock<IBlobStorageService>();
+        blobs.Setup(b => b.OpenComicImageStreamAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Stream?)null);
+
+        var png = await new ShareCardService(blobs.Object, NullLogger<ShareCardService>.Instance).RenderDuelAsync(
+            Comic("left", "The Owl Cafe", 87),
+            Comic("right", "A Restaurant With A Name Far Too Long To Fit On One Line Of A Card", 12));
+
+        Assert.NotNull(png);
+        var info = Image.Identify(png);
+        Assert.Equal((ShareCardService.CardWidth, ShareCardService.CardHeight), (info.Width, info.Height));
+    }
+
+    private static Comic Comic(string placeId, string name, int score) => new()
+    {
+        PlaceId = PlaceId.From(placeId),
+        RestaurantName = name,
+        StrangenessScore = score,
+        ImageUrl = $"https://example.blob.core.windows.net/comics/{placeId}.webp"
+    };
+}
