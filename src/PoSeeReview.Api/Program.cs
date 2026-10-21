@@ -103,7 +103,11 @@ try
         .AddCheck<GoogleMapsHealthCheck>(
             "google_maps_api",
             failureStatus: HealthStatus.Degraded,
-            tags: ["ready", "external"]);
+            tags: ["ready", "external"])
+        .AddCheck<SkiaImagingHealthCheck>(
+            "skia_imaging",
+            failureStatus: HealthStatus.Unhealthy,
+            tags: ["ready", "imaging"]);
 
     // Configure OpenAPI (built-in .NET 10 support)
     builder.Services.AddOpenApi();

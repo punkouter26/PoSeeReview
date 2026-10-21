@@ -1,0 +1,14 @@
+@* The deployed build's YYMMDD, bottom-right on every page, so a screenshot or a bug report says
+   which deploy it came from. Stamped into the assembly by the StampBuildDate target. *@
+@using System.Reflection
+
+@if (Stamp is not null)
+{
+    <small class="build-stamp" title="Build version (YYMMDD)">@Stamp</small>
+}
+
+@code {
+    private static readonly string? Stamp = typeof(BuildStamp).Assembly
+        .GetCustomAttributes<AssemblyMetadataAttribute>()
+        .FirstOrDefault(a => a.Key == "BuildStamp")?.Value;
+}

@@ -36,7 +36,7 @@ internal static class ComicsEndpoints
         // lets social crawlers through on non-/api paths, so an og:image under /api would be
         // fetched by exactly the clients that get a 400 there. Anonymous for the same reason —
         // a 401 on a preview fetch unfurls as the same blank card as no tags at all.
-        // Output-cached because each one is an anonymous blob download plus an ImageSharp render.
+        // Output-cached because each one is an anonymous blob download plus a Skia render.
         // The shared policy keeps an entry for 60 seconds, which is also the longest a card for a
         // comic that has since been withheld can still be served from this cache.
         app.MapGet("/share/{placeId}/card.png", GetShareCard)

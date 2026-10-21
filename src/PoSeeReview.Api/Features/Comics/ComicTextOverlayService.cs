@@ -1,12 +1,5 @@
 using Microsoft.Extensions.Logging;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp;
-using PoSeeReview.Shared.Contracts;
-using PoSeeReview.Shared.Ids;
-using PoSeeReview.Shared.Enums;
+using SkiaSharp;
 
 namespace PoSeeReview.Api.Features.Comics;
 
@@ -21,6 +14,8 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </summary>
 public class ComicTextOverlayService : IComicTextOverlayService
 {
+    private static readonly SKColor CaptionFill = new(255, 255, 180, 245);
+
     private readonly ILogger<ComicTextOverlayService> _logger;
 
     public ComicTextOverlayService(ILogger<ComicTextOverlayService> logger)
@@ -45,7 +40,9 @@ public class ComicTextOverlayService : IComicTextOverlayService
 
         try
         {
-            using var image = Image.Load<Rgba32>(imageBytes);
+            using var image = SKBitmap.Decode(imageBytes)
+                ?? throw new InvalidDataException("The comic image could not be decoded.");
+            using var canvas = new SKCanvas(image);
             var panelBounds = GetPanelBounds(image.Width, image.Height, panelCount);
             var drawn = 0;
 
@@ -58,23 +55,19 @@ public class ComicTextOverlayService : IComicTextOverlayService
                 // image is a small 512px square or a large 4-panel grid — a fixed size rendered
                 // captions nearly invisible on full-resolution output.
                 var fontSize = Math.Clamp((int)(panelBounds[i].Width / 20f), 16, 48);
-                DrawPanelCaption(image, captions[i], panelBounds[i], GetComicFont(fontSize));
+                using var font = SkiaText.Font(SkiaText.Caption, fontSize);
+                DrawPanelCaption(canvas, captions[i], panelBounds[i], font);
                 drawn++;
             }
 
             // Lossy WebP, not PNG: a painted strip saved as PNG was ~1.1 MB, and every thumbnail,
-            // comic view, share card and download paid for it. FileFormat must be explicit: left
-            // unset, ImageSharp inherits it from the decoded source, and a PNG source means
-            // lossless WebP at 930 KB — the same bill in a new container.
-            using var outputStream = new MemoryStream();
-            image.SaveAsWebp(outputStream, new SixLabors.ImageSharp.Formats.Webp.WebpEncoder
-            {
-                FileFormat = SixLabors.ImageSharp.Formats.Webp.WebpFileFormatType.Lossy,
-                Quality = 85
-            });
+            // comic view, share card and download paid for it. Skia encodes WebP lossy at any
+            // quality below 100.
+            using var webp = image.Encode(SKEncodedImageFormat.Webp, 85)
+                ?? throw new InvalidOperationException("The comic could not be encoded as WebP.");
 
             _logger.LogInformation("Drew {Count} panel caption(s) onto comic", drawn);
-            return Task.FromResult(outputStream.ToArray());
+            return Task.FromResult(webp.ToArray());
         }
         catch (Exception ex)
         {
@@ -89,90 +82,45 @@ public class ComicTextOverlayService : IComicTextOverlayService
     /// Approximate bounds of each panel, matching the two layouts <see cref="ComicImagePrompt"/>
     /// asks for: one full-frame panel, or two stacked vertically.
     /// </summary>
-    private static List<RectangleF> GetPanelBounds(int width, int height, int panelCount)
+    private static List<SKRect> GetPanelBounds(int width, int height, int panelCount)
     {
         if (panelCount <= 1)
         {
-            return [new RectangleF(0, 0, width, height)];
+            return [SKRect.Create(0, 0, width, height)];
         }
 
         const int Gutter = 6;
         var panelHeight = (height - Gutter) / 2f;
-        return [new RectangleF(0, 0, width, panelHeight), new RectangleF(0, panelHeight + Gutter, width, panelHeight)];
+        return [SKRect.Create(0, 0, width, panelHeight), SKRect.Create(0, panelHeight + Gutter, width, panelHeight)];
     }
 
     /// <summary>
     /// Draws a classic comic-style yellow caption box at the top of the panel.
     /// Covers any garbled AI-rendered text while providing a clean, readable overlay.
     /// </summary>
-    private void DrawPanelCaption(Image<Rgba32> image, string text, RectangleF panelBounds, Font font)
+    private void DrawPanelCaption(SKCanvas canvas, string text, SKRect panelBounds, SKFont font)
     {
-        const int Padding = 6;
-        var maxWrappingWidth = panelBounds.Width - Padding * 2 - 8;
-        var origin = new PointF(
-            panelBounds.X + panelBounds.Width / 2f,
-            panelBounds.Y + Padding);
+        const float Padding = 6;
+        var lines = SkiaText.Wrap(text, font, panelBounds.Width - Padding * 2 - 8);
+        var textWidth = lines.Max(line => font.MeasureText(line));
+        var top = panelBounds.Top + Padding;
+        var centreX = panelBounds.MidX;
 
-        var textOptions = new RichTextOptions(font)
-        {
-            Origin = origin,
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Top,
-            WrappingLength = maxWrappingWidth
-        };
+        var box = new SKRect(
+            centreX - textWidth / 2 - Padding,
+            top - Padding,
+            centreX + textWidth / 2 + Padding,
+            top + font.Spacing * lines.Count + Padding);
 
-        var textBounds = TextMeasurer.MeasureBounds(text, textOptions);
-        var bgRect = new RectangleF(
-            textBounds.X - Padding,
-            textBounds.Y - Padding,
-            textBounds.Width + Padding * 2,
-            textBounds.Height + Padding * 2);
+        using var paint = SkiaText.Paint(CaptionFill);
+        canvas.DrawRect(box, paint);
+        paint.Color = SKColors.Black;
+        paint.Style = SKPaintStyle.Stroke;
+        paint.StrokeWidth = 1.5f;
+        canvas.DrawRect(box, paint);
 
-        image.Mutate(ctx =>
-        {
-            // Classic comic yellow caption box
-            ctx.Fill(new Color(new Rgba32(255, 255, 180, 245)), bgRect);
-            ctx.Draw(Color.Black, 1.5f, bgRect);
-            ctx.DrawText(textOptions, text, Color.Black);
-        });
+        SkiaText.DrawLines(canvas, lines, centreX, top - font.Metrics.Ascent, SKTextAlign.Center, font, SKColors.Black);
 
-        _logger.LogDebug("Drew panel caption at ({X},{Y}): {Text}", panelBounds.X, panelBounds.Y, text);
-    }
-
-    /// <summary>
-    /// The caption font family, resolved once for the process. Only the size varies per panel,
-    /// and <see cref="SystemFonts.Families"/> materialises every installed family on each access —
-    /// that whole scan used to run once per panel, up to four times per comic.
-    /// </summary>
-    private static readonly Lazy<FontFamily> ComicFontFamily = new(() =>
-    {
-        var families = SystemFonts.Families.ToList();
-        if (families.Count == 0)
-            throw new InvalidOperationException("No system fonts available, text overlay will be skipped");
-
-        // Prefer Comic Sans MS, Arial, DejaVu or Liberation; otherwise take whatever is installed.
-        var fontFamily = families.FirstOrDefault(f =>
-            f.Name.Contains("Comic", StringComparison.OrdinalIgnoreCase) ||
-            f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase) ||
-            f.Name.Contains("DejaVu", StringComparison.OrdinalIgnoreCase) ||
-            f.Name.Contains("Liberation", StringComparison.OrdinalIgnoreCase));
-
-        return fontFamily.Name != null ? fontFamily : families[0];
-    });
-
-    /// <summary>
-    /// Gets a comic-style font for text rendering
-    /// </summary>
-    private Font GetComicFont(int size)
-    {
-        try
-        {
-            return ComicFontFamily.Value.CreateFont(size, FontStyle.Bold);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to get font, will skip text overlay");
-            throw;
-        }
+        _logger.LogDebug("Drew panel caption at ({X},{Y}): {Text}", panelBounds.Left, panelBounds.Top, text);
     }
 }

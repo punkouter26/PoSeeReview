@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -14,6 +15,11 @@ public class DiagnosticsSnapshotQueryHandler(
     IHostEnvironment environment,
     ILogger<DiagnosticsSnapshotQueryHandler> logger)
 {
+    /// <summary>The <c>YYMMDD</c> stamp Directory.Build.targets puts on every assembly.</summary>
+    private static readonly string BuildStamp =
+        typeof(DiagnosticsSnapshotQueryHandler).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == "BuildStamp")?.Value ?? "unknown";
+
     private static readonly string[] SensitivePatterns =
     [
         "key", "secret", "password", "connectionstring", "token", "apikey", "credential", "clientsecret", "private"
@@ -114,6 +120,7 @@ public class DiagnosticsSnapshotQueryHandler(
             MachineName = Environment.MachineName,
             OsVersion = Environment.OSVersion.ToString(),
             DotNetVersion = Environment.Version.ToString(),
+            BuildStamp = BuildStamp,
             ProcessId = Environment.ProcessId,
             CurrentUserId = currentRequestIdentityAccessor.GetCurrentUserId().Value,
             DependencyStatus = dependencyReport == null

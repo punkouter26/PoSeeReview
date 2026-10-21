@@ -78,6 +78,8 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 | Data | Azure Table Storage, Azure Blob Storage, Azure Key Vault |
 | External AI | Azure OpenAI GPT-4o-mini, Google Gemini Imagen 4, Google Maps Places |
 | Observability | Application Insights, OpenTelemetry, Serilog |
+| Imaging | SkiaSharp (caption overlay, lossy WebP, share and duel cards); Bangers and DM Sans embedded |
+| Build stamp | `YYMMDD` from the HEAD commit date (`Directory.Build.targets`), shown bottom-right on every page and as `buildStamp` on `/diag` |
 
 ## Documentation Suite
 

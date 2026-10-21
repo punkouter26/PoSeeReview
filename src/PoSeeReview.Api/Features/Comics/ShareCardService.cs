@@ -1,9 +1,5 @@
 using PoSeeReview.Api.Storage;
-using SixLabors.Fonts;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 using PoSeeReview.Shared.Contracts;
 
 namespace PoSeeReview.Api.Features.Comics;
@@ -35,13 +31,16 @@ public sealed class ShareCardService(
     // stylesheet to read, no viewer theme to respect, and a card that changed appearance
     // between renders would be a worse artifact, not a more correct one. They mirror
     // --color-brand / --color-brand-dark / --color-accent in app.css.
-    private static readonly Color BrandDark = Color.ParseHex("#2E1065");
-    private static readonly Color Accent = Color.ParseHex("#F59E0B");
-    private static readonly Color OnDark = Color.ParseHex("#F8FAFC");
-    private static readonly Color OnDarkMuted = Color.ParseHex("#CBD5E1");
+    private static readonly SKColor BrandDark = SKColor.Parse("#2E1065");
+    private static readonly SKColor Accent = SKColor.Parse("#F59E0B");
+    private static readonly SKColor OnDark = SKColor.Parse("#F8FAFC");
+    private static readonly SKColor OnDarkMuted = SKColor.Parse("#CBD5E1");
+    private static readonly SKColor Shade = new(15, 6, 35);
 
     /// <summary>Height of the bottom band that carries the name and wordmark.</summary>
     private const int ScrimHeight = 190;
+
+    private const int TextMargin = 48;
 
     public Task<byte[]?> RenderAsync(Comic comic, CancellationToken cancellationToken = default) =>
         ComposeAsync([comic], "POSEEREVIEW  ·  STRANGENESS SCORE", cancellationToken);
@@ -58,38 +57,39 @@ public sealed class ShareCardService(
     {
         try
         {
-            using var card = new Image<Rgba32>(CardWidth, CardHeight);
-            card.Mutate(ctx => ctx.Fill(BrandDark));
+            using var card = new SKBitmap(CardWidth, CardHeight);
+            using var canvas = new SKCanvas(card);
+            canvas.Clear(BrandDark);
 
             var isDuel = comics.Length > 1;
             var scale = isDuel ? 0.75f : 1f;
             var columns = comics
-                .Select((comic, i) => (Comic: comic, Area: new Rectangle(i * CardWidth / comics.Length, 0, CardWidth / comics.Length, CardHeight)))
+                .Select((comic, i) => (Comic: comic, Area: SKRectI.Create(i * CardWidth / comics.Length, 0, CardWidth / comics.Length, CardHeight)))
                 .ToList();
 
             foreach (var (comic, area) in columns)
             {
-                await DrawArtworkAsync(card, comic, area, cancellationToken);
+                await DrawArtworkAsync(canvas, comic, area, cancellationToken);
             }
 
-            DrawScrim(card);
+            DrawScrim(canvas);
 
             foreach (var (comic, area) in columns)
             {
-                DrawScoreBadge(card, comic.StrangenessScore, area, scale);
-                DrawName(card, comic.RestaurantName, area, scale, isDuel);
+                DrawScoreBadge(canvas, comic.StrangenessScore, area, scale);
+                DrawName(canvas, comic.RestaurantName, area, scale, isDuel);
             }
 
             if (isDuel)
             {
-                DrawVersus(card);
+                DrawVersus(canvas);
             }
 
-            DrawWordmark(card, wordmark);
+            DrawWordmark(canvas, wordmark);
 
-            using var output = new MemoryStream();
-            await card.SaveAsPngAsync(output, cancellationToken);
-            return output.ToArray();
+            using var png = card.Encode(SKEncodedImageFormat.Png, 100)
+                ?? throw new InvalidOperationException("The share card could not be encoded.");
+            return png.ToArray();
         }
         catch (Exception ex)
         {
@@ -109,7 +109,7 @@ public sealed class ShareCardService(
     /// the case the old blob-URL <c>og:image</c> could not survive.
     /// </para>
     /// </summary>
-    private async Task DrawArtworkAsync(Image<Rgba32> card, Comic comic, Rectangle area, CancellationToken cancellationToken)
+    private async Task DrawArtworkAsync(SKCanvas canvas, Comic comic, SKRectI area, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(comic.ImageUrl))
         {
@@ -123,64 +123,68 @@ public sealed class ShareCardService(
             return;
         }
 
-        using var artwork = await Image.LoadAsync<Rgba32>(stream, cancellationToken);
-
-        artwork.Mutate(ctx => ctx.Resize(new ResizeOptions
+        // Skia's decoder wants to seek; a blob download stream cannot.
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, cancellationToken);
+        buffer.Position = 0;
+        using var artwork = SKImage.FromEncodedData(buffer);
+        if (artwork is null)
         {
-            Size = area.Size,
-            // Crop rather than pad: a comic letterboxed onto brand purple reads as a mistake,
-            // and the panels nearest the centre are the ones worth showing in a thumbnail.
-            Mode = ResizeMode.Crop,
-            Position = AnchorPositionMode.Center
-        }));
+            // Same outcome as a missing blob: the text-only card beats a 404.
+            logger.LogWarning("Share card artwork for {PlaceId} could not be decoded; rendering the text-only card", comic.PlaceId);
+            return;
+        }
 
-        card.Mutate(ctx => ctx.DrawImage(artwork, area.Location, 1f));
+        // Crop rather than pad: a comic letterboxed onto brand purple reads as a mistake, and the
+        // panels nearest the centre are the ones worth showing in a thumbnail.
+        var cover = Math.Max(area.Width / (float)artwork.Width, area.Height / (float)artwork.Height);
+        var source = SKRect.Create(area.Width / cover, area.Height / cover);
+        source.Offset((artwork.Width - source.Width) / 2f, (artwork.Height - source.Height) / 2f);
+
+        canvas.DrawImage(artwork, source, area, new SKSamplingOptions(SKCubicResampler.Mitchell));
     }
 
     /// <summary>
     /// A darkening band across the bottom third so the caption is readable over any artwork.
     /// <para>
-    /// Drawn as stacked one-pixel rows rather than a single translucent rectangle: a flat
-    /// overlay has a hard top edge that reads as a bug on a light comic panel.
+    /// A quadratic ramp rather than a flat translucent rectangle: a flat overlay has a hard top
+    /// edge that reads as a bug on a light comic panel.
     /// </para>
     /// </summary>
-    private static void DrawScrim(Image<Rgba32> card)
+    private static void DrawScrim(SKCanvas canvas)
     {
-        card.Mutate(ctx =>
+        float[] stops = [0f, 0.25f, 0.5f, 0.75f, 1f];
+        using var paint = new SKPaint
         {
-            for (var y = 0; y < ScrimHeight; y++)
-            {
-                var progress = y / (float)ScrimHeight;
-                var alpha = (byte)(235 * progress * progress);
-                var row = new RectangleF(0, CardHeight - ScrimHeight + y, CardWidth, 1);
-                ctx.Fill(Color.FromRgba(15, 6, 35, alpha), row);
-            }
+            Shader = SKShader.CreateLinearGradient(
+                new SKPoint(0, CardHeight - ScrimHeight),
+                new SKPoint(0, CardHeight),
+                [.. stops.Select(t => Shade.WithAlpha((byte)(235 * t * t)))],
+                stops,
+                SKShaderTileMode.Clamp)
+        };
+        canvas.DrawRect(SKRect.Create(0, CardHeight - ScrimHeight, CardWidth, ScrimHeight), paint);
+        paint.Shader = null;
 
-            // A brand rule along the very bottom, so the card is recognisable at thumbnail size
-            // even when the artwork is missing.
-            ctx.Fill(Accent, new RectangleF(0, CardHeight - 8, CardWidth, 8));
-        });
+        // A brand rule along the very bottom, so the card is recognisable at thumbnail size
+        // even when the artwork is missing.
+        paint.Color = Accent;
+        canvas.DrawRect(SKRect.Create(0, CardHeight - 8, CardWidth, 8), paint);
     }
 
-    private static void DrawScoreBadge(Image<Rgba32> card, int score, Rectangle area, float scale)
+    private static void DrawScoreBadge(SKCanvas canvas, int score, SKRectI area, float scale)
     {
         const int Margin = 40;
         var radius = 84 * scale;
+        var centre = new SKPoint(area.Right - Margin - radius, Margin + radius);
 
-        var centre = new PointF(area.Right - Margin - radius, Margin + radius);
-        var circle = new SixLabors.ImageSharp.Drawing.EllipsePolygon(centre, radius);
+        DrawDisc(canvas, centre, radius, Shade.WithAlpha(200), 6f * scale);
 
-        card.Mutate(ctx =>
-        {
-            ctx.Fill(Color.FromRgba(15, 6, 35, 200), circle);
-            ctx.Draw(Accent, 6f * scale, circle);
-
-            ctx.DrawText(Centred(ResolveFont(74 * scale), centre.X, centre.Y - (12 * scale)), score.ToString(), Accent);
-            ctx.DrawText(Centred(ResolveFont(20 * scale), centre.X, centre.Y + (44 * scale)), "/ 100", OnDarkMuted);
-        });
+        SkiaText.DrawCentred(canvas, score.ToString(), centre.X, centre.Y - (12 * scale), SkiaText.Card, 74 * scale, Accent);
+        SkiaText.DrawCentred(canvas, "/ 100", centre.X, centre.Y + (44 * scale), SkiaText.Card, 20 * scale, OnDarkMuted);
     }
 
-    private static void DrawName(Image<Rgba32> card, string restaurantName, Rectangle area, float scale, bool isDuel)
+    private static void DrawName(SKCanvas canvas, string restaurantName, SKRectI area, float scale, bool isDuel)
     {
         // Third-party text of unbounded length. Wrapped to its column, then hard-capped so a
         // pathological name cannot push the wordmark off the bottom edge.
@@ -191,73 +195,41 @@ public sealed class ShareCardService(
             name = name[..(maxChars - 1)].TrimEnd() + "…";
         }
 
-        card.Mutate(ctx => ctx.DrawText(new RichTextOptions(ResolveFont(52 * scale))
-        {
-            Origin = new PointF(area.Left + TextMargin, CardHeight - TextMargin - 44),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Bottom,
-            WrappingLength = area.Width - (TextMargin * 2) - (isDuel ? 0 : 200)
-        }, name, OnDark));
+        using var font = SkiaText.Font(SkiaText.Card, 52 * scale);
+        var lines = SkiaText.Wrap(name, font, area.Width - (TextMargin * 2) - (isDuel ? 0 : 200));
+        DrawBottomAligned(canvas, lines, area.Left + TextMargin, CardHeight - TextMargin - 44, font, OnDark);
     }
 
-    private static void DrawWordmark(Image<Rgba32> card, string wordmark) =>
-        card.Mutate(ctx => ctx.DrawText(new RichTextOptions(ResolveFont(24))
-        {
-            Origin = new PointF(TextMargin, CardHeight - TextMargin - 8),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Bottom
-        }, wordmark, Accent));
+    private static void DrawWordmark(SKCanvas canvas, string wordmark)
+    {
+        using var font = SkiaText.Font(SkiaText.Card, 24);
+        DrawBottomAligned(canvas, [wordmark], TextMargin, CardHeight - TextMargin - 8, font, Accent);
+    }
 
     /// <summary>The seam between the two columns of a duel card, and the "VS" that names it.</summary>
-    private static void DrawVersus(Image<Rgba32> card)
+    private static void DrawVersus(SKCanvas canvas)
     {
-        var centre = new PointF(CardWidth / 2f, (CardHeight - ScrimHeight) / 2f);
-        var disc = new SixLabors.ImageSharp.Drawing.EllipsePolygon(centre, 52);
+        var centre = new SKPoint(CardWidth / 2f, (CardHeight - ScrimHeight) / 2f);
 
-        card.Mutate(ctx =>
-        {
-            ctx.Fill(Accent, new RectangleF(centre.X - 3, 0, 6, CardHeight));
-            ctx.Fill(BrandDark, disc);
-            ctx.Draw(Accent, 6f, disc);
-            ctx.DrawText(Centred(ResolveFont(44), centre.X, centre.Y), "VS", OnDark);
-        });
+        using var seam = SkiaText.Paint(Accent);
+        canvas.DrawRect(SKRect.Create(centre.X - 3, 0, 6, CardHeight), seam);
+
+        DrawDisc(canvas, centre, 52, BrandDark, 6f);
+        SkiaText.DrawCentred(canvas, "VS", centre.X, centre.Y, SkiaText.Card, 44, OnDark);
     }
 
-    private static RichTextOptions Centred(Font font, float x, float y) => new(font)
+    private static void DrawDisc(SKCanvas canvas, SKPoint centre, float radius, SKColor fill, float ringWidth)
     {
-        Origin = new PointF(x, y),
-        HorizontalAlignment = HorizontalAlignment.Center,
-        VerticalAlignment = VerticalAlignment.Center
-    };
+        using var paint = SkiaText.Paint(fill);
+        canvas.DrawCircle(centre, radius, paint);
 
-    private const int TextMargin = 48;
+        paint.Color = Accent;
+        paint.Style = SKPaintStyle.Stroke;
+        paint.StrokeWidth = ringWidth;
+        canvas.DrawCircle(centre, radius, paint);
+    }
 
-    /// <summary>
-    /// The card's font family, resolved once per process.
-    /// <para>
-    /// <see cref="SystemFonts.Families"/> materialises every installed family on each access, so
-    /// this must not run per render. The Comics slice already learned that the hard way with the
-    /// per-panel caption font.
-    /// </para>
-    /// </summary>
-    private static readonly Lazy<FontFamily> CardFontFamily = new(() =>
-    {
-        var families = SystemFonts.Families.ToList();
-        if (families.Count == 0)
-        {
-            throw new InvalidOperationException("No system fonts are available to render a share card.");
-        }
-
-        // A neutral sans first — this is a wordmark and a headline, not a comic caption, so the
-        // overlay service's preference for Comic Sans is the wrong one here.
-        var preferred = families.FirstOrDefault(f =>
-            f.Name.Contains("Segoe UI", StringComparison.OrdinalIgnoreCase)
-            || f.Name.Contains("Arial", StringComparison.OrdinalIgnoreCase)
-            || f.Name.Contains("DejaVu Sans", StringComparison.OrdinalIgnoreCase)
-            || f.Name.Contains("Liberation Sans", StringComparison.OrdinalIgnoreCase));
-
-        return preferred.Name is not null ? preferred : families[0];
-    });
-
-    private static Font ResolveFont(float size) => CardFontFamily.Value.CreateFont(size, FontStyle.Bold);
+    /// <summary>Left-aligned lines whose last descender sits on <paramref name="bottom"/>.</summary>
+    private static void DrawBottomAligned(SKCanvas canvas, IReadOnlyList<string> lines, float left, float bottom, SKFont font, SKColor colour) =>
+        SkiaText.DrawLines(canvas, lines, left, bottom - font.Metrics.Descent - font.Spacing * (lines.Count - 1), SKTextAlign.Left, font, colour);
 }

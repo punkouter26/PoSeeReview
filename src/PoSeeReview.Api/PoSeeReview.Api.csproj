@@ -32,9 +32,15 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Serilog.Sinks.ApplicationInsights" />
     <PackageReference Include="Scalar.AspNetCore" />
-    <PackageReference Include="SixLabors.Fonts" />
-    <PackageReference Include="SixLabors.ImageSharp" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Caption and share-card faces (OFL); loaded by SkiaText. Named, not globbed, so a missing
+         font fails the compile instead of every caption at runtime. -->
+    <EmbeddedResource Include="Features\Comics\Fonts\Bangers-Regular.ttf" LogicalName="Fonts.Bangers-Regular.ttf" />
+    <EmbeddedResource Include="Features\Comics\Fonts\DMSans-Bold.ttf" LogicalName="Fonts.DMSans-Bold.ttf" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,13 +4,13 @@ using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
-using SixLabors.ImageSharp;
+using SkiaSharp;
 
 namespace PoSeeReview.Integration.Services;
 
 /// <summary>
-/// The duel card is a real ImageSharp render with system fonts, so it lives here rather than in
-/// the Unit tier, which also runs on a CI image whose fonts nobody has pinned.
+/// The duel card is a real Skia render through a native library, so it lives here rather than in
+/// the Unit tier, which runs on a CI image nobody has pinned.
 /// </summary>
 [Trait("Tier", "Integration")]
 public sealed class DuelCardTests
@@ -27,7 +27,7 @@ public sealed class DuelCardTests
             Comic("right", "A Restaurant With A Name Far Too Long To Fit On One Line Of A Card", 12));
 
         Assert.NotNull(png);
-        var info = Image.Identify(png);
+        var info = SKBitmap.DecodeBounds(png);
         Assert.Equal((ShareCardService.CardWidth, ShareCardService.CardHeight), (info.Width, info.Height));
     }
 

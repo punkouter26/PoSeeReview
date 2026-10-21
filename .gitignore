@@ -187,3 +187,7 @@ tests/e2e/playwright-last.json
 # Personal Claude Code permission overrides
 .claude/settings.local.json
 .claude/worktrees/
+
+# Local tool state (Aura visualizer graph + its MCP wiring) — machine-specific paths
+.aura/
+.vscode/mcp.json
