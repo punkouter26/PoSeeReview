@@ -64,8 +64,10 @@ async function checkBlazorRenderTree() {
     );
     record('Blazor render tree initialised', true);
 
-    // A booted app renders the branded header regardless of auth state.
-    const brand = await page.locator('.brand-name').first().textContent({ timeout: TIMEOUT_MS });
+    // A booted app renders the brand whatever the auth state: the nav's .brand-name when signed
+    // in, or the login page's own (BareLayout has no nav) — which is where an anonymous smoke
+    // run always lands, and why checking only .brand-name failed every deploy after a8f8f00.
+    const brand = await page.locator('.brand-name, .login-brand-name').first().textContent({ timeout: TIMEOUT_MS });
     record('header branding rendered', brand?.trim() === 'PoSeeReview', brand?.trim());
 
     record(
