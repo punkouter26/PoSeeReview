@@ -21,38 +21,30 @@
            Class="leaderboard-container">
 
     <Header>
-        <div class="board-scope" role="group" aria-label="Leaderboard scope">
-            <button type="button" class="chip-toggle @(_scope == BoardScope.Live ? "chip-toggle--active" : "")"
-                    aria-pressed="@(_scope == BoardScope.Live ? "true" : "false")"
-                    @onclick="() => SwitchScopeAsync(BoardScope.Live)">
+        @* One switch for what the board shows. The map only ever applied to the live board, and the
+           refresh button went: the board already re-reads itself every 60 seconds. *@
+        <div class="board-scope" role="group" aria-label="Board view">
+            <button type="button" class="chip-toggle @(IsView(BoardScope.Live, BoardLayout.List) ? "chip-toggle--active" : "")"
+                    aria-pressed="@(IsView(BoardScope.Live, BoardLayout.List) ? "true" : "false")"
+                    @onclick="() => ShowAsync(BoardScope.Live, BoardLayout.List)">
                 Right now
             </button>
             <button type="button" class="chip-toggle @(_scope == BoardScope.Weekly ? "chip-toggle--active" : "")"
                     aria-pressed="@(_scope == BoardScope.Weekly ? "true" : "false")"
-                    @onclick="() => SwitchScopeAsync(BoardScope.Weekly)">
+                    @onclick="() => ShowAsync(BoardScope.Weekly, _layout)">
                 By week
             </button>
-            @if (_scope == BoardScope.Live)
+            @* Only once some entry carries coordinates: rows written before they were stored have
+               none, and a map of nothing is a broken-looking page. *@
+            @if (BoardPins.Count > 0 && !_mapUnavailable)
             {
-                <button type="button" class="btn btn-icon" @onclick="() => LoadLeaderboardAsync()" disabled="@isLoading"
-                        title="Refresh" aria-label="Refresh the board">
-                    <span aria-hidden="true">&#8635;</span>
+                <button type="button" class="chip-toggle @(IsView(BoardScope.Live, BoardLayout.Map) ? "chip-toggle--active" : "")"
+                        aria-pressed="@(IsView(BoardScope.Live, BoardLayout.Map) ? "true" : "false")"
+                        @onclick="() => ShowAsync(BoardScope.Live, BoardLayout.Map)">
+                    Map
                 </button>
             }
         </div>
-        @* Only once some entry carries coordinates: rows written before they were stored have
-           none, and a map of nothing is a broken-looking page. *@
-        @if (_scope == BoardScope.Live && BoardPins.Count > 0 && !_mapUnavailable)
-        {
-            <div class="board-scope" role="group" aria-label="Show the board as">
-                <button type="button" class="chip-toggle @(_layout == BoardLayout.List ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_layout == BoardLayout.List ? "true" : "false")"
-                        @onclick="() => _layout = BoardLayout.List">List</button>
-                <button type="button" class="chip-toggle @(_layout == BoardLayout.Map ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_layout == BoardLayout.Map ? "true" : "false")"
-                        @onclick="() => _layout = BoardLayout.Map">Map</button>
-            </div>
-        }
     </Header>
 
     <ChildContent>
@@ -283,6 +275,19 @@
             _movesPending = false;
             await Fx.AnimateBoardMovesAsync(_stage);
         }
+    }
+
+    private bool IsView(BoardScope scope, BoardLayout layout) => _scope == scope && _layout == layout;
+
+    /// <summary>The header's one switch: the live list, the archive, or the live board on a map.</summary>
+    private async Task ShowAsync(BoardScope scope, BoardLayout layout)
+    {
+        if (scope == BoardScope.Live)
+        {
+            _layout = layout;
+        }
+
+        await SwitchScopeAsync(scope);
     }
 
     /// <summary>Switches between the live board and the archive, loading the archive once.</summary>

@@ -292,7 +292,7 @@ void main() {
         // The impression line: a roller shadow just ahead of the key plate, a bright rim behind.
         float ahead = exp(-pow((lt - OFF_K + 12.0) / 16.0, 2.0));
         float behind = exp(-pow((lt - OFF_K - 30.0) / 24.0, 2.0));
-        col *= 1.0 - (0.16 - 0.06 * uDark) * ahead;
+        col *= 1.0 - (0.12 - 0.05 * uDark) * ahead;
         col += (1.0 - uDark) * 0.08 * behind;
         col += uDark * uGlow * (0.42 * behind + 0.18 * ahead);
 
@@ -381,7 +381,7 @@ export async function start(container, options = {}) {
             container,
             parent: container.parentElement,
             image: container.querySelector('img'),
-            bands: Math.max(1, Math.min(4, Math.round(options.bands ?? 2))),
+            bands: Number.isFinite(options.bands) ? Math.max(1, Math.min(4, Math.round(options.bands))) : 2,
             onBand: typeof options.onBand === 'function' ? options.onBand : null,
             onDone: typeof options.onDone === 'function' ? options.onDone : null,
             palette: readPalette(),
@@ -466,6 +466,7 @@ function buildPress(instance) {
     parent.insertBefore(canvas, container.nextSibling);
     instance.canvas = canvas;
     syncBox(instance);
+    canvas.style.opacity = String(instance.opacity);
 
     const surface = createSurface(canvas, { maxDpr: MAX_DPR });
     if (!surface) return false;
@@ -506,7 +507,8 @@ function syncBox(instance) {
     for (const [key, value] of [
         ['transform', cs.transform],
         ['borderRadius', cs.borderRadius],
-        ['boxShadow', cs.boxShadow]
+        // After the handover the container paints its own frame; two copies would double the shadow.
+        ['boxShadow', instance.handedOver ? 'none' : cs.boxShadow]
     ]) {
         if (instance.mirrored[key] !== value) {
             instance.mirrored[key] = value;
@@ -553,6 +555,7 @@ function tick(instance, now) {
             if (!instance.handedOver) {
                 instance.handedOver = true;
                 unhide(container);
+                canvas.style.boxShadow = instance.mirrored.boxShadow = 'none';
             }
             const fade = Math.min(1, (t - T.settleEnd) / T.fade);
             canvas.style.opacity = String(instance.opacity * (1 - fade));

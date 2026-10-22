@@ -21,6 +21,7 @@ public class LeaderboardService : ILeaderboardService
     private readonly TimeProvider _timeProvider;
     private readonly HallOfFameRepository? _hallOfFame;
     private readonly IContentModerationGate? _moderationGate;
+    private readonly ILiveComicLookup? _liveComics;
 
     /// <summary>Widest page the repository will return; used so filtering empty comics can still fill <c>limit</c>.</summary>
     private const int MaxProbeCount = 50;
@@ -32,9 +33,11 @@ public class LeaderboardService : ILeaderboardService
         IOptions<LeaderboardOptions> options,
         TimeProvider? timeProvider = null,
         HallOfFameRepository? hallOfFame = null,
-        IContentModerationGate? moderationGate = null)
+        IContentModerationGate? moderationGate = null,
+        ILiveComicLookup? liveComics = null)
     {
         _moderationGate = moderationGate;
+        _liveComics = liveComics;
         _repository = repository;
         _blobStorageService = blobStorageService;
         _logger = logger;
@@ -78,6 +81,14 @@ public class LeaderboardService : ILeaderboardService
             {
                 var verdicts = await Task.WhenAll(entries.Select(e => _moderationGate.EvaluateAsync(e.PlaceId)));
                 entries = [.. entries.Where((_, i) => verdicts[i].IsServable)];
+            }
+
+            // A row whose comic expired or predates the current prompt opens on the paid
+            // "Generate" prompt, not a comic. Filtered, not deleted: a prompt rollback revives them.
+            if (_liveComics is not null)
+            {
+                var live = await Task.WhenAll(entries.Select(e => _liveComics.IsLiveAsync(e.PlaceId)));
+                entries = [.. entries.Where((_, i) => live[i])];
             }
 
             // Refresh any SAS tokens that are expired or within 2 hours of expiry — run in parallel

@@ -79,9 +79,7 @@ public partial class ComicGenerationService : IComicGenerationService
     /// </para>
     /// </summary>
     private bool IsCacheUsable(Comic? comic) =>
-        comic is not null
-        && comic.ExpiresAt > _timeProvider.GetUtcNow()
-        && comic.PromptVersion == _options.PromptVersion;
+        LiveComicLookup.IsLive(comic, _timeProvider.GetUtcNow(), _options.PromptVersion);
 
     /// <summary>
     /// Generates or retrieves cached comic for a restaurant.

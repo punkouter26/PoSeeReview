@@ -12,174 +12,230 @@
 @inject AnalyticsService Analytics
 @inject DiscoveryState Discovery
 @inject ToastService Toast
+@inject ComicHistoryService History
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
 <div class="index-container">
-    @* One line of hero, and it says what the app does — the nav already carries the wordmark.
-       Hidden once results are showing; the page keeps its h1 either way. *@
-    @if (_restaurants.Count == 0)
-    {
-        <header class="app-header">
-            <h1>Turn a restaurant's wildest reviews into a comic</h1>
-        </header>
-    }
-    else
-    {
-        <h1 class="visually-hidden">PoSeeReview</h1>
-    }
-
-    @* The error sits ABOVE the search bar, and the bar stays mounted in the Error state — a failed
-       text search must leave the user their search box, not a lone "Try again" link. *@
-    @if (_flowState == LocationFlowState.Error)
-    {
-        <div class="alert alert-danger error-message" role="alert">
-            <span>@_errorMessage</span>
-            <button type="button" class="btn btn-secondary retry-link" @onclick="RetryLastAttemptAsync">@RetryLabel</button>
-        </div>
-    }
-
-    @* One search bar: location, text field, submit. It replaces a card with an eyebrow, a heading,
-       a paragraph, an "or" divider and a hint line — five lines of instructions for two controls.
-       Rendered while the location request is in flight too: the escape hatch ("or type a city")
-       must not vanish while a browser permission prompt sits unanswered. *@
-    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied
-                         or LocationFlowState.Error or LocationFlowState.Loading)
-    {
-        <div class="location-prompt glass">
-            <div class="search-row">
-                @if (_flowState != LocationFlowState.Denied)
-                {
-                    <button type="button" class="btn btn-primary location-btn"
-                            disabled="@(_flowState == LocationFlowState.Loading)"
-                            @onclick="RequestLocationAsync"
-                            title="Use my location" aria-label="Use my location">
-                        <span aria-hidden="true">📍</span>
-                        <span class="location-btn-label">@(_flowState == LocationFlowState.Loading ? "Finding you..." : "Near me")</span>
-                    </button>
-                }
-                <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
-                <input id="city-search-input" class="search-field" type="search" autocomplete="off" enterkeyhint="search"
-                       @bind="_searchQuery" @bind:event="oninput" placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
-                <button type="button" class="btn btn-secondary"
-                        @onclick="SearchByLocationAsync"
-                        disabled="@string.IsNullOrWhiteSpace(_searchQuery)"
-                        title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
-                    Search
-                </button>
-            </div>
-            @if (_flowState == LocationFlowState.Denied)
+    @* The landing is two columns on a desktop: the search on the left, what the app has already
+       drawn on the right. A single centred search bar used to leave half of a 768px fold empty. *@
+    <div class="discovery-head @(ShowLanding && HasLandingSide ? "discovery-head--split" : "")">
+        <div class="discovery-search">
+            @* One line of hero, and it says what the app does — the nav already carries the
+               wordmark. Hidden once results are showing; the page keeps its h1 either way. *@
+            @if (_restaurants.Count == 0)
             {
-                <p class="denied-alert" role="alert">
-                    📍 Location access was denied — search above, or
-                    <button type="button" class="link-button" @onclick="RequestLocationAsync">try location again</button>.
-                </p>
+                <header class="app-header">
+                    <h1>Turn a restaurant's wildest reviews into a comic</h1>
+                </header>
             }
-        </div>
-    }
+            else
+            {
+                <h1 class="visually-hidden">PoSeeReview</h1>
+            }
 
-    @if (_flowState == LocationFlowState.Loading)
+            @* The error sits ABOVE the search bar, and the bar stays mounted in the Error state — a
+               failed text search must leave the user their search box, not a lone "Try again" link. *@
+            @if (_flowState == LocationFlowState.Error)
+            {
+                <div class="alert alert-danger error-message" role="alert">
+                    <span>@_errorMessage</span>
+                    <button type="button" class="btn btn-secondary retry-link" @onclick="RetryLastAttemptAsync">@RetryLabel</button>
+                </div>
+            }
+
+            @* One bar in every state. With results it turns compact and carries what used to be a
+               separate row — the query (edit it and search again), a clear button that replaced
+               "New search", the count and the List/Map switch. Its "Near me" is the map's too:
+               with the map showing it searches quietly and keeps the pins on screen. *@
+            <div class="location-prompt glass @(HasResults ? "location-prompt--compact" : "")">
+                <div class="search-row">
+                    @if (_flowState != LocationFlowState.Denied)
+                    {
+                        <button type="button" class="btn btn-primary location-btn"
+                                disabled="@IsBusy"
+                                @onclick="NearMeAsync"
+                                title="Use my location" aria-label="Use my location">
+                            <span aria-hidden="true">📍</span>
+                            <span class="location-btn-label">@(IsLocating ? "Finding you..." : "Near me")</span>
+                        </button>
+                    }
+                    <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
+                    <input id="city-search-input" class="search-field" type="search" autocomplete="off" enterkeyhint="search"
+                           @bind="_searchQuery" @bind:event="oninput" placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
+                    <button type="button" class="btn btn-secondary"
+                            @onclick="SearchByLocationAsync"
+                            disabled="@(IsBusy || string.IsNullOrWhiteSpace(_searchQuery))"
+                            title="@(string.IsNullOrWhiteSpace(_searchQuery) ? "Type a city, address, or ZIP code first" : "Search this location")">
+                        @(IsTextSearching ? "Searching..." : "Search")
+                    </button>
+                    @if (HasResults)
+                    {
+                        <button type="button" class="btn btn-secondary btn-icon clear-search-btn" @onclick="ClearSearch"
+                                title="Clear the results" aria-label="Clear the results">
+                            <span aria-hidden="true">&#215;</span>
+                        </button>
+                    }
+                </div>
+                @if (HasResults)
+                {
+                    <div class="results-meta">
+                        <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
+                        @if (!_mapUnavailable)
+                        {
+                            <div class="layout-toggle" role="group" aria-label="Show results as">
+                                <button type="button" class="chip-toggle @(_layout == ResultsLayout.List ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_layout == ResultsLayout.List ? "true" : "false")"
+                                        @onclick="() => SetLayoutAsync(ResultsLayout.List)">List</button>
+                                <button type="button" class="chip-toggle @(_layout == ResultsLayout.Map ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_layout == ResultsLayout.Map ? "true" : "false")"
+                                        @onclick="() => SetLayoutAsync(ResultsLayout.Map)">Map</button>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (_flowState == LocationFlowState.Denied)
+                {
+                    <p class="denied-alert" role="alert">
+                        📍 Location access was denied — search above, or
+                        <button type="button" class="link-button" @onclick="RequestLocationAsync">try location again</button>.
+                    </p>
+                }
+            </div>
+        </div>
+
+        @* The fold used to be blank below the search bar. The live board shows a first-time visitor
+           what the app makes before they have to share a location, and a returning one gets their
+           own recent comics back without opening the account menu. *@
+        @if (ShowLanding && HasLandingSide)
+        {
+            <aside class="landing-side" aria-label="Already drawn">
+                @if (_topComics is { Count: > 0 })
+                {
+                    <section class="landing-board" aria-labelledby="landing-board-title">
+                        <div class="landing-board-head">
+                            <h2 id="landing-board-title" class="comic-rows-heading">Strangest right now</h2>
+                            <a href="/leaderboard">Hall of Fame →</a>
+                        </div>
+                        <ol class="comic-rows comic-rows--stack">
+                            @foreach (var entry in _topComics)
+                            {
+                                <ComicRow Href="@($"/comic/{entry.PlaceId}")"
+                                          Name="@entry.RestaurantName"
+                                          Score="@((int)Math.Round(entry.StrangenessScore))"
+                                          ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
+                                          Meta="@entry.Address" />
+                            }
+                        </ol>
+                    </section>
+                }
+                @if (_recent is { Count: > 0 })
+                {
+                    <section class="landing-board" aria-labelledby="landing-recent-title">
+                        <div class="landing-board-head">
+                            <h2 id="landing-recent-title" class="comic-rows-heading">Your recent comics</h2>
+                            <a href="/my-comics">My comics →</a>
+                        </div>
+                        <ul class="comic-rows comic-rows--stack">
+                            @foreach (var entry in _recent)
+                            {
+                                <ComicRow Href="@($"/comic/{entry.PlaceId}")"
+                                          Name="@entry.RestaurantName"
+                                          Score="@entry.StrangenessScore"
+                                          ImageUrl="@ComicImageUrl.SameOrigin(entry.PlaceId)"
+                                          Meta="@RelativeTime.Format(entry.ViewedAt)" />
+                            }
+                        </ul>
+                    </section>
+                }
+            </aside>
+        }
+    </div>
+
+    @if (_flowState == LocationFlowState.Loading && !HasResults)
     {
         <p class="results-info" role="status">@_loadingMessage</p>
-        <div class="restaurants-grid" aria-hidden="true">
-            @for (var i = 0; i < 6; i++)
-            {
-                @* The card's four rows: name + rating, address, meta, button. *@
-                <div class="skeleton-card">
-                    <div class="sk-row">
-                        <div class="sk-block sk-title"></div>
-                        <div class="sk-block sk-badge"></div>
+        @* Shaped like what is about to land, so nothing jumps when it does: the map and its cards
+           when the map is the remembered view, the card grid when it is the list. *@
+        @if (_layout == ResultsLayout.Map && !_mapUnavailable)
+        {
+            <div class="discovery-split" aria-hidden="true">
+                <div class="map-skeleton sk-block"></div>
+                <div class="results-pane">
+                    <div class="results-pane-list">
+                        @for (var i = 0; i < 3; i++)
+                        {
+                            @SkeletonCard
+                        }
                     </div>
-                    <div class="sk-block sk-text sk-address"></div>
-                    <div class="sk-block sk-text sk-meta"></div>
-                    <div class="sk-block sk-btn"></div>
                 </div>
-            }
-        </div>
+            </div>
+        }
+        else
+        {
+            <div class="restaurants-grid" aria-hidden="true">
+                @for (var i = 0; i < 6; i++)
+                {
+                    @SkeletonCard
+                }
+            </div>
+        }
     }
 
-    @if (_restaurants.Count > 0)
+    @if (HasResults)
     {
-        <div class="results-header">
-            <button type="button" class="btn btn-secondary new-search-btn" @onclick="ClearSearch"
-                    title="Search a different area">
-                <span aria-hidden="true">&#215;</span> New search
-            </button>
-            @if (!_mapUnavailable)
-            {
-            <div class="layout-toggle" role="group" aria-label="Show results as">
-                <button type="button" class="chip-toggle @(_layout == ResultsLayout.List ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_layout == ResultsLayout.List ? "true" : "false")"
-                        @onclick="() => SetLayoutAsync(ResultsLayout.List)">List</button>
-                <button type="button" class="chip-toggle @(_layout == ResultsLayout.Map ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_layout == ResultsLayout.Map ? "true" : "false")"
-                        @onclick="() => SetLayoutAsync(ResultsLayout.Map)">Map</button>
-            </div>
-            }
-            <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
-        </div>
         @if (_layout == ResultsLayout.Map)
         {
-            @* A pin only selects; the card under the map is the same card the list shows, so the
-               tap that opens (or pays for) a comic is still the card's own button. *@
-            <MapView Pins="@MapPins" SelectedId="@_selectedPlaceId" Label="Restaurants on a map"
-                     Origin="@_me" KeepCamera="@_keepCamera"
-                     OnSelect="SelectPlace" OnAreaMoved="area => _movedTo = area"
-                     OnUnavailable="MapUnavailable">
-                <Overlay>
-                    @if (_movedTo is { } area)
-                    {
-                        if (area.Zoom >= MinSearchZoom)
+            @* Map and cards side by side on a desktop, stacked on a phone. A pin only selects; the
+               card is the same card the list shows, so the tap that opens (or pays for) a comic is
+               still the card's own button. The picked place moves to the top of the cards. *@
+            <div class="discovery-split">
+                <MapView Pins="@MapPins" SelectedId="@_selectedPlaceId" Label="Restaurants on a map"
+                         Origin="@_me" KeepCamera="@_keepCamera"
+                         OnSelect="SelectPlace" OnAreaMoved="area => _movedTo = area"
+                         OnUnavailable="MapUnavailable">
+                    <Overlay>
+                        @if (_movedTo is { } area)
                         {
-                            <button type="button" class="btn btn-primary map-overlay-btn" disabled="@_areaSearching"
-                                    @onclick="SearchThisAreaAsync">
-                                @(_areaSearching ? "Searching..." : "Search this area")
-                            </button>
+                            if (area.Zoom >= MinSearchZoom)
+                            {
+                                <button type="button" class="btn btn-primary map-overlay-btn" disabled="@_areaSearching"
+                                        @onclick="SearchThisAreaAsync">
+                                    @(_areaSearching ? "Searching..." : "Search this area")
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="map-overlay-hint">Zoom in to search here</span>
+                            }
                         }
-                        else
-                        {
-                            <span class="map-overlay-hint">Zoom in to search here</span>
-                        }
-                    }
-                    @* The surface is a wrapper: a page sheet cannot give .btn-secondary a fill (layers). *@
-                    <span class="map-overlay-surface">
-                        <button type="button" class="btn btn-secondary map-overlay-btn" disabled="@_areaSearching"
-                                @onclick="LocateOnMapAsync" aria-label="Show restaurants near me">
-                            <span aria-hidden="true">📍</span> Near me
-                        </button>
-                    </span>
-                </Overlay>
-            </MapView>
-            @if (SelectedRestaurant is { } picked)
-            {
-                <div class="map-selection">
-                    <RestaurantCard
-                        Restaurant="picked"
-                        IsCached="@_cachedScores.ContainsKey(picked.PlaceId)"
-                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == picked.PlaceId)"
-                        OnRestaurantClick="HandleRestaurantClick" />
-                </div>
-            }
-            else if (NearestPicks is { Count: > 0 } nearest)
-            {
-                @* Picking a place should not need the map: the closest few are right here. *@
-                <section class="nearest" aria-labelledby="nearest-title">
+                    </Overlay>
+                </MapView>
+                <section class="results-pane" aria-labelledby="pane-title">
                     <div class="nearest-head">
-                        <h2 id="nearest-title" class="comic-rows-heading">@(_origin == ResultsOrigin.Me ? "Nearest to you" : "In this area")</h2>
-                        <p class="results-info">Numbered pins are already drawn and open free.</p>
+                        <h2 id="pane-title" class="comic-rows-heading">@PaneTitle</h2>
+                        <p class="results-info">@(_cachedScores.Count > 0 ? "Numbered pins are already drawn and open free." : "Tap a pin to pick a place.")</p>
                     </div>
-                    <div class="nearest-grid">
-                        @foreach (var restaurant in nearest)
+                    <div class="results-pane-list">
+                        @foreach (var restaurant in PanePicks)
                         {
                             <RestaurantCard
+                                @key="restaurant.PlaceId"
                                 Restaurant="restaurant"
                                 IsCached="@_cachedScores.ContainsKey(restaurant.PlaceId)"
                                 IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                                 OnRestaurantClick="HandleRestaurantClick" />
                         }
                     </div>
+                    @* A phone shows the closest three under the map; the rest are one tap away. *@
+                    @if (PanePicks.Count > PhonePaneCount)
+                    {
+                        <button type="button" class="btn btn-secondary pane-show-all" @onclick="() => SetLayoutAsync(ResultsLayout.List)">
+                            Show all @_restaurants.Count as a list
+                        </button>
+                    }
                 </section>
-            }
+            </div>
         }
         else
         {
@@ -194,28 +250,6 @@
                 }
             </div>
         }
-    }
-
-    @* The fold used to be blank below the search bar. The live top three show a first-time
-       visitor what the app makes before they have to share a location. *@
-    @if (_flowState is LocationFlowState.Idle or LocationFlowState.Denied && _topComics is { Count: > 0 })
-    {
-        <section class="landing-board" aria-labelledby="landing-board-title">
-            <div class="landing-board-head">
-                <h2 id="landing-board-title" class="comic-rows-heading">Strangest right now</h2>
-                <a href="/leaderboard">Hall of Fame →</a>
-            </div>
-            <ol class="comic-rows">
-                @foreach (var entry in _topComics)
-                {
-                    <ComicRow Href="@($"/comic/{entry.PlaceId}")"
-                              Name="@entry.RestaurantName"
-                              Score="@((int)Math.Round(entry.StrangenessScore))"
-                              ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
-                              Meta="@entry.Address" />
-                }
-            </ol>
-        </section>
     }
 </div>
 
@@ -275,8 +309,51 @@
     /// <summary>No WebGL (or the CDN is blocked): the list for the rest of the visit, not remembered.</summary>
     private bool _mapUnavailable;
 
-    /// <summary>The closest few drawable places, in the order the results are already sorted.</summary>
-    private List<RestaurantDto> NearestPicks => [.. _restaurants.Where(r => r.TotalReviews > 0).Take(3)];
+    private bool HasResults => _restaurants.Count > 0;
+
+    /// <summary>The landing: nothing searched yet, or the first search did not land.</summary>
+    private bool ShowLanding => !HasResults && _flowState is LocationFlowState.Idle or LocationFlowState.Denied or LocationFlowState.Error;
+
+    private bool HasLandingSide => _topComics is { Count: > 0 } || _recent is { Count: > 0 };
+
+    private bool IsBusy => _flowState == LocationFlowState.Loading || _areaSearching;
+
+    /// <summary>Each button reports only its own search — a text search used to read "Finding you...".</summary>
+    private bool IsLocating => _flowState == LocationFlowState.Loading && _lastAttempt == DiscoveryAttempt.Location;
+
+    private bool IsTextSearching => _flowState == LocationFlowState.Loading && _lastAttempt == DiscoveryAttempt.Search;
+
+    /// <summary>Cards a phone shows under the map; a desktop shows them all beside it.</summary>
+    private const int PhonePaneCount = 3;
+
+    private string PaneTitle => _origin == ResultsOrigin.Me ? "Nearest to you" : "In this area";
+
+    /// <summary>Drawable places nearest first, with the picked pin's place moved to the top.</summary>
+    private List<RestaurantDto> PanePicks =>
+        [.. _restaurants.Where(r => r.TotalReviews > 0).OrderBy(r => r.PlaceId == _selectedPlaceId ? 0 : 1)];
+
+    /// <summary>With the map up, "Near me" searches quietly and keeps the pins; otherwise it is the first search.</summary>
+    private Task NearMeAsync() => HasResults && _layout == ResultsLayout.Map && !_mapUnavailable
+        ? LocateOnMapAsync()
+        : RequestLocationAsync();
+
+    private List<ComicHistoryEntry>? _recent;
+
+    /// <summary>This browser's last few live comics, for the landing. Expired ones would open on a paid redraw.</summary>
+    private async Task LoadRecentAsync() =>
+        _recent = [.. (await History.GetAllAsync()).Where(e => !e.IsExpired).Take(3)];
+
+    /// <summary>The card skeleton, sized like a RestaurantCard. A fragment so it keeps this page's scoped CSS.</summary>
+    private RenderFragment SkeletonCard =>
+        @<div class="skeleton-card">
+            <div class="sk-row">
+                <div class="sk-block sk-title"></div>
+                <div class="sk-block sk-badge"></div>
+            </div>
+            <div class="sk-block sk-text sk-address"></div>
+            <div class="sk-block sk-text sk-meta"></div>
+            <div class="sk-block sk-btn"></div>
+        </div>;
 
     private void MapUnavailable()
     {
@@ -355,8 +432,6 @@
         }
     }
 
-    private RestaurantDto? SelectedRestaurant => _restaurants.FirstOrDefault(r => r.PlaceId == _selectedPlaceId);
-
     /// <summary>
     /// Places that can be drawn and have a real location. A zero-review place has nothing to draw
     /// from, so a pin for it would be a tap that leads nowhere.
@@ -419,7 +494,7 @@
     {
         try
         {
-            var board = await ApiClient.GetLeaderboardAsync(string.Empty, 3);
+            var board = await ApiClient.GetLeaderboardAsync(string.Empty, 5);
             _topComics = board?.Entries.Where(e => !string.IsNullOrWhiteSpace(e.ComicBlobUrl)).ToList();
             StateHasChanged();
         }
@@ -464,6 +539,7 @@
         }
 
         _ = LoadTopComicsAsync();
+        await LoadRecentAsync();
 
         if (!string.IsNullOrWhiteSpace(Q))
         {
@@ -779,7 +855,7 @@
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}?generate=true");
     }
 
-    private void ClearSearch()
+    private async Task ClearSearch()
     {
         Discovery.Clear();
         if (Q is not null)
@@ -792,6 +868,7 @@
             _ = LoadTopComicsAsync();
         }
 
+
         _cachedScores = [];
         _selectedPlaceId = null;
         _restaurants = new();
@@ -800,6 +877,11 @@
         _isNavigatingToComic = false;
         _activeComicPlaceId = null;
         _flowState = LocationFlowState.Idle;
+
+        if (_recent is null)
+        {
+            await LoadRecentAsync();
+        }
     }
 
     private void SetRestaurantResults(IEnumerable<RestaurantDto> restaurants)

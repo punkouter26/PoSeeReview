@@ -22,14 +22,22 @@
 
         @* A generation shows the step it is on over the storyboard, which is itself the progress
            display — frames ink in as the pipeline advances. A cache read is a plain spinner. *@
-        <LoadingIndicator Message="Reading the weird stuff..."
-                          Steps="@(_isGenerating ? _stepDisplay : null)"
-                          ActiveStep="@_activeStepIndex" />
+        @* The ink canvas sits behind the stepper and storyboard for the paid wait only; a cache
+           read is too quick to deserve it. *@
+        <div class="generation-stage">
+            @if (_isGenerating)
+            {
+                <canvas @ref="_ink" class="ink-fluid" aria-hidden="true"></canvas>
+            }
+            <LoadingIndicator Message="Reading the weird stuff..."
+                              Steps="@(_isGenerating ? _stepDisplay : null)"
+                              ActiveStep="@_activeStepIndex" />
 
-        @if (_isGenerating)
-        {
-            <Storyboard ActiveStep="@_activeStepIndex" Captions="@_storyCaptions" Score="@_storyScore" />
-        }
+            @if (_isGenerating)
+            {
+                <Storyboard ActiveStep="@_activeStepIndex" Captions="@_storyCaptions" Score="@_storyScore" />
+            }
+        </div>
     }
     else if (_error != null)
     {
@@ -89,7 +97,7 @@
                 <h1>@_comic.RestaurantName</h1>
                 @* The one inline style, and only a custom property: the score has to reach
                    CSS as a number, and 0-100 is not something classes can carry. *@
-                <div class="strangeness-ring-wrap" style="--score-target: @_comic.StrangenessScore">
+                <div @ref="_ring" class="strangeness-ring-wrap" style="--score-target: @_comic.StrangenessScore">
                     <svg class="strangeness-ring" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                             <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -130,6 +138,17 @@
                lives only in the disclosure line below — it used to be both a flag button here and
                that link. *@
             <ComicActions Comic="_comic">
+                @* 3D mode is opt-in per visit: it can download a depth model on first use. *@
+                @if (_canDepth)
+                {
+                    <button type="button" class="btn btn-secondary btn-icon" data-testid="comic-3d-toggle"
+                            @onclick="ToggleDepthAsync" disabled="@_depthBusy"
+                            aria-pressed="@(_depthHandle != 0 ? "true" : "false")"
+                            title="@(_depthHandle != 0 ? "Back to flat" : "View in 3D")"
+                            aria-label="@(_depthHandle != 0 ? "Turn off 3D view" : "View the comic in 3D")">
+                        <span aria-hidden="true">@(_depthBusy ? "…" : "3D")</span>
+                    </button>
+                }
                 @* Reading the joke aloud is an accessibility win before it is a flourish: the
                    narrative is the punchline, and a screen reader can only describe the image as
                    "comic strip". Rendered only where speechSynthesis exists. *@
@@ -211,6 +230,9 @@
     private int _activeStepIndex;
 
     private bool _burstFired;
+    private ElementReference _ring;
+    private ElementReference _ink;
+    private int _inkHandle;
 
     /// <summary>What the pipeline has already produced while the artwork is still painting.</summary>
     private IReadOnlyList<string>? _storyCaptions;
@@ -221,6 +243,11 @@
     /// comic opened from a list morphs in from its card instead, and a reveal on top would fight it.
     /// </summary>
     private bool _freshlyDrawn;
+
+    private bool _canDepth;
+    private bool _depthBusy;
+    private int _depthHandle;
+    private DotNetObjectReference<ComicView>? _self;
 
     private bool _canNarrate;
     private bool _isNarrating;
@@ -327,6 +354,8 @@
         await History.RecordAsync(_comic);
 
         _canNarrate = await Fx.CanNarrateAsync();
+        _canDepth = await Fx.IsDepthSupportedAsync();
+        _ = Fx.PrepareBurstAsync();
     }
 
     /// <summary>
@@ -385,6 +414,7 @@
         }
 
         _burstFired = true;   // Drops the conic sweep, which only means something while counting.
+        _ = Fx.BurstScoreAsync(_ring, score);
         await Fx.PlaySignatureAsync(_comic?.PlaceId ?? PlaceId, score);
         // After the motif, so the loop enters on its own rather than under it.
         await Fx.StartSoundtrackAsync(_comic?.PlaceId ?? PlaceId, score);
@@ -425,6 +455,35 @@
         }
     }
 
+    private async Task ToggleDepthAsync()
+    {
+        if (_comic is null || _depthBusy)
+        {
+            return;
+        }
+
+        if (_depthHandle != 0)
+        {
+            await Fx.StopDepthAsync(_depthHandle);
+            _depthHandle = 0;
+            return;
+        }
+
+        _depthBusy = true;
+        await Fx.UnlockAudioAsync();
+        _self ??= DotNetObjectReference.Create(this);
+        _depthHandle = await Fx.StartDepthAsync(_comic.PlaceId, _self);
+        _depthBusy = false;
+    }
+
+    /// <summary>The diorama stopped by itself (tier drop, lost context): release the toggle.</summary>
+    [JSInvokable]
+    public void DepthEnded()
+    {
+        _depthHandle = 0;
+        StateHasChanged();
+    }
+
     private async Task GenerateFromPromptAsync()
     {
         _needsGeneration = false;
@@ -447,7 +506,23 @@
         // and so would the soundtrack.
         await Fx.StopNarrationAsync();
         await Fx.StopSoundtrackAsync();
+        await Fx.StopInkAsync(_inkHandle);
+        await Fx.StopDepthAsync(_depthHandle);
+        _self?.Dispose();
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isGenerating && _inkHandle == 0 && !_inkTried)
+        {
+            _inkTried = true;
+            _inkHandle = await Fx.StartInkAsync(_ink);
+            await Fx.InkPhaseAsync(_inkHandle, _activeStepIndex, _comicSteps.Length);
+        }
+    }
+
+    /// <summary>One attempt per generation: a device that declined the ink is not asked every render.</summary>
+    private bool _inkTried;
 
     private async Task LoadComic(bool forceRegenerate)
     {
@@ -459,6 +534,7 @@
         _activeStepIndex = 0;
         _storyCaptions = null;
         _storyScore = null;
+        _inkTried = false;
         StateHasChanged();
 
         try
@@ -476,6 +552,11 @@
                 if (index < 0 || _disposed)
                 {
                     return;
+                }
+
+                if (index != _activeStepIndex)
+                {
+                    _ = Fx.InkPhaseAsync(_inkHandle, index, _comicSteps.Length);
                 }
 
                 _activeStepIndex = index;
@@ -508,6 +589,16 @@
             Analytics.TrackGenerationCompleted(fromCache: _comic.IsCached);
 
             _freshlyDrawn = !_comic.IsCached;
+
+            // The ink drains into the frame before the comic takes its place. 700ms the user
+            // watches rather than waits: the pipeline is already done.
+            if (_inkHandle != 0)
+            {
+                await Fx.DrainInkAsync(_inkHandle);
+                _inkHandle = 0;
+                await Task.Delay(700);
+            }
+
             await OnComicReadyAsync();
 
             // Not awaited: the finally below is what takes the loading state down, and the
@@ -577,6 +668,9 @@
         }
         finally
         {
+            // Idempotent, and a no-op after a drain; this is the error and abandonment path.
+            await Fx.StopInkAsync(_inkHandle);
+            _inkHandle = 0;
             _isGenerating = false;
             _isLoading = false;
 
@@ -588,6 +682,13 @@
                     await (_errorIcon == DefaultErrorIcon ? Fx.PlayErrorAsync() : Fx.PlayFizzleAsync());
                 }
                 StateHasChanged();
+
+                // After the render, so the card's icon exists to fizzle from.
+                if (_errorIcon != DefaultErrorIcon)
+                {
+                    await Task.Yield();
+                    await Fx.FizzleAtAsync(".error-container .state-card-icon");
+                }
             }
         }
     }

@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using System.Net;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
@@ -211,6 +213,8 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
     {
         using var scope = _factory.Services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<ILeaderboardRepository>();
+        var comics = scope.ServiceProvider.GetRequiredService<IComicRepository>();
+        var promptVersion = scope.ServiceProvider.GetRequiredService<IOptions<ComicOptions>>().Value.PromptVersion;
 
         for (int i = 0; i < count; i++)
         {
@@ -226,6 +230,19 @@ public class LeaderboardEndpointTests : IClassFixture<CustomWebApplicationFactor
             };
 
             await repository.UpsertAsync(entry);
+
+            // The board only lists places whose comic would open, so each row needs a live one.
+            await comics.UpsertAsync(new Comic
+            {
+                Id = ComicId.New(),
+                PlaceId = entry.PlaceId,
+                RestaurantName = entry.RestaurantName,
+                ImageUrl = entry.ComicBlobUrl,
+                StrangenessScore = (int)entry.StrangenessScore,
+                CreatedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(1),
+                PromptVersion = promptVersion
+            });
         }
 
         _output.WriteLine($"Seeded {count} entries for region {region}");

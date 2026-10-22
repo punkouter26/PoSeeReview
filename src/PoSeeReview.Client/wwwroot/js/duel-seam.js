@@ -239,7 +239,7 @@ void main() {
             float jag = (vnoise(vec2(yw * 38.0 + fk * 13.0, ep)) - 0.5) * 0.03 * u;
             float bx = c + side * (sl * dy + 0.8 * dy * dy) + jag;
             float db = abs(q.x - bx) / sqrt(1.0 + sl * sl);
-            float fade = pow(1.0 - u, 1.4) * (1.0 - life) * (1.0 - life);
+            float fade = pow(1.0 - u, 1.4) * (1.0 - life) * (1.0 - life) * smoothstep(0.0, 0.12, u);
             float Ib = uEnergy * flick * struck * outsideDisc * fade * (0.6 + 0.35 * v);
             core  += Ib * smoothstep(cw * 0.6, 0.0, db);
             glowI += Ib * exp(-db / (cw * 2.0)) * 0.8;
@@ -473,6 +473,12 @@ export function start(canvas, options = {}) {
         };
         if (typeof IntersectionObserver === 'function') {
             const io = new IntersectionObserver((entries) => {
+                // Removal reports as "not intersecting" — and the paused task would never get
+                // the frame that notices the canvas is gone.
+                if (!canvas.isConnected) {
+                    stop(id);
+                    return;
+                }
                 s.visible = entries[entries.length - 1].isIntersecting;
                 if (s.visible) {
                     resumeTask();

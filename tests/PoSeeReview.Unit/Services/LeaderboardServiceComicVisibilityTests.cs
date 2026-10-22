@@ -64,6 +64,28 @@ public sealed class LeaderboardServiceComicVisibilityTests
     }
 
     [Fact]
+    public async Task GetTopComicsAsync_OmitsEntriesWhoseComicIsNoLongerLive()
+    {
+        var region = RegionCode.From("US");
+        var repo = new Mock<ILeaderboardRepository>();
+        repo.Setup(r => r.GetTopEntriesAsync(region, 50)).ReturnsAsync(
+        [
+            Entry(1, "expired", 95, "https://blob.example/a.png"),
+            Entry(2, "live", 60, "https://blob.example/b.png"),
+        ]);
+
+        var blobs = new Mock<IBlobStorageService>();
+        blobs.Setup(b => b.BlobExistsAsync(It.IsAny<string>())).ReturnsAsync(true);
+        var live = new Mock<ILiveComicLookup>();
+        live.Setup(l => l.IsLiveAsync(It.IsAny<PlaceId>())).ReturnsAsync((PlaceId id) => id.Value == "live");
+
+        var result = await CreateService(repo, blobs, live.Object).GetTopComicsAsync(region, 10);
+
+        Assert.Equal("live", Assert.Single(result).PlaceId.Value);
+        Assert.Equal(1, result[0].Rank);
+    }
+
+    [Fact]
     public async Task GetTopComicsAsync_CapsVisibleComicsAtRequestedLimit()
     {
         var region = RegionCode.From("US");
@@ -113,13 +135,15 @@ public sealed class LeaderboardServiceComicVisibilityTests
 
     private static LeaderboardService CreateService(
         Mock<ILeaderboardRepository> repo,
-        Mock<IBlobStorageService> blobs) =>
+        Mock<IBlobStorageService> blobs,
+        ILiveComicLookup? liveComics = null) =>
         new(
             repo.Object,
             blobs.Object,
             NullLogger<LeaderboardService>.Instance,
             Options.Create(new LeaderboardOptions()),
-            TimeProvider.System);
+            TimeProvider.System,
+            liveComics: liveComics);
 
     private static LeaderboardEntry Entry(int rank, string placeId, double score, string blobUrl) => new()
     {

@@ -10,7 +10,7 @@
 // does not know haptics exist and comic-reveal.js does not know the app makes noise. Deciding
 // that a tap should also buzz is a product decision and it is made here.
 
-import { gfx } from './gfx-core.js';
+import { gfx, comicImageUrl } from './gfx-core.js';
 import { audio } from './audio.js';
 import { haptics } from './haptics.js';
 import * as gradient from './gradient.js';
@@ -20,6 +20,12 @@ import * as viewTransitions from './view-transitions.js';
 import * as confetti from './confetti.js';
 import * as glass from './glass.js';
 import { soundtrack } from './soundtrack.js';
+import * as particles from './particles.js';
+import * as halftone from './halftone-reveal.js';
+import * as inkFluid from './ink-fluid.js';
+import * as duelSeam from './duel-seam.js';
+import * as pageCurl from './page-curl.js';
+import * as depth from './depth-diorama.js';
 
 function guard(fn, fallback = null) {
     try {
@@ -71,6 +77,15 @@ gfx.onTierChanged(reflectTier);
 function toggleTick() {
     audio.tapAt(window.innerWidth / 2);
     haptics.tap();
+}
+
+// Reveal handles handed to .NET, each naming which implementation is running behind it.
+const reveals = new Map();
+let nextReveal = 1;
+function remember(kind, inner) {
+    const id = nextReveal++;
+    reveals.set(id, { kind, inner });
+    return id;
 }
 
 // At most this many rows of a reshuffled board make a sound; the rest only move.
@@ -180,6 +195,47 @@ export const fx = {
      */
     playSignature: (seed, score) => guard(() => audio.signature(seed, score)),
 
+    // ── Generation wait ──────────────────────────────────────────────────────────────────
+
+    /** Ink blooming behind the storyboard while the comic is drawn. Full tier; 0 elsewhere. */
+    startInk: (canvas) => guard(() => inkFluid.start(canvas, {
+        onEnergy: (energy) => guard(() => audio.inkSwell(energy))
+    }), 0),
+    /** Each pipeline phase squirts its own colour from its own side. */
+    inkPhase: (handle, index, total) => guard(() => {
+        inkFluid.phase(handle, index, total);
+        haptics.tap();
+    }),
+    /** The comic has arrived: the ink spirals into the frame over ~700ms and is gone. */
+    drainInk: (handle) => guard(() => {
+        inkFluid.drain(handle);
+        audio.inkDrain();
+    }),
+    stopInk: (handle) => guard(() => inkFluid.stop(handle)),
+
+    // ── Score burst ──────────────────────────────────────────────────────────────────────
+
+    /** Compiles the burst's GPU pipelines ahead of time, so they are not built as the score lands. */
+    prepareBurst: () => guardAsync(() => particles.describe(), { webgpu: false }),
+
+    /**
+     * Particles from the score ring as the count-up lands, sized by the score. At the flash peak a
+     * score above 50 also sends a ring through the backdrop and drops a sub-bass thump under the
+     * landing chord; the haptic is the count-up's own, so none is added here.
+     */
+    burstScore: (origin, score) => guardAsync(() => particles.burst(origin, {
+        score,
+        onPeak: () => guard(() => {
+            if (score <= 50) return;
+            const rect = origin.getBoundingClientRect();
+            gradient.shock(rect.left + rect.width / 2, rect.top + rect.height / 2, score > 80 ? 1 : 0.6);
+            audio.thump(score);
+        })
+    }), 0),
+
+    /** "Too normal": grey motes pop off the card's icon and flop to the floor. Silent; see playFizzle. */
+    fizzleAt: (selector) => guard(() => particles.fizzle(document.querySelector(selector)), 0),
+
     // ── Soundtrack (opt-in) ──────────────────────────────────────────────────────────────
     soundtrackEnabled: () => guard(() => soundtrack.isEnabled(), false),
     /** From the account menu's click, so the context can unlock on the same gesture. */
@@ -225,18 +281,37 @@ export const fx = {
 
     // ── Ink development ──────────────────────────────────────────────────────────────────
 
-    /** Develops the comic onto the page with a CSS mask. */
-    startComicReveal: (container, bands) => guard(() => comicReveal.start(container, {
-        bands: bands ?? 2,
+    /**
+     * Develops the comic onto the page. At the full tier it is PRINTED: CMYK plates landing in
+     * register over the same-origin copy of the artwork (halftone-reveal.js). Anywhere that
+     * cannot run — lower tier, no placeId, the image not arriving — the CSS mask develops it.
+     * The returned handle remembers which of the two is running.
+     */
+    startComicReveal: (container, bands, placeId) => guardAsync(async () => {
         // Each band gets a cue as it becomes recognisable. Composed here rather than inside
-        // comic-reveal.js, which has no business knowing the app makes noise.
-        onBand: (index, total) => {
+        // either reveal, which have no business knowing the app makes noise.
+        const onBand = (index, total) => {
             audio.panelReveal(index, total);
             haptics.tap();
+        };
+        if (placeId && gfx.allows('full')) {
+            const printed = await halftone.start(container, {
+                src: comicImageUrl(placeId),
+                bands: bands ?? 2,
+                onBand
+            });
+            if (printed) return remember('print', printed);
         }
-    }), 0),
+        const developed = comicReveal.start(container, { bands: bands ?? 2, onBand });
+        return developed ? remember('mask', developed) : 0;
+    }, 0),
 
-    finishComicReveal: (id) => guard(() => comicReveal.finish(id)),
+    finishComicReveal: (id) => guard(() => {
+        const entry = reveals.get(id);
+        reveals.delete(id);
+        if (entry?.kind === 'print') halftone.finish(entry.inner);
+        else if (entry) comicReveal.finish(entry.inner);
+    }),
 
     // ── Reading the strip ────────────────────────────────────────────────────────────────
 
@@ -350,6 +425,87 @@ export const fx = {
             }
         });
     }),
+
+    // ── Hot off the press ────────────────────────────────────────────────────────────────
+
+    /** Builds the curl's GL context while a share sheet is open, so the peel starts at once. */
+    warmPeel: () => guardAsync(() => pageCurl.warm(), false),
+
+    /**
+     * After a share or save: a printed copy of the comic curls off the page and flies into the
+     * button that sent it, and a CERTIFIED STRANGE stamp slams onto the original. Lite tier gets
+     * the stamp alone; off gets nothing.
+     */
+    peelComic: (placeId, targetSelector) => guardAsync(() => {
+        const container = document.querySelector('.comic-strip-container');
+        if (!container) return 0;
+        return pageCurl.peel(container, {
+            src: comicImageUrl(placeId),
+            target: targetSelector ? document.querySelector(targetSelector) : null,
+            onLift: () => guard(() => audio.paperLift()),
+            onStamp: () => guard(() => {
+                audio.pressClunk();
+                haptics.confirm();
+            })
+        });
+    }, 0),
+
+    // ── 3D mode ──────────────────────────────────────────────────────────────────────────
+
+    depthSupported: () => guard(() => depth.supported(), false),
+
+    /**
+     * Turns the strip into a tilting 2.5D diorama. Heuristic depth at once; on WebGPU a depth
+     * model (~25MB, first use only) loads in a worker and blends in. `dotnet` hears DepthEnded
+     * when the effect stops by itself (tier drop, lost context), so the toggle can reset.
+     */
+    startDepth: (placeId, dotnet) => guardAsync(async () => {
+        const container = document.querySelector('.comic-strip-container');
+        if (!container) return 0;
+        const handle = await depth.start(container, {
+            src: comicImageUrl(placeId),
+            onProgress: (fraction, label) => guard(() => {
+                if (fraction >= 1 && label === 'model') {
+                    audio.confirm();
+                    haptics.confirm();
+                }
+            }),
+            onEnd: () => dotnet?.invokeMethodAsync('DepthEnded').catch(() => { })
+        });
+        if (handle) {
+            const rect = container.getBoundingClientRect();
+            audio.whoosh(rect.left + rect.width / 2);
+            haptics.tap();
+        }
+        return handle;
+    }, 0),
+
+    stopDepth: (handle) => guard(() => {
+        if (!handle) return;
+        depth.stop(handle);
+        audio.navigate('back', window.innerWidth / 2);
+    }),
+
+    // ── Duel ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * The arc between the duel card's halves: ignition crack, the strike's thump (where the
+     * page's CSS shake lands), then each comic's motif from its own side and the winner's chord.
+     */
+    startDuel: (canvas, seedA, scoreA, seedB, scoreB) => guard(() => duelSeam.start(canvas, {
+        scoreA,
+        scoreB,
+        onIgnite: () => guard(() => {
+            audio.duelIgnite();
+            haptics.tap();
+        }),
+        onStrike: () => guard(() => {
+            audio.duelStrike();
+            haptics.confirm();
+        }),
+        onWinner: (side) => guard(() => audio.duelWinner(side, seedA, scoreA, seedB, scoreB))
+    }), 0),
+    stopDuel: (handle) => guard(() => duelSeam.stop(handle)),
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
     /** Called after the destination route renders, to close the open transition. */

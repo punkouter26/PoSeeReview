@@ -5,8 +5,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    /* 3xs, not 2xs: at 320px three chips and the refresh button came to 297px in a 296px row,
-       and the refresh button wrapped onto a line of its own. */
+    /* 3xs keeps the three chips on one row at 320px. */
     gap: var(--space-3xs);
 }
 

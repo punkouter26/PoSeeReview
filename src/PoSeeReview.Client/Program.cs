@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using PoSeeReview.Client;
 using PoSeeReview.Client.Services;
+using Radzen;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -25,6 +26,8 @@ builder.Services.AddScoped<DiscoveryState>();
 builder.Services.AddScoped<BoardMemoryService>();
 builder.Services.AddScoped<ComicHistoryService>();
 builder.Services.AddScoped<ModerationClient>();
+// Radzen is the operator pages' toolkit only (RadzenScope); its services are inert elsewhere.
+builder.Services.AddRadzenComponents();
 // Scoped, not singleton: it holds the in-flight generation timestamp, which belongs to the
 // user's session rather than the process.
 builder.Services.AddScoped<AnalyticsService>();

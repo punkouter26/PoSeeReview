@@ -57,32 +57,34 @@
                             <span aria-hidden="true">🗂️</span> My comics
                         </NavLink>
 
-                        @* Audio defaults on, so the switch has to be somewhere a user can find it. *@
+                        @* Audio defaults on, so the switch has to be somewhere a user can find it. Sound and
+                           its volume share one row; what only matters while sound is on sits under it. *@
                         <div class="nav-sound" role="group" aria-label="Sound and haptics">
-                            <button type="button" class="chip-toggle @(_sound ? "chip-toggle--active" : "")"
-                                    aria-pressed="@(_sound ? "true" : "false")" @onclick="ToggleSoundAsync">
-                                Sound
-                            </button>
-                            @if (_haptics.Supported)
-                            {
-                                <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_haptics.Enabled ? "true" : "false")" @onclick="ToggleHapticsAsync">
-                                    Haptics
+                            <div class="nav-sound-row">
+                                <button type="button" class="chip-toggle @(_sound ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_sound ? "true" : "false")" @onclick="ToggleSoundAsync">
+                                    Sound
                                 </button>
-                            }
-                            @* Opt-in, unlike the cues: a loop nobody asked for gets the whole app muted. *@
-                            <button type="button" class="chip-toggle @(_music ? "chip-toggle--active" : "")"
-                                    aria-pressed="@(_music ? "true" : "false")" disabled="@(!_sound)" @onclick="ToggleMusicAsync">
-                                Music
-                            </button>
+                                <input class="nav-volume" type="range" min="0" max="100" aria-label="Volume" disabled="@(!_sound)"
+                                       @bind="_volume" @bind:event="oninput" @bind:after="ApplyVolumeAsync" />
+                            </div>
+                            <div class="nav-sound-row">
+                                @if (_haptics.Supported)
+                                {
+                                    <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
+                                            aria-pressed="@(_haptics.Enabled ? "true" : "false")" @onclick="ToggleHapticsAsync">
+                                        Haptics
+                                    </button>
+                                }
+                                @* Opt-in, unlike the cues: a loop nobody asked for gets the whole app muted. *@
+                                <button type="button" class="chip-toggle @(_music ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_music ? "true" : "false")" disabled="@(!_sound)" @onclick="ToggleMusicAsync">
+                                    Music
+                                </button>
+                            </div>
                         </div>
-                        <label class="nav-volume">
-                            Volume
-                            <input type="range" min="0" max="100" disabled="@(!_sound)"
-                                   @bind="_volume" @bind:event="oninput" @bind:after="ApplyVolumeAsync" />
-                        </label>
-
-                        <button type="button" class="btn btn-secondary" @onclick="Logout">Sign out</button>
+                        <hr class="popover-menu-divider" />
+                        <button type="button" class="popover-menu-item" @onclick="Logout">Sign out</button>
                     </div>
                 </div>
             </Authorized>

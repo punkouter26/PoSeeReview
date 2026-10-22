@@ -82,6 +82,7 @@
     private async Task ShareAsync()
     {
         _isBusy = true;
+        _ = Fx.WarmPeelAsync();
 
         try
         {
@@ -89,6 +90,7 @@
             if (outcome is ShareOutcome.Shared or ShareOutcome.Copied)
             {
                 Analytics.Track(FunnelSteps.ComicShared);
+                await Fx.PeelComicAsync(Comic.PlaceId, ".action-share");
             }
         }
         finally
@@ -114,6 +116,7 @@
             {
                 Analytics.Track(FunnelSteps.ComicSaved);
                 await Fx.PlayConfirmAsync();
+                await Fx.PeelComicAsync(Comic.PlaceId, ".action-save");
                 Toasts.Show("Saved to your device");
                 return;
             }

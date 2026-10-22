@@ -36,7 +36,7 @@
 .duel-stage[data-clash="on"] {
     animation:
         duel-slam var(--duration-slow) var(--ease-out) both,
-        duel-shake 420ms 120ms linear both;
+        duel-shake 420ms 350ms linear both;
 }
 
 /* Below the full tier there is no shader, so a CSS seam stands in for it: a bright line down

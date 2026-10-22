@@ -29,6 +29,9 @@ const FRAME_BUDGET_MS = 20;
 // exactly when the device most needed it. Timing the streak makes the delay constant.
 const OVER_BUDGET_MS_BEFORE_DOWNGRADE = 1500;
 
+// The most one frame can add to that streak, so it takes at least 15 slow frames in a row.
+const HITCH_CAP_MS = 100;
+
 const state = {
     tier: 'off',
     tierWasAutoDowngraded: false,
@@ -172,7 +175,10 @@ function recordFrame(elapsedMs, workMs, now) {
 
     if (elapsedMs > FRAME_BUDGET_MS) {
         stats.droppedFrames++;
-        state.overBudgetStreak += elapsedMs;
+        // Each frame counts for at most HITCH_CAP_MS. One long stall — a first shader compile, a
+        // GC, a route render — is a hitch, not sustained load, and uncapped a single 1.6s frame
+        // tripped the downgrade on its own and killed the effect whose compile caused it.
+        state.overBudgetStreak += Math.min(elapsedMs, HITCH_CAP_MS);
 
         if (state.overBudgetStreak >= OVER_BUDGET_MS_BEFORE_DOWNGRADE) {
             autoDowngrade();

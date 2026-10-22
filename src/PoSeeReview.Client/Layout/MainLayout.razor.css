@@ -42,9 +42,11 @@ main {
     margin: 0 auto;
     /* max(): the gutter, or the notch / home indicator where that is larger. The top inset is
        the sticky header's (NavMenu's .top-row). */
+    /* The bottom adds the build stamp's height, so the last row of any page can scroll clear of
+       the fixed stamp instead of ending underneath it. */
     padding: var(--gutter)
              max(var(--gutter), env(safe-area-inset-right))
-             max(var(--gutter), env(safe-area-inset-bottom))
+             calc(max(var(--gutter), env(safe-area-inset-bottom)) + var(--space-md))
              max(var(--gutter), env(safe-area-inset-left));
 }
 

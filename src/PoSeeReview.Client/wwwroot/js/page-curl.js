@@ -50,6 +50,7 @@ const SPRAY_MS = 240;
 const STAMP_START_SCALE = 2.4;
 const STAMP_ROTATE_RAD = -12 * Math.PI / 180;
 const IMAGE_TIMEOUT_MS = 1200;  // the same-origin copy was normally just fetched for Save/Share
+const IDLE_RELEASE_MS = 30000;  // keep the context for a Share-then-Save, not for the visit
 
 // Fold travel direction in sheet pixels (y down): from the bottom-right corner toward the top-
 // left, flatter than the diagonal so the fold enters across the bottom edge first.
@@ -247,18 +248,36 @@ const SHEET_UNIFORMS = ['uViewport', 'uOrigin', 'uSize', 'uDir', 'uAxis', 'uRadi
 export async function peel(container, options = {}) {
     try {
         if (!container?.isConnected || !gfx.allows('lite')) return 0;
+        options ??= {};
 
         // A second share while the first is still in the air replaces it.
         for (const [id, existing] of instances) {
             if (existing.container === container) stop(id);
         }
 
-        const image = gfx.allows('full') && options.src ? await loadImage(options.src, IMAGE_TIMEOUT_MS) : null;
+        // The image and the shaders are fetched/compiled side by side; neither blocks the page.
+        const wantsPeel = gfx.allows('full') && !!options.src;
+        const [image, ready] = wantsPeel
+            ? await Promise.all([loadImage(options.src, IMAGE_TIMEOUT_MS), acquireGl()])
+            : [null, null];
         if (!container.isConnected || !gfx.allows('lite')) return 0;
 
-        return begin(container, options ?? {}, image);
+        return begin(container, options, ready ? image : null);
     } catch {
         return 0;
+    }
+}
+
+/**
+ * Optional: creates the WebGL context and compiles the shaders ahead of time, so the peel starts
+ * on the very next frame. Call it as a share/save begins; it costs nothing below the `full` tier.
+ * @returns {Promise<boolean>} true when the peel is ready to run
+ */
+export async function warm() {
+    try {
+        return !!(await acquireGl());
+    } catch {
+        return false;
     }
 }
 
@@ -292,7 +311,7 @@ function begin(container, options, image) {
     instances.set(id, instance);
 
     if (image && gfx.allows('full')) {
-        instance.overlay = createOverlay(instance, image);
+        instance.overlay = attachOverlay(instance, image);
         if (instance.overlay) instance.stampAt = STAMP_AT_MS;
     }
 
@@ -351,9 +370,36 @@ function fire(callback) {
     }
 }
 
-// ── The copy: WebGL overlay ──────────────────────────────────────────────────────────────
+// ── The copy: one shared WebGL context ───────────────────────────────────────────────────
+//
+// WHY THE CONTEXT OUTLIVES A PEEL. Share-then-Save is the common sequence, and measured in
+// Chrome a context created right after the previous one was lost stalled the main thread for
+// over a second (the GPU process is still tearing the old one down), enough to trip the
+// auto-downgrade. So the context and programs are kept between peels, the canvas leaves the DOM
+// and shrinks to 1x1 while idle, and the whole thing is released after IDLE_RELEASE_MS — a page
+// should not hold a context it is not using, since the browser evicts the oldest past its cap.
 
-function createOverlay(instance, image) {
+let shared = null;
+let sharedPending = null;
+
+function acquireGl() {
+    if (!gfx.allows('full')) return Promise.resolve(null);
+    if (shared && !shared.gl.isContextLost()) {
+        scheduleIdleRelease();
+        return Promise.resolve(shared);
+    }
+    sharedPending ??= createShared()
+        .then((created) => {
+            shared = created;
+            scheduleIdleRelease();
+            return created;
+        })
+        .catch(() => null)
+        .finally(() => { sharedPending = null; });
+    return sharedPending;
+}
+
+async function createShared() {
     const canvas = document.createElement('canvas');
     canvas.setAttribute('aria-hidden', 'true');
     // Fixed and above everything: the copy has to fly over the header to reach the share button.
@@ -361,19 +407,19 @@ function createOverlay(instance, image) {
         position: 'fixed', left: '0', top: '0', width: '100%', height: '100%',
         pointerEvents: 'none', zIndex: '2147483000'
     });
+    canvas.width = canvas.height = 1;
 
-    let surface = null;
+    const surface = createSurface(canvas, { maxDpr: 1.5 });
+    if (!surface) throw new Error('no webgl2');
+    const gl = surface.gl;
     try {
-        document.body.appendChild(canvas);
-        surface = createSurface(canvas, { maxDpr: 1.5 });
-        if (!surface) throw new Error('no webgl2');
-        const gl = surface.gl;
-
-        const sheet = compileProgram(gl, SHEET_VS, SHEET_FS);
-        const shadow = compileProgram(gl, SHEET_VS, SHADOW_FS);
+        const [sheet, shadow] = await Promise.all([
+            buildProgram(gl, SHEET_VS, SHEET_FS),
+            buildProgram(gl, SHEET_VS, SHADOW_FS)
+        ]);
+        if (gl.isContextLost() || !gfx.allows('full')) throw new Error('lost while compiling');
         const uniforms = (program) => Object.fromEntries(SHEET_UNIFORMS.map((name) => [name, gl.getUniformLocation(program, name)]));
 
-        const rect = instance.imageElement.getBoundingClientRect();
         const vao = gl.createVertexArray();
         gl.bindVertexArray(vao);
         const vbo = gl.createBuffer();
@@ -382,33 +428,128 @@ function createOverlay(instance, image) {
         gl.enableVertexAttribArray(0);
         gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
         const ibo = gl.createBuffer();
-        const indices = sortedGridIndices(Math.max(1, rect.width), Math.max(1, rect.height));
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
         gl.bindVertexArray(null);
 
-        const texture = createTexture(gl, image, { mipmaps: true });
+        const created = {
+            canvas, surface, gl, vao, vbo, ibo,
+            sheet: { program: sheet, u: uniforms(sheet) },
+            shadow: { program: shadow, u: uniforms(shadow) },
+            indexCount: 0,
+            sortedAspect: 0,
+            owner: null,
+            idleTimer: 0,
+            onLost: null
+        };
+        created.onLost = (event) => {
+            event.preventDefault();
+            disposeShared(created);
+        };
+        canvas.addEventListener('webglcontextlost', created.onLost);
+        return created;
+    } catch (err) {
+        surface.release();
+        throw err;
+    }
+}
+
+/**
+ * Compiles off the main thread where the driver allows it (KHR_parallel_shader_compile), polling
+ * for completion with timers rather than blocking. Measured at ~100ms of blocked main thread
+ * otherwise — landing exactly on the tap that started the effect.
+ */
+async function buildProgram(gl, vertexSource, fragmentSource) {
+    const parallel = gl.getExtension('KHR_parallel_shader_compile');
+    if (!parallel) return compileProgram(gl, vertexSource, fragmentSource);
+
+    const program = gl.createProgram();
+    const shaders = [[gl.VERTEX_SHADER, vertexSource], [gl.FRAGMENT_SHADER, fragmentSource]].map(([type, source]) => {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        gl.attachShader(program, shader);
+        return shader;
+    });
+    gl.linkProgram(program);
+
+    const deadline = performance.now() + 5000;
+    while (!gl.isContextLost() && performance.now() < deadline
+        && !gl.getProgramParameter(program, parallel.COMPLETION_STATUS_KHR)) {
+        await new Promise((resolve) => setTimeout(resolve, 16));
+    }
+
+    const linked = gl.getProgramParameter(program, gl.LINK_STATUS);
+    const log = linked ? '' : shaders.map((s) => gl.getShaderInfoLog(s)).join('\n') + gl.getProgramInfoLog(program);
+    for (const shader of shaders) {
+        gl.detachShader(program, shader);
+        gl.deleteShader(shader);
+    }
+    if (!linked) {
+        gl.deleteProgram(program);
+        throw new Error(`page-curl shader failed: ${log}`);
+    }
+    return program;
+}
+
+function scheduleIdleRelease() {
+    if (!shared) return;
+    clearTimeout(shared.idleTimer);
+    shared.idleTimer = setTimeout(() => {
+        if (shared && !shared.owner) disposeShared(shared);
+    }, IDLE_RELEASE_MS);
+}
+
+function disposeShared(target) {
+    if (!target) return;
+    if (target.owner) {
+        // The stamp carries on without the copy.
+        target.owner.overlay = null;
+        target.owner = null;
+    }
+    clearTimeout(target.idleTimer);
+    try {
+        target.canvas.removeEventListener('webglcontextlost', target.onLost);
+        target.canvas.remove();
+    } catch {
+        // Already gone.
+    }
+    target.surface.release();
+    if (shared === target) shared = null;
+}
+
+/** Hands the shared canvas to one instance, with this comic uploaded. */
+function attachOverlay(instance, image) {
+    const g = shared;
+    if (!g || g.gl.isContextLost()) return null;
+    try {
+        if (g.owner && g.owner !== instance) releaseOverlay(g.owner);
+        const gl = g.gl;
+
+        const rect = instance.imageElement.getBoundingClientRect();
+        const aspect = Math.max(1, rect.width) / Math.max(1, rect.height);
+        if (Math.abs(aspect - g.sortedAspect) > 0.005) {
+            const indices = sortedGridIndices(aspect);
+            gl.bindVertexArray(g.vao);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.ibo);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+            gl.bindVertexArray(null);
+            g.indexCount = indices.length;
+            g.sortedAspect = aspect;
+        }
 
         const dark = isDark();
         const overlay = {
-            canvas, surface, gl, vao, texture, indexCount: indices.length,
-            sheet: { program: sheet, u: uniforms(sheet) },
-            shadow: { program: shadow, u: uniforms(shadow) },
+            texture: createTexture(gl, image, { mipmaps: true }),
             dark,
             paper: readColor('--color-card', dark ? [0.11, 0.1, 0.15] : [1, 1, 1]),
             shadowAlpha: dark ? 0.55 : 0.3,
-            corner: parseFloat(getComputedStyle(instance.container).borderTopLeftRadius) || 0,
-            onLost: null
+            corner: parseFloat(getComputedStyle(instance.container).borderTopLeftRadius) || 0
         };
-        overlay.onLost = (event) => {
-            event.preventDefault();
-            releaseOverlay(instance);
-        };
-        canvas.addEventListener('webglcontextlost', overlay.onLost);
+        clearTimeout(g.idleTimer);
+        g.owner = instance;
+        document.body.appendChild(g.canvas);
         return overlay;
     } catch {
-        surface?.release();
-        canvas.remove();
         return null;
     }
 }
@@ -417,35 +558,37 @@ function releaseOverlay(instance) {
     const overlay = instance.overlay;
     if (!overlay) return;
     instance.overlay = null;
+    const g = shared;
+    if (!g || g.owner !== instance) return;
+    g.owner = null;
     try {
-        overlay.canvas.removeEventListener('webglcontextlost', overlay.onLost);
-        if (!overlay.gl.isContextLost()) {
-            overlay.gl.deleteTexture(overlay.texture);
-            overlay.gl.deleteProgram(overlay.sheet.program);
-            overlay.gl.deleteProgram(overlay.shadow.program);
-            overlay.gl.deleteVertexArray(overlay.vao);
-        }
+        if (!g.gl.isContextLost()) g.gl.deleteTexture(overlay.texture);
+        g.canvas.remove();
+        // Frees the full-viewport backbuffer while idle; beginFrame() resizes it on the next use.
+        g.canvas.width = g.canvas.height = 1;
     } catch {
-        // Context already gone; release() below is what matters.
+        // Context already gone.
     }
-    overlay.surface.release();
-    overlay.canvas.remove();
+    if (gfx.allows('full')) scheduleIdleRelease();
+    else disposeShared(g);
 }
 
 /** Returns false once the copy has finished its flight (or has nothing left to draw on). */
 function renderOverlay(instance, t) {
     const overlay = instance.overlay;
+    const g = shared;
+    if (!g || g.owner !== instance) return false;
     const fly = clamp01((t - FLY_START_MS) / FLY_MS);
     if (fly >= 1) return false;
     if (!gfx.allows('full')) return false;
 
     const rect = instance.imageElement.getBoundingClientRect();
     if (rect.width < 2 || rect.height < 2) return false;
-    if (!overlay.surface.beginFrame()) return false;
+    if (!g.surface.beginFrame()) return false;
 
-    const gl = overlay.gl;
-    const viewW = overlay.canvas.clientWidth || window.innerWidth;
-    const viewH = overlay.canvas.clientHeight || window.innerHeight;
+    const gl = g.gl;
+    const viewW = g.canvas.clientWidth || window.innerWidth;
+    const viewH = g.canvas.clientHeight || window.innerHeight;
     const w = rect.width;
     const h = rect.height;
 
@@ -471,7 +614,7 @@ function renderOverlay(instance, t) {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
-    gl.bindVertexArray(overlay.vao);
+    gl.bindVertexArray(g.vao);
 
     const common = (u) => {
         gl.uniform2f(u.uViewport, viewW, viewH);
@@ -489,16 +632,16 @@ function renderOverlay(instance, t) {
     };
 
     // Shadow first, on the empty canvas: MAX keeps overlapping curl layers from stacking up.
-    const shadow = overlay.shadow;
+    const shadow = g.shadow;
     gl.useProgram(shadow.program);
     common(shadow.u);
     gl.uniform1f(shadow.u.uProjectShadow, 1);
     gl.uniform1f(shadow.u.uShadowAlpha, overlay.shadowAlpha * alpha);
     gl.blendEquation(gl.MAX);
     gl.blendFunc(gl.ONE, gl.ONE);
-    gl.drawElements(gl.TRIANGLES, overlay.indexCount, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, g.indexCount, gl.UNSIGNED_SHORT, 0);
 
-    const sheet = overlay.sheet;
+    const sheet = g.sheet;
     gl.useProgram(sheet.program);
     common(sheet.u);
     gl.uniform1f(sheet.u.uProjectShadow, 0);
@@ -512,10 +655,10 @@ function renderOverlay(instance, t) {
     gl.uniform1i(sheet.u.uTex, 0);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.drawElements(gl.TRIANGLES, overlay.indexCount, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, g.indexCount, gl.UNSIGNED_SHORT, 0);
 
     gl.bindVertexArray(null);
-    return overlay.surface.present();
+    return g.surface.present();
 }
 
 /**
@@ -561,7 +704,9 @@ function gridVertices() {
  * Triangles ordered far-from-the-corner first. Height on the cylinder only ever grows with
  * distance past the fold, so this is a correct back-to-front order for every frame of the curl.
  */
-function sortedGridIndices(w, h) {
+function sortedGridIndices(aspect) {
+    const w = aspect;
+    const h = 1;
     const tris = [];
     const row = GRID + 1;
     const s = (u, v) => (u * w - w) * FOLD_DIR[0] + (v * h - h) * FOLD_DIR[1];
@@ -851,4 +996,5 @@ gfx.onTierChanged((tier) => {
         if (tier === 'off') end(instance, true);
         else if (tier !== 'full') releaseOverlay(instance);
     }
+    if (tier !== 'full') disposeShared(shared);
 });

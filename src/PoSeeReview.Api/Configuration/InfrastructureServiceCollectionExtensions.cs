@@ -233,6 +233,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();
+        services.AddScoped<ILiveComicLookup, LiveComicLookup>();
         services.AddScoped<ILeaderboardService, LeaderboardService>();
 
         return services;

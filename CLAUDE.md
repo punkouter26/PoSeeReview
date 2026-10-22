@@ -105,10 +105,11 @@ reports (`/api/reports`) and takedowns (`/api/takedowns`).
 **Slices must not reference each other.** Anything two slices need lives in
 `PoSeeReview.Shared/Contracts/` (`Comic`, `Restaurant`, `Review`, `LeaderboardEntry`;
 `IComicRepository`, `ILeaderboardRepository`, `IRestaurantService`, `ILeaderboardService`,
-`IHallOfFameArchive`, `IContentModerationGate`, `IContentSafetyScreener`). `IHallOfFameArchive`
+`IHallOfFameArchive`, `IContentModerationGate`, `IContentSafetyScreener`, `ILiveComicLookup`). `IHallOfFameArchive`
 exposes only the delete, so takedowns can erase archived entries without referencing Leaderboard.
 `IContentModerationGate` is read by Comics and owned by Moderation; `IContentSafetyScreener` is
-called by Comics and implemented by Moderation.
+called by Comics and implemented by Moderation; `ILiveComicLookup` (unexpired **and** current
+`PromptVersion`, the same rule as a cache hit) is owned by Comics and read by Leaderboard.
 
 Moderation reads the reports **table** through its own read-only projection
 (`ModerationReportRow`) rather than a repository — Table Storage is schemaless per row, so a POCO
@@ -247,7 +248,8 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   after `MaxConcurrencyRetries`. `GET /api/comics/budget` is free so the UI greys out the button
   before a tap.
 - **`GET /api/comics/{placeId}/image`** re-serves the blob from this origin so it can be saved (the
-  `download` attribute is ignored cross-origin). Not used for display.
+  `download` attribute is ignored cross-origin). Not used for display, but every shader that samples
+  the artwork (print reveal, 3D mode, page curl) loads it as a texture — the SAS blob sends no CORS.
 - **Reports** (`/api/reports`): session required, rate limited, deduped by reporter (RowKey is the
   principal), only ever writes a row.
 - **Moderation** is graded: **Hide** (reversible, what auto-hide at 3 distinct reporters does),
@@ -263,7 +265,9 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 
 - **Weekly Hall of Fame** keeps each place's **peak** and outlives the 24h comic (hence
   `ImageExpired`). The live board mirrors the live comic: a redraw below
-  `MinimumStrangenessScore` deletes the row.
+  `MinimumStrangenessScore` deletes the row, the board only lists places `ILiveComicLookup` calls
+  live (filtered, not deleted — a prompt rollback revives them), and expiry cleanup deletes the
+  row but keeps the blob for the archive. A row whose comic is gone opens the paid Generate prompt.
 - **Share card** `GET /share/{placeId}/card.png` (`ShareCardService`) composes a 1200x630 PNG on
   demand. Not under `/api` (UA validation only admits crawlers off `/api`), anonymous, one hour of
   `Cache-Control`. A missing blob still renders a card.
@@ -279,10 +283,16 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   `/my-comics`; `BoardMemoryService` keeps last-seen ranks per region. Both degrade to no-ops when
   storage throws, and both types are in `AppJsonContext`.
 - **Account menu.** `/my-comics` is linked from the identity badge's native `popover`, never from
-  `nav.nav-links`, which `HeaderContractUiTests` pins at exactly two items. `/diagnostics` and
+  `nav.nav-links`, which `HeaderContractUiTests` pins at exactly two items. Under 40rem every
+  `.popover-menu` is a bottom sheet over a scrim (shared layer, so callers' placement loses). `/diagnostics` and
   `/moderation` have no nav entry.
 - **Components.** `ComicRow` is every list of comics; `StateCard` is every empty/error/404 screen;
   `PageShell` is the one-row page header. Add to these rather than hand-rolling a layout.
+- **Radzen is operator-only.** `/moderation` and `/diagnostics` wrap their Radzen components in
+  `RadzenScope`, which loads `js/radzen-theme.js` (theme into `@layer vendor`, script) first and hosts
+  `RadzenDialog`. Its `--rz-*` variables are re-pointed at app tokens at the end of `app.css`, so
+  no Radzen colour needs a dark-mode copy. Keep `@using Radzen` local to those files — global, it
+  shadows app names. A `RowRender` "class" replaces Radzen's row class; use a data attribute.
 - **State services.** `DiscoveryState` keeps the last search so Back restores it without a refetch
   (text searches also live in `?q=`); `ToastService` drives the one `<Toast />` in `MainLayout`;
   `ShareService.ShareComicAsync` is the only share path and always uses the short link.
@@ -290,9 +300,12 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 - **Map view.** `MapView` + `js/map-view.js` (its own module, not part of `fx.js`) back discovery —
   map by default, List remembered in `posee_discovery_layout` — and the live board's toggle.
   Discovery's map overlay holds "Search this area" (after a user pan/zoom, zoom ≥ 11; reported by
-  `AreaMoved`, which code-driven framing never fires) and "Near me"; both search quietly, keeping
-  results on screen, and an area search keeps the camera (`KeepCamera`) and zeroes distances. The
-  three nearest drawable places render as cards under the map. MapLibre 5.x UMD (6.x is ESM with a cross-origin worker,
+  `AreaMoved`, which code-driven framing never fires). With results the search bar is compact and
+  is the one control strip (query, clear, count, List/Map); its "Near me" searches quietly when the
+  map is up. Quiet searches keep results on screen; an area search keeps the camera (`KeepCamera`)
+  and zeroes distances. Under 64rem the three nearest drawable cards sit under the map; from 64rem
+  map and cards are side by side (`--map-height`, read by `.map-view-canvas`). The landing is two
+  columns from 64rem: search, then the live top five and recent history (`comic-rows--stack`). MapLibre 5.x UMD (6.x is ESM with a cross-origin worker,
   which cannot start) loads from jsDelivr with SRI on first open; its CSS is fetched into the
   `vendor` cascade layer, never linked. Pins are `<button>`s styled in app.css (JS-made elements
   get no scope attribute) and must never set `transform` — MapLibre positions them with it. A pin
@@ -306,7 +319,7 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 
 Read its header comment before adding CSS.
 
-- **Cascade layers**: `reset, tokens, base, vendor, page, shared, utilities` (`vendor` = injected third-party CSS, today only MapLibre). `page` (the scoped-CSS
+- **Cascade layers**: `reset, tokens, base, vendor, page, shared, utilities` (`vendor` = injected third-party CSS: MapLibre, and Radzen on the operator pages). `page` (the scoped-CSS
   bundle, pulled in via `@import … layer(page)`) sits **before** `shared`, so a scoped sheet cannot
   fork `.btn`. Element selectors go in `base`; class components in `shared` — layer order beats
   specificity. Never add a plain `<link>` for scoped or third-party CSS: unlayered CSS beats every layer.
@@ -332,14 +345,18 @@ Read its header comment before adding CSS.
 `propagateAudioState()` fans a sound-preference change out to haptics.
 
 Live modules: `gfx-core.js`, `gradient.js`, `audio.js`, `haptics.js`, `comic-reveal.js`,
-`panel-scrub.js`, `view-transitions.js`, `scroll-guard.js`, `modal.js` (+ `share-utils.js`, a classic
-script loaded by `index.html`).
+`panel-scrub.js`, `view-transitions.js`, `scroll-guard.js`, `modal.js`, `glass.js`, `soundtrack.js`,
+`confetti.js`, `ink-fluid.js`, `halftone-reveal.js`, `particles.js`, `duel-seam.js`, `page-curl.js`,
+`depth-diorama.js` (+ `share-utils.js`, a classic script loaded by `index.html`; `map-view.js` is
+imported by `MapView` on its own).
 
 - **`gfx-core.js`**: one shared `requestAnimationFrame` loop (never start a private rAF), a 20ms
   frame budget that steps the tier down after **1500ms** of sustained overrun (milliseconds, not
-  frames; not persisted), tiers `off`/`lite`/`full` stamped on `<html data-fx-tier>`. `off` is forced
+  frames; each frame adds at most 100ms, so a single compile stall is a hitch, not a downgrade; not persisted), tiers `off`/`lite`/`full` stamped on `<html data-fx-tier>`. `off` is forced
   by reduced motion or no WebGL2. `createSurface` gives one WebGL2 context per canvas.
-  `poseeFx.stats()` in the console is the frame-budget readout.
+  `poseeFx.stats()` in the console is the frame-budget readout. It also holds the shared helpers for
+  effects that sample the comic (`comicImageUrl`, `loadImage`, `createTexture`) and one lazily
+  requested WebGPU device (`getGpuDevice`, null without WebGPU).
 - **Backdrop** (`gradient.js`, `full` tier): built from `--color-surface` / `--color-brand-surface`
   / `--color-brand`, re-read on a theme flip (OS scheme or `data-theme`). It leans on score, pointer,
   scroll and the audio level, restarts itself when the tier returns to `full`, and a lost WebGL
@@ -359,13 +376,42 @@ script loaded by `index.html`).
   `panel-scrub.js` replays its notes as panels cross mid-screen. Narration (`speechSynthesis`) must
   `cancel()` before `speak()` and on teardown — the queue is browser-global.
 - **Haptics** follow the sound preference and can be switched off on their own, never on on their
-  own. Three fixed patterns (tap / confirm / error). Sound, haptics and volume live in the account
+  own. Three fixed patterns (tap / confirm / error). Sound, haptics, music and volume live in the account
   menu; the tier switch is on the Development-only `/diagnostics`.
 - **Ink development** (`comic-reveal.js`): a freshly drawn comic develops top-down via a
   `mask-image` driven by the registered `--comic-reveal` property (initial value 1 = fully visible).
   **Every exit path must clear `data-comic-reveal`**, which is why `ComicStrip.DisposeAsync`
-  finishes the reveal first.
-- **View transitions**: never await rAF inside the update callback (rendering is suppressed while it
+  finishes the reveal first. At `full` it is **printed** instead (`halftone-reveal.js`: CMYK plates
+  landing in register, canvas beside the masked container, not in it); a 0 from that falls back to
+  the mask. fx.js's reveal handle remembers which one runs.
+- **The generation wait, moment by moment.** `ink-fluid.js` (stable fluids, half-float targets,
+  `full` only) churns behind the stepper; each SSE phase squirts a colour, and on `complete` the ink
+  drains for 700ms before the comic replaces it. The score landing fires `particles.js` from the
+  ring (WebGPU compute, WebGL2 fallback, `full` only) and, above 50, a ring through the backdrop
+  (`gradient.shock`) plus `audio.thump`. "Too normal" fizzles grey motes off the card and plays a
+  sad trombone, not the error cue.
+- **Share / save** (`page-curl.js`): a printed copy curls off and flies into the button, then a
+  CERTIFIED STRANGE stamp lands (`.fx-stamp` in app.css). `lite` gets the stamp alone.
+- **Board** moves are damped springs (climbers overshoot, fallers bounce) in `animateBoardMoves`;
+  a climb into #1 fires `confetti.js` (2D canvas, tiny inked panels) and `audio.crown`.
+- **Duel** (`duel-seam.js`): an arc over the card leaning toward the stranger comic, then the
+  winner's half floods while both motifs answer each other. It starts only once the card has
+  loaded **and** both scores are in, whichever comes last. Below `full` a CSS seam stands in.
+- **3D mode** (`depth-diorama.js`, the comic page's "3D" toggle): parallax-occlusion over a
+  segmented "cut-out cards" depth. On WebGPU, transformers.js 4.3.1 + Depth-Anything-V2-small run
+  in a Blob module **worker** (on the main thread the session build stalled frames until the
+  watchdog killed the effect) and blend in; ~25MB on first use only. Captions and panel borders
+  stay on the zero-parallax plane. `DepthEnded` resets the toggle when it stops on its own.
+- **Map** heat glow is a MapLibre custom layer in MapLibre's own context; it pulses only at `full`.
+- **Liquid glass** (`glass.js`): a generated lens-edge displacement map applied as an SVG backdrop
+  filter, keyed off `:root[data-glass="liquid"]`, which is set only on Chromium at `full` — other
+  engines parse `backdrop-filter: url()` and then draw no backdrop. One specular light for the page
+  (`--glass-lx/-ly`, a `fixed` gradient) follows the pointer or a permission-free tilt.
+- **Soundtrack** (`soundtrack.js`) is the one **opt-in** sound (`posee_soundtrack`, the account
+  menu's Music chip): a four-bar loop seeded by place id, scheduled look-ahead on the audio clock,
+  ducked under narration, released when the comic page is disposed.
+- **View transitions**: forward is the halftone dot mask; back is an ink blot (`--ink-blot`) growing
+  from the tap point (`--vt-x/-y`). Never await rAF inside the update callback (rendering is suppressed while it
   is pending); the click is taken from Blazor in a capture-phase listener and `Blazor.navigateTo` is
   called inside the update callback, or the "old" snapshot is already the new page. The morph needs
   the view-transition name on **both** halves — `[data-comic-card]` / `.comic-row` and the arriving

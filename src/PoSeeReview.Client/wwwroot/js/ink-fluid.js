@@ -14,7 +14,7 @@
 // rather than one overwriting the other, and the display pass can recover the hue at any density.
 //
 // COST DECISIONS, in order of how much they matter:
-//   * Velocity/pressure run at 128 texels on the short side — every one of the ~27 sim passes per
+//   * Velocity/pressure run at 128 texels on the short side — every one of the ~30 sim passes per
 //     frame is a few thousand fragments. Only the dye (512 short side) and the one display pass
 //     (canvas pixels, DPR capped at 1.25) touch real fill rate.
 //   * Half-float targets only (RGBA16F/RG16F/R16F). 16F linear filtering is core in WebGL2, so
@@ -735,7 +735,7 @@ function runEmitters(inst, now, dt) {
         const y = em.y + em.dir[1] * travel;
         const taper = Math.sin(Math.PI * Math.min(1, t * 1.15 + 0.05));
         const v = em.speed * scale * taper;
-        splat(inst, velocity, x, y, em.dir, 0.0016, 0.35, [em.dir[0] * v * dt * 9, em.dir[1] * v * dt * 9, 0, 0]);
+        splat(inst, velocity, x, y, em.dir, 0.0016, 0.35, [em.dir[0] * v * dt * 7, em.dir[1] * v * dt * 7, 0, 0]);
         const a = em.amount * taper * dt * 6;
         splat(inst, dye, x, y, em.dir, 0.0011, 0.4, [em.color[0] * a, em.color[1] * a, em.color[2] * a, a]);
         return true;

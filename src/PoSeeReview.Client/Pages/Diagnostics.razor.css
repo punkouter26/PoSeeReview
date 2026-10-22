@@ -55,7 +55,7 @@
 }
 
 .diagnostics-section {
-    margin-bottom: var(--space-xl);
+    padding-block: var(--space-sm);
 }
 
 /* `min(220px, 100%)` rather than a bare 220px: auto-fit tracks overflow their container when
@@ -223,12 +223,6 @@
     margin-top: var(--space-xs);
 }
 
-/* Actions */
-.actions {
-    display: flex;
-    gap: var(--space-md);
-}
-
 /* .btn / .btn-primary / .btn-secondary and .alert* are global primitives in app.css — see
    the note there. Redefining them here is what made this page's buttons and error banner
    look nothing like the rest of the app. */
@@ -238,10 +232,6 @@
     .health-summary {
         flex-direction: column;
         text-align: center;
-    }
-
-    .actions {
-        flex-direction: column;
     }
 
     .config-row {
@@ -302,24 +292,4 @@
 
 .fx-notes .fx-bad {
     color: var(--color-danger-text);
-}
-
-/* Reference tables start closed: open, they made this page 10,700px tall at 320px. */
-.diagnostics-section > summary {
-    cursor: pointer;
-    min-height: var(--tap-target);
-    display: flex;
-    align-items: center;
-    font-weight: 700;
-}
-
-/* display:flex drops the summary's list-item marker, which left three collapsed sections that
-   looked like plain headings — nothing said they open. */
-.diagnostics-section > summary::before {
-    content: "▸";
-    margin-inline-end: var(--space-xs);
-}
-
-.diagnostics-section[open] > summary::before {
-    content: "▾";
 }

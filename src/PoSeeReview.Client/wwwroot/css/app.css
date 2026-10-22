@@ -829,6 +829,33 @@
         text-decoration: none;
     }
 
+    .popover-menu-divider {
+        margin: var(--space-3xs) var(--space-sm);
+        border: 0;
+        border-top: 1px solid var(--color-border);
+    }
+
+    /* On a phone a menu is a bottom sheet: in thumb reach, full width, over a scrim. Above the
+       callers' own placement (this layer beats `page`), so the account menu and the challenge
+       picker both get it. */
+    @media (max-width: 40rem) {
+        .popover-menu {
+            inset: auto 0 0;
+            width: 100%;
+            max-width: none;
+            max-height: 80dvh;
+            margin: 0;
+            overflow-y: auto;
+            padding: var(--space-sm) var(--space-sm) max(var(--space-sm), env(safe-area-inset-bottom));
+            border-width: 1px 0 0;
+            border-radius: var(--radius-card) var(--radius-card) 0 0;
+        }
+
+        .popover-menu::backdrop {
+            background: var(--surface-inverse-veil);
+        }
+    }
+
     /* ── Skeleton ────────────────────────────────────────────────────────────────────────────
        Token-driven so a placeholder stays darker than its card in dark mode. */
     .sk-block,
@@ -959,8 +986,9 @@
         container-type: inline-size;
     }
 
+    /* `--stack` keeps one column where the list itself is a narrow column (the landing's side). */
     @media (min-width: 64rem) {
-        .comic-rows {
+        .comic-rows:not(.comic-rows--stack) {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
@@ -1387,15 +1415,13 @@
 
     /* Coming back is an ink blot instead: the page you return to spreads out from where you
        tapped, as a splat with drips rather than a circle. Forward keeps the halftone, so the two
-       directions are told apart by material as well as by slide. The mask's position is the
-       tap point as a percentage, which makes that point the fixed centre of the growth. */
+       directions are told apart by material as well as by slide. The keyframes move the mask
+       by half its size as it grows, which keeps the blot centred on the tap point. */
     :root[data-nav-direction="back"]::view-transition-new(root) {
         -webkit-mask-image: var(--ink-blot);
         mask-image: var(--ink-blot);
         -webkit-mask-repeat: no-repeat;
         mask-repeat: no-repeat;
-        -webkit-mask-position: var(--vt-x, 50%) var(--vt-y, 50%);
-        mask-position: var(--vt-x, 50%) var(--vt-y, 50%);
         animation:
             posee-ink-blot 560ms cubic-bezier(0.6, 0, 0.3, 1) both,
             posee-slide-from-left 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -1403,8 +1429,18 @@
 }
 
 @keyframes posee-ink-blot {
-    from { -webkit-mask-size: 0 0; mask-size: 0 0; }
-    to   { -webkit-mask-size: 420vmax 420vmax; mask-size: 420vmax 420vmax; }
+    from {
+        -webkit-mask-size: 0 0;
+        mask-size: 0 0;
+        -webkit-mask-position: var(--vt-x, 50vw) var(--vt-y, 50vh);
+        mask-position: var(--vt-x, 50vw) var(--vt-y, 50vh);
+    }
+    to {
+        -webkit-mask-size: 420vmax 420vmax;
+        mask-size: 420vmax 420vmax;
+        -webkit-mask-position: calc(var(--vt-x, 50vw) - 210vmax) calc(var(--vt-y, 50vh) - 210vmax);
+        mask-position: calc(var(--vt-x, 50vw) - 210vmax) calc(var(--vt-y, 50vh) - 210vmax);
+    }
 }
 
 @keyframes posee-halftone-in {
@@ -1686,6 +1722,15 @@
                 .popover-menu:popover-open {
                     opacity: 0;
                     translate: 0 -0.5rem;
+                }
+            }
+
+            /* The sheet rises from the bottom edge instead of dropping from the bar. */
+            @media (max-width: 40rem) {
+                @starting-style {
+                    .popover-menu:popover-open {
+                        translate: 0 100%;
+                    }
                 }
             }
 
@@ -2012,7 +2057,7 @@
     }
 
     .map-view-canvas {
-        height: clamp(18rem, 55dvh, 34rem);
+        height: var(--map-height, clamp(18rem, 55dvh, 34rem));
     }
 
     /* MapLibre positions a marker with `transform`, so nothing here may set one on the pin: the
@@ -2140,5 +2185,158 @@
     .map-view .maplibregl-ctrl-group {
         background: var(--color-card);
         box-shadow: var(--shadow-sm);
+    }
+}
+
+/* ============================================================================================
+   CERTIFIED STRANGE (js/page-curl.js)
+   ============================================================================================ */
+
+@layer shared {
+    /* CERTIFIED STRANGE — the rubber stamp page-curl.js slams onto a comic after Share/Save.
+       page-curl.js positions it (left/top = the comic's centre), sizes it (--fx-stamp-w = the
+       comic's width) and drives `scale`/`opacity` per frame; everything else is here. */
+    .fx-stamp {
+        position: absolute;
+        z-index: 4;
+        translate: -50% -50%;
+        rotate: -12deg;
+        display: grid;
+        justify-items: center;
+        gap: 0.06em;
+        padding: 0.1em 0.3em 0.14em;
+        border: 0.1em double currentColor;
+        border-radius: 0.16em;
+        outline: 0.03em solid currentColor;
+        outline-offset: 0.07em;
+        color: var(--color-danger);
+        font-family: var(--font-display);
+        font-size: calc(var(--fx-stamp-w, 640px) * 0.115);
+        line-height: 0.9;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        pointer-events: none;
+        user-select: none;
+        /* Ink, not paint: the artwork's line work shows through the impression. */
+        mix-blend-mode: multiply;
+        /* Worn rubber, from gradients alone: three dot tilings with co-prime periods punch an
+           irregular speckle of missing ink, intersected with an uneven-pressure ramp so one end
+           of the impression is fainter. (An SVG feTurbulence mask looked the same and stalled
+           the compositor for ~240ms on first use — exactly at the slam.) */
+        --_speckle-a: radial-gradient(circle at 30% 40%, transparent 0 0.7px, #000 1.5px);
+        --_speckle-b: radial-gradient(circle at 70% 25%, transparent 0 1px, #000 1.9px);
+        --_speckle-c: radial-gradient(ellipse 55% 40% at 40% 65%, rgb(0 0 0 / 0.6) 0 25%, #000 80%);
+        --_pressure: linear-gradient(100deg, rgb(0 0 0 / 0.72), #000 32%, #000 68%, rgb(0 0 0 / 0.85));
+        -webkit-mask-image: var(--_speckle-a), var(--_speckle-b), var(--_speckle-c), var(--_pressure);
+        -webkit-mask-size: 7px 9px, 13px 11px, 2.3em 1.7em, 100% 100%;
+        -webkit-mask-position: 0 0, 3px 5px, 0.3em 0.1em, 0 0;
+        -webkit-mask-composite: source-in;
+        mask-image: var(--_speckle-a), var(--_speckle-b), var(--_speckle-c), var(--_pressure);
+        mask-size: 7px 9px, 13px 11px, 2.3em 1.7em, 100% 100%;
+        mask-position: 0 0, 3px 5px, 0.3em 0.1em, 0 0;
+        mask-composite: intersect;
+    }
+
+    .fx-stamp > span:first-child {
+        font-size: 0.42em;
+        letter-spacing: 0.34em;
+        padding-inline-start: 0.34em;   /* balance the trailing letter-spacing */
+        padding-block-end: 0.08em;
+        border-block-end: 0.08em solid currentColor;
+    }
+
+    .fx-stamp-splatter {
+        z-index: 4;
+        mix-blend-mode: multiply;
+    }
+
+    /* The dark theme's danger token is a light coral, which multiply washes out to nothing on
+       the artwork; there the ink is laid on normally. */
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) :is(.fx-stamp, .fx-stamp-splatter) {
+            mix-blend-mode: normal;
+        }
+    }
+
+    :root[data-theme="dark"] :is(.fx-stamp, .fx-stamp-splatter) {
+        mix-blend-mode: normal;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .fx-stamp,
+        .fx-stamp-splatter {
+            display: none;
+        }
+    }
+}
+
+/* ============================================================================================
+   RADZEN BRIDGE — the operator pages' component kit (RadzenScope + js/radzen-theme.js)
+
+   Radzen's theme is injected into `vendor`; these redefine its variables from the app's tokens
+   in `shared`, which wins by layer order. Every value is a token, so light/dark and the WCAG
+   pairs follow the app on their own — nothing here needs a dark-mode copy. Surface/ink pairs as
+   everywhere else: a Radzen "danger" badge or button is the danger surface with danger text.
+   ============================================================================================ */
+
+@layer shared {
+    :root {
+        --rz-text-font-family: var(--font-body);
+        --rz-primary: var(--color-brand);
+        --rz-primary-light: color-mix(in srgb, var(--color-brand) 80%, var(--color-card));
+        --rz-primary-lighter: var(--brand-a08);
+        --rz-primary-dark: color-mix(in srgb, var(--color-brand) 80%, var(--color-text-primary));
+        --rz-primary-darker: color-mix(in srgb, var(--color-brand) 65%, var(--color-text-primary));
+        --rz-on-primary: var(--color-card);
+        --rz-on-primary-lighter: var(--color-brand-ink);
+        --rz-base-background-color: var(--color-card);
+        --rz-body-background-color: var(--color-surface);
+        --rz-base-50: var(--color-surface);
+        --rz-base-100: var(--color-surface-alt);
+        --rz-base-200: var(--color-surface-alt);
+        --rz-base-300: var(--color-border);
+        --rz-base-400: var(--color-border-strong);
+        --rz-base-500: var(--color-text-muted);
+        --rz-base-600: var(--color-text-muted);
+        --rz-base-700: var(--color-text-secondary);
+        --rz-base-800: var(--color-text-primary);
+        --rz-base-900: var(--color-text-primary);
+        --rz-base: var(--color-surface-alt);
+        --rz-base-light: var(--color-surface);
+        --rz-base-lighter: var(--color-card);
+        --rz-base-dark: var(--color-border-strong);
+        --rz-base-darker: var(--color-text-primary);
+        --rz-on-base: var(--color-text-primary);
+        --rz-on-base-light: var(--color-text-primary);
+        --rz-on-base-lighter: var(--color-text-primary);
+        --rz-on-base-dark: var(--color-text-primary);
+        --rz-on-base-darker: var(--color-card);
+        --rz-text-title-color: var(--color-text-primary);
+        --rz-text-color: var(--color-text-primary);
+        --rz-text-secondary-color: var(--color-text-secondary);
+        --rz-text-disabled-color: var(--color-text-muted);
+        --rz-danger: var(--color-danger-surface);
+        --rz-on-danger: var(--color-danger-text);
+        --rz-success: var(--color-success-surface);
+        --rz-on-success: var(--color-success-text);
+        --rz-warning: var(--color-highlight);
+        --rz-on-warning: var(--color-warning-text);
+        --rz-info: var(--color-brand-surface);
+        --rz-on-info: var(--color-brand-ink);
+        --rz-dialog-mask-background-color: var(--surface-inverse-veil);
+    }
+
+    /* A tab strip scrolls sideways on a phone instead of widening the page. */
+    .rz-tabview-nav {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+}
+
+/* 3D mode (js/depth-diorama.js): sideways drags tilt the diorama; vertical drags still scroll. */
+@layer shared {
+    .comic-strip-container[data-depth-diorama] {
+        touch-action: pan-y;
     }
 }

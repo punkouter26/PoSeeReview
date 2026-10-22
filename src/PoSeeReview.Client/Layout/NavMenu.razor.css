@@ -181,11 +181,10 @@
         flex-shrink: 1;
     }
 
-    /* The wordmark and the link labels collapse to their icons. Visually hidden rather than
-       `display: none`, so the text stays in the accessibility tree — `.visually-hidden` itself
-       is a class, and a media query cannot apply one. */
-    .brand-name,
-    .nav-label {
+    /* The wordmark collapses to its mark. Visually hidden rather than `display: none`, so the
+       text stays in the accessibility tree — `.visually-hidden` itself is a class, and a media
+       query cannot apply one. */
+    .brand-name {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -199,8 +198,21 @@
         min-width: 0;
     }
 
+    /* The link labels stay, tab-bar style under their icons: two bare glyphs and a dot were
+       a guessing game, and "Hall of Fame" fits at this size down to 320px. */
     .nav-item ::deep a {
-        padding: var(--space-sm);
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.125rem;
+        padding: var(--space-3xs) var(--space-xs);
+        border-radius: var(--radius-sm);
+        font-size: var(--text-2xs);
+        font-weight: 600;
+    }
+
+    .nav-icon {
+        width: 1.125rem;
+        height: 1.125rem;
     }
 
     /* Collapse to a dot-only circle: a long name cannot fit a 28px badge. */
@@ -230,26 +242,21 @@
 }
 
 .nav-sound {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
     gap: var(--space-xs);
     padding: var(--space-xs) var(--space-sm);
 }
 
-.nav-volume {
+.nav-sound-row {
     display: flex;
     align-items: center;
-    gap: var(--space-sm);
-    min-height: var(--tap-target);
-    padding: 0 var(--space-sm);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-text-secondary);
+    gap: var(--space-xs);
 }
 
-.nav-volume input {
+.nav-volume {
     flex: 1;
     min-width: 0;
+    min-height: var(--tap-target);
     accent-color: var(--color-brand);
 }
 

@@ -170,11 +170,11 @@ function onDocumentClick(event) {
     const direction = depthOf(url.pathname) >= depthOf(location.pathname) ? 'forward' : 'back';
     try {
         document.documentElement.dataset.navDirection = direction;
-        // Where the finger landed, as a fraction of the viewport: the ink blot that carries a
-        // back navigation spreads from that point (app.css, `posee-ink-blot`).
+        // Where the finger landed: the ink blot that carries a back navigation is centred there
+        // as it grows (app.css, `posee-ink-blot`).
         const style = document.documentElement.style;
-        style.setProperty('--vt-x', `${((event.clientX / (window.innerWidth || 1)) * 100).toFixed(1)}%`);
-        style.setProperty('--vt-y', `${((event.clientY / (window.innerHeight || 1)) * 100).toFixed(1)}%`);
+        style.setProperty('--vt-x', `${Math.round(event.clientX)}px`);
+        style.setProperty('--vt-y', `${Math.round(event.clientY)}px`);
     } catch { /* the transition simply cross-fades */ }
 
     if (onNavigate) {

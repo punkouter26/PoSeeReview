@@ -3,7 +3,11 @@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @inject ModerationClient ModerationApi
+@inject NavigationManager Navigation
+@using Radzen
+@using Radzen.Blazor
 @inject FxService Fx
+@inject DialogService Dialogs
 
 <PageTitle>Moderation - PoSeeReview</PageTitle>
 
@@ -50,93 +54,72 @@
                     comics auto-hide at @_queue.AutoHideThreshold independent reports
                 </p>
 
-                <div class="moderation-list">
-                    @foreach (var item in _queue.Items)
-                    {
-                        <article class="moderation-row elevation-1 @(item.IsReviewed ? "moderation-row--reviewed" : "")">
-                            <header class="moderation-row-head">
-                                <div>
-                                    <h2 class="moderation-name">
-                                        @(string.IsNullOrWhiteSpace(item.RestaurantName) ? "(comic no longer cached)" : item.RestaurantName)
-                                    </h2>
-                                    <p class="moderation-place">@item.PlaceId</p>
-                                </div>
-                                <div class="moderation-badges">
-                                    @if (item.IsSuppressed)
-                                    {
-                                        <span class="moderation-badge moderation-badge--suppressed">Suppressed</span>
-                                    }
-                                    else if (item.IsHidden)
-                                    {
-                                        <span class="moderation-badge moderation-badge--hidden">Hidden</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="moderation-badge moderation-badge--live">Live</span>
-                                    }
+                @* A sortable grid rather than a stack of cards: an operator scans and compares many
+                   rows, which a card per item made a long scroll. Remove still names what it erases,
+                   now in a confirm dialog instead of an inline panel that pushed the row apart. *@
+                <div class="moderation-grid">
+                <RadzenScope>
+                    <RadzenDataGrid TItem="ModerationItemDto" Data="@_queue.Items" class="moderation-list"
+                                    AllowSorting="true" AllowPaging="true" PageSize="20" Density="Density.Compact"
+                                    RowRender="@MarkReviewed" EmptyText="Nothing to review.">
+                        <Columns>
+                            <RadzenDataGridColumn Property="@nameof(ModerationItemDto.RestaurantName)" Title="Restaurant" MinWidth="14rem">
+                                <Template Context="item">
+                                    <span class="moderation-name">@(string.IsNullOrWhiteSpace(item.RestaurantName) ? "(comic no longer cached)" : item.RestaurantName)</span>
+                                    <span class="moderation-place">@item.PlaceId</span>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Title="State" Sortable="false" Width="9rem">
+                                <Template Context="item">
+                                    <RadzenBadge BadgeStyle="@StateStyle(item)" Text="@StateText(item)" />
                                     @if (!item.IsReviewed)
                                     {
-                                        <span class="moderation-badge moderation-badge--new">Unreviewed</span>
+                                        <RadzenBadge BadgeStyle="BadgeStyle.Info" Text="New" />
                                     }
-                                </div>
-                            </header>
-
-                            <dl class="moderation-facts">
-                                <div><dt>Reports</dt><dd>@item.ReportCount</dd></div>
-                                <div><dt>Top reason</dt><dd>@item.TopReason</dd></div>
-                                <div><dt>Last activity</dt><dd>@RelativeTime.Format(item.LastReportedAt)</dd></div>
-                                <div><dt>Comic</dt><dd>@(item.HasLiveComic ? "cached" : "expired")</dd></div>
-                            </dl>
-
-                            @if (!string.IsNullOrWhiteSpace(item.Reason))
-                            {
-                                <p class="moderation-note">@item.Reason</p>
-                            }
-
-                            <div class="moderation-actions">
-                                <a class="btn btn-secondary" href="@($"/comic/{item.PlaceId}")" target="_blank" rel="noopener">Open</a>
-
-                                @if (item.IsHidden)
-                                {
-                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
-                                            @onclick="() => ActAsync(item, ModerationAction.Restore)">Clear</button>
-                                }
-                                else
-                                {
-                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
-                                            @onclick="() => ActAsync(item, ModerationAction.Hide)">Hide</button>
-                                }
-
-                                @if (!item.IsSuppressed)
-                                {
-                                    <button type="button" class="btn btn-secondary" disabled="@_isBusy"
-                                            @onclick="() => ActAsync(item, ModerationAction.Suppress)"
-                                            title="Blocks anyone from drawing this restaurant again">Suppress</button>
-                                }
-
-                                @* Two steps, and the confirm names what it erases. This deletes the
-                                   comic, the blob, the leaderboard row, the permanent archive entry
-                                   and every user's kept copy, and none of it comes back. *@
-                                @if (_confirmingRemoval == item.PlaceId)
-                                {
-                                    <div class="moderation-confirm" role="alert">
-                                        <span>Erase the comic, its image, its leaderboard and archive entries, and every kept copy? This cannot be undone.</span>
-                                        <div class="moderation-confirm-actions">
-                                            <button type="button" class="btn btn-primary" disabled="@_isBusy"
-                                                    @onclick="() => ActAsync(item, ModerationAction.Remove)">Yes, remove</button>
-                                            <button type="button" class="btn btn-secondary"
-                                                    @onclick="() => _confirmingRemoval = null">Cancel</button>
-                                        </div>
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Property="@nameof(ModerationItemDto.ReportCount)" Title="Reports" Width="6rem" TextAlign="TextAlign.End" />
+                            <RadzenDataGridColumn Property="@nameof(ModerationItemDto.TopReason)" Title="Top reason" Width="9rem" />
+                            <RadzenDataGridColumn Property="@nameof(ModerationItemDto.LastReportedAt)" Title="Last activity" Width="9rem"
+                                                  SortOrder="SortOrder.Descending">
+                                <Template Context="item">@RelativeTime.Format(item.LastReportedAt)</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Property="@nameof(ModerationItemDto.HasLiveComic)" Title="Comic" Width="6rem">
+                                <Template Context="item">@(item.HasLiveComic ? "cached" : "expired")</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Title="Actions" Sortable="false" MinWidth="20rem">
+                                <Template Context="item">
+                                    <div class="moderation-actions">
+                                        <RadzenButton Text="Open" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base"
+                                                      Click="@(() => Navigation.NavigateTo($"/comic/{item.PlaceId}"))" />
+                                        @if (item.IsHidden)
+                                        {
+                                            <RadzenButton Text="Clear" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
+                                                          Click="@(() => ActAsync(item, ModerationAction.Restore))" />
+                                        }
+                                        else
+                                        {
+                                            <RadzenButton Text="Hide" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
+                                                          Click="@(() => ActAsync(item, ModerationAction.Hide))" />
+                                        }
+                                        @if (!item.IsSuppressed)
+                                        {
+                                            <RadzenButton Text="Suppress" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
+                                                          title="Blocks anyone from drawing this restaurant again"
+                                                          Click="@(() => ActAsync(item, ModerationAction.Suppress))" />
+                                        }
+                                        <RadzenButton Text="Remove" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Disabled="@_isBusy"
+                                                      Click="@(() => ConfirmRemoveAsync(item))" />
                                     </div>
-                                }
-                                else
-                                {
-                                    <button type="button" class="btn btn-secondary moderation-remove" disabled="@_isBusy"
-                                            @onclick="() => _confirmingRemoval = item.PlaceId">Remove</button>
-                                }
-                            </div>
-                        </article>
-                    }
+                                    @if (!string.IsNullOrWhiteSpace(item.Reason))
+                                    {
+                                        <p class="moderation-note">@item.Reason</p>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenScope>
                 </div>
             }
         </Authorized>
@@ -148,7 +131,6 @@
 
     private ModerationQueueDto? _queue;
     private string? _error;
-    private string? _confirmingRemoval;
     private bool _isBusy;
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -181,11 +163,41 @@
         }
     }
 
+    private static string StateText(ModerationItemDto item) =>
+        item.IsSuppressed ? "Suppressed" : item.IsHidden ? "Hidden" : "Live";
+
+    private static BadgeStyle StateStyle(ModerationItemDto item) =>
+        item.IsSuppressed ? BadgeStyle.Danger : item.IsHidden ? BadgeStyle.Warning : BadgeStyle.Success;
+
+    private static void MarkReviewed(RowRenderEventArgs<ModerationItemDto> args)
+    {
+        if (args.Data is { IsReviewed: true })
+        {
+            args.Attributes.Add("data-reviewed", true);
+        }
+    }
+
+    /// <summary>
+    /// The confirm names what it erases: the comic, the blob, the leaderboard row, the permanent
+    /// archive entry and every user's kept copy, none of which comes back.
+    /// </summary>
+    private async Task ConfirmRemoveAsync(ModerationItemDto item)
+    {
+        var confirmed = await Dialogs.Confirm(
+            "Erase the comic, its image, its leaderboard and archive entries, and every kept copy? This cannot be undone.",
+            $"Remove {(string.IsNullOrWhiteSpace(item.RestaurantName) ? item.PlaceId : item.RestaurantName)}?",
+            new ConfirmOptions { OkButtonText = "Yes, remove", CancelButtonText = "Cancel" });
+
+        if (confirmed == true)
+        {
+            await ActAsync(item, ModerationAction.Remove);
+        }
+    }
+
     private async Task ActAsync(ModerationItemDto item, ModerationAction action)
     {
         _isBusy = true;
         _error = null;
-        _confirmingRemoval = null;
 
         try
         {

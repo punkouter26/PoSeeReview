@@ -5,6 +5,42 @@
     gap: var(--space-sm);
 }
 
+/* ── Landing: search beside what is already drawn ─────────────────────────────────────────── */
+.discovery-head,
+.discovery-search,
+.landing-side {
+    display: grid;
+    /* minmax(0, …), not the implicit auto track, or the search field's intrinsic width sets the
+       column's floor and the compact bar pushes a phone page sideways. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-sm);
+    align-content: start;
+    min-width: 0;
+}
+
+.landing-side {
+    gap: var(--space-md);
+}
+
+/* A phone keeps the top three; the desktop column has room for five. ::deep because the rows
+   are ComicRow's elements, which carry its scope attribute, not this page's. */
+@media (max-width: 63.99rem) {
+    .landing-board ::deep .comic-row:nth-child(n+4) {
+        display: none;
+    }
+}
+
+@media (min-width: 64rem) {
+    .discovery-head--split {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: var(--space-lg);
+    }
+
+    .discovery-head--split .location-prompt {
+        width: 100%;
+    }
+}
+
 /* ── Hero ─────────────────────────────────────────────────────────────────────────────────── */
 .app-header {
     position: relative;
@@ -92,6 +128,42 @@
     outline: none;
 }
 
+/* With results the bar holds the query, the count and the List/Map switch in one strip. */
+.location-prompt--compact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-xs) var(--space-sm);
+    width: 100%;
+    padding: var(--space-xs);
+    animation: none;
+}
+
+.location-prompt--compact .search-row {
+    flex: 1 1 26rem;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+.results-meta {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    margin-inline-start: auto;
+    padding-inline: var(--space-2xs);
+}
+
+.clear-search-btn {
+    flex-shrink: 0;
+}
+
+/* The bar's own × clears the results; the field's native one beside it read as a duplicate. */
+.location-prompt--compact .search-field::-webkit-search-cancel-button {
+    display: none;
+}
+
 /* On a phone the field takes its own row and the two buttons share the next, so "Near me"
    keeps its label — an unlabelled pin was the page's primary action. */
 @media (max-width: 40rem) {
@@ -111,6 +183,29 @@
 
     .app-header h1 {
         font-size: var(--text-xl);
+    }
+
+    /* Compact: one row — the pin, the field, Search, clear — then the count and switch. */
+    .location-prompt--compact .search-field {
+        flex-basis: auto;
+        order: 0;
+    }
+
+    .location-prompt--compact .search-row > .btn {
+        flex: 0 0 auto;
+    }
+
+    .location-prompt--compact .location-btn-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .results-meta {
+        flex-basis: 100%;
     }
 }
 
@@ -147,28 +242,9 @@
 }
 
 /* ── Results ──────────────────────────────────────────────────────────────────────────────── */
-.results-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-sm);
-    margin-bottom: var(--space-sm);
-}
-
-.new-search-btn {
-    padding-inline: var(--space-md);
-    font-size: var(--text-sm);
-}
-
 .layout-toggle {
     display: flex;
     gap: var(--space-2xs);
-}
-
-/* The picked place's card, at card width rather than stretched under a full-width map. */
-.map-selection {
-    width: min(24rem, 100%);
 }
 
 /* Laid over the map (MapView's overlay slot), so they carry their own shadow to read on tiles. */
@@ -184,12 +260,6 @@
     }
 }
 
-.map-overlay-surface {
-    display: inline-flex;
-    border-radius: var(--radius-pill);
-    background: var(--color-card);
-}
-
 .map-overlay-hint {
     padding: var(--space-2xs) var(--space-sm);
     border-radius: var(--radius-pill);
@@ -200,9 +270,61 @@
     box-shadow: var(--shadow-sm);
 }
 
-.nearest {
+/* ── Map + cards ──────────────────────────────────────────────────────────────────────────────
+   Stacked on a phone (a shorter map, the closest three cards under it), side by side from 64rem:
+   the map holds what is left of the viewport and the cards scroll beside it, so a desktop never
+   has to choose between the map and the list. `--map-height` is read by MapView's canvas. */
+.discovery-split {
+    --map-height: clamp(15rem, 42dvh, 30rem);
+    display: grid;
+    gap: var(--space-sm);
+}
+
+.map-skeleton {
+    height: var(--map-height);
+    border-radius: var(--radius-card);
+}
+
+.results-pane {
     display: grid;
     gap: var(--space-xs);
+    align-content: start;
+    min-width: 0;
+}
+
+.results-pane-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+    gap: var(--space-sm);
+}
+
+@media (max-width: 63.99rem) {
+    .results-pane-list ::deep .restaurant-card:nth-child(n+4) {
+        display: none;
+    }
+}
+
+@media (min-width: 64rem) {
+    .discovery-split {
+        --map-height: clamp(22rem, calc(100dvh - 12rem), 44rem);
+        grid-template-columns: minmax(0, 1.7fr) minmax(19rem, 1fr);
+        align-items: start;
+    }
+
+    .results-pane {
+        max-height: var(--map-height);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding-inline-end: var(--space-2xs);
+    }
+
+    .results-pane-list {
+        grid-template-columns: 1fr;
+    }
+
+    .pane-show-all {
+        display: none;
+    }
 }
 
 .nearest-head {
@@ -215,12 +337,6 @@
 
 .nearest-head .results-info {
     margin: 0;
-}
-
-.nearest-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
-    gap: var(--space-sm);
 }
 
 .results-count,

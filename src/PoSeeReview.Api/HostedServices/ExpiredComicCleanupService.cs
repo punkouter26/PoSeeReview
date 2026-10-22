@@ -120,9 +120,7 @@ public class ExpiredComicCleanupService : BackgroundService
                     // first turns a failed blob delete into an orphan nothing ever retries.
                     if (!comic.Id.IsEmpty)
                     {
-                        // Do not delete the blob if a leaderboard entry still references it.
-                        // Leaderboard entries are permanent; the comic record may expire but
-                        // the associated image should persist as long as the entry exists.
+                        // A blob the board row points at is the one the weekly archive filed.
                         var leaderboardEntry = await leaderboardRepository.GetByPlaceIdAsync(comic.PlaceId);
                         var blobIsReferencedByLeaderboard =
                             leaderboardEntry != null &&
@@ -131,9 +129,12 @@ public class ExpiredComicCleanupService : BackgroundService
 
                         if (blobIsReferencedByLeaderboard)
                         {
+                            // The live board mirrors the live comic, so the row goes with it. The
+                            // blob stays: the weekly archive still shows this artwork.
+                            await leaderboardRepository.DeleteAsync(leaderboardEntry!.PlaceId, leaderboardEntry.Region);
                             _logger.LogInformation(
-                                "Skipping blob deletion for comic {ComicId} ({PlaceId}) \u2014 leaderboard entry still references it",
-                                comic.Id.Value, comic.PlaceId.Value);
+                                "Removed {PlaceId} from the live board; kept blob {ComicId} for the weekly archive",
+                                comic.PlaceId.Value, comic.Id.Value);
                         }
                         else
                         {

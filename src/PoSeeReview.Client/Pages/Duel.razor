@@ -47,6 +47,7 @@
     private ComicDto? _b;
     private bool _failed;
     private bool _clash;
+    private bool _cardLoaded;
     private int _seamHandle;
     private ElementReference _seam;
 
@@ -59,20 +60,28 @@
         _ => ""
     };
 
-    /// <summary>Only for the names on the two links; the page works without them.</summary>
+    /// <summary>The names on the two links and the scores the clash leans on; the page works without them.</summary>
     protected override async Task OnParametersSetAsync()
     {
         _failed = false;
         (_a, _b) = (await TryGetAsync(A), await TryGetAsync(B));
+        await ClashAsync();
+    }
+
+    private async Task OnCardLoadedAsync()
+    {
+        _cardLoaded = true;
+        await ClashAsync();
     }
 
     /// <summary>
-    /// The card is on screen: strike the arc. Needs both scores — the seam leans toward the
-    /// stranger comic — so a duel whose comics could not be read keeps the plain card.
+    /// Strikes the arc once the card is on screen AND both scores are known — the seam leans
+    /// toward the stranger comic. Either can finish first (a cached card beats the two reads), so
+    /// both call this. A duel whose comics could not be read keeps the plain card.
     /// </summary>
-    private async Task OnCardLoadedAsync()
+    private async Task ClashAsync()
     {
-        if (_a is null || _b is null || _clash)
+        if (!_cardLoaded || _a is null || _b is null || _clash)
         {
             return;
         }

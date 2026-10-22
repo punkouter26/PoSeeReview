@@ -4,6 +4,8 @@
 @using PoSeeReview.Shared.Dtos
 @inject ApiClient ApiClient
 @inject ILogger<Diagnostics> Logger
+@using Radzen
+@using Radzen.Blazor
 @inject FxService Fx
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
@@ -22,162 +24,175 @@ else
            Width="PageShell.ShellWidth.Wide"
            Class="diagnostics-container">
 
-    @* Effect and sound preferences. Frame-budget numbers are in the console: poseeFx.stats(). *@
-    <section class="fx-panel glass">
-        <h2>Graphics &amp; audio</h2>
-
-        <div class="fx-controls">
-            <div class="fx-control-row">
-                <span class="fx-control-label">Effects tier</span>
-                <div class="fx-tier-buttons" role="group" aria-label="Effects tier">
-                    @foreach (var tier in new[] { FxTier.Off, FxTier.Lite, FxTier.Full })
-                    {
-                        <button type="button"
-                                class="chip-toggle @(_caps.Tier == tier ? "chip-toggle--active" : "")"
-                                aria-pressed="@(_caps.Tier == tier ? "true" : "false")"
-                                disabled="@_caps.ReducedMotion"
-                                @onclick="() => SetTierAsync(tier)">
-                            @tier
-                        </button>
-                    }
-                </div>
-            </div>
-
-            <div class="fx-control-row">
-                <span class="fx-control-label">Sound</span>
-                <button type="button" class="chip-toggle @(_audioEnabled ? "chip-toggle--active" : "")"
-                        aria-pressed="@(_audioEnabled ? "true" : "false")" aria-label="Sound"
-                        @onclick="ToggleAudioAsync">
-                    @(_audioEnabled ? "On" : "Off")
-                </button>
-            </div>
-
-            @* Haptics INHERIT the sound preference and can be switched off on their own — never
-               on on their own. Someone who muted the app did not thereby ask to be buzzed
-               instead. Hidden where the Vibration API does not exist, because a toggle that
-               cannot do anything is worse than no toggle. *@
-            @if (_caps.Haptics)
-            {
-                <div class="fx-control-row">
-                    <span class="fx-control-label">Haptics</span>
-                    <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
-                            aria-pressed="@(_haptics.Enabled ? "true" : "false")" aria-label="Haptics"
-                            @onclick="ToggleHapticsAsync">
-                        @(_haptics.Enabled ? "On" : "Off")@(_haptics.Explicit ? "" : " (follows sound)")
-                    </button>
-                </div>
-            }
-        </div>
-
-        <ul class="fx-notes">
-            @if (_caps.ReducedMotion)
-            {
-                <li><strong>The OS asked for reduced motion.</strong> The tier is pinned to Off and the control above is disabled — offering a toggle that ignores the system preference would be worse than hiding it.</li>
-            }
-            @if (_caps.AutoDowngraded)
-            {
-                <li class="fx-bad"><strong>Auto-downgraded.</strong> Frame time stayed over budget for ~1.5s, so the watchdog dropped a tier. This is not persisted; a reload restores your choice.</li>
-            }
-        </ul>
-    </section>
-
-    @if (isLoading)
-    {
-        <LoadingIndicator Message="Checking system health..." />
-    }
-    else if (healthStatus == null)
-    {
-        <StateCard Icon="⚠️" Title="Unable to retrieve health status" Alert="true">
-            <ChildContent>@errorMessage</ChildContent>
-            <Actions><button type="button" class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button></Actions>
-        </StateCard>
-    }
-    else
-    {
-        <div class="health-summary @GetStatusClass(healthStatus.Status)">
-            <div class="status-icon">@GetStatusIcon(healthStatus.Status)</div>
-            <div class="status-details">
-                <h2>Overall Status: @healthStatus.Status</h2>
-                <p><strong>Checked:</strong> @healthStatus.Timestamp.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
-                <p><strong>Duration:</strong> @healthStatus.DurationMilliseconds.ToString("F0") ms</p>
-                <p><strong>Current User:</strong> @(diagnosticsSnapshot?.CurrentUserId ?? "anonymous")</p>
-            </div>
-        </div>
-
-        <div class="health-checks">
-            <h3>Dependency Health Checks</h3>
-            @foreach (var check in healthStatus.Checks)
-            {
-                <div class="health-check-card @GetStatusClass(check.Status)">
-                    <div class="check-header">
-                        <span class="check-icon">@GetStatusIcon(check.Status)</span>
-                        <h4>@FormatCheckName(check.Name)</h4>
-                        <span class="check-status">@check.Status</span>
+    <Header>
+        <button type="button" class="btn btn-secondary" @onclick="LoadHealthStatus" disabled="@isLoading">Refresh</button>
+    </Header>
+    <ChildContent>
+    @* One tab strip instead of five stacked sections: on a phone the page was 2.3 screens of
+       collapsed and expanded panels. Client render mode keeps every tab in the DOM, so a hidden
+       tab still answers a selector. Frame-budget numbers are in the console: poseeFx.stats(). *@
+    <RadzenScope>
+        <RadzenTabs RenderMode="TabRenderMode.Client" class="diagnostics-tabs">
+            <Tabs>
+                <RadzenTabsItem Text="Health">
+                @if (isLoading)
+                {
+                    <LoadingIndicator Message="Checking system health..." />
+                }
+                else if (healthStatus == null)
+                {
+                    <StateCard Icon="⚠️" Title="Unable to retrieve health status" Alert="true">
+                        <ChildContent>@errorMessage</ChildContent>
+                        <Actions><button type="button" class="btn btn-primary" @onclick="LoadHealthStatus">Retry</button></Actions>
+                    </StateCard>
+                }
+                else
+                {
+                    <div class="health-summary @GetStatusClass(healthStatus.Status)">
+                        <div class="status-icon">@GetStatusIcon(healthStatus.Status)</div>
+                        <div class="status-details">
+                            <h2>Overall Status: @healthStatus.Status</h2>
+                            <p><strong>Checked:</strong> @healthStatus.Timestamp.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
+                            <p><strong>Duration:</strong> @healthStatus.DurationMilliseconds.ToString("F0") ms</p>
+                            <p><strong>Current User:</strong> @(diagnosticsSnapshot?.CurrentUserId ?? "anonymous")</p>
+                        </div>
                     </div>
-                    <div class="check-body">
-                        <p class="check-description">@check.Description</p>
-                        <div class="check-meta">
-                            <span><strong>Duration:</strong> @check.DurationMilliseconds.ToString("F0") ms</span>
-                            @if (!string.IsNullOrEmpty(check.Exception))
+
+                    <div class="health-checks">
+                        <h3>Dependency Health Checks</h3>
+                        @foreach (var check in healthStatus.Checks)
+                        {
+                            <div class="health-check-card @GetStatusClass(check.Status)">
+                                <div class="check-header">
+                                    <span class="check-icon">@GetStatusIcon(check.Status)</span>
+                                    <h4>@FormatCheckName(check.Name)</h4>
+                                    <span class="check-status">@check.Status</span>
+                                </div>
+                                <div class="check-body">
+                                    <p class="check-description">@check.Description</p>
+                                    <div class="check-meta">
+                                        <span><strong>Duration:</strong> @check.DurationMilliseconds.ToString("F0") ms</span>
+                                        @if (!string.IsNullOrEmpty(check.Exception))
+                                        {
+                                            <details>
+                                                <summary class="error-summary">Error Details</summary>
+                                                <pre class="error-details">@check.Exception</pre>
+                                            </details>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                </RadzenTabsItem>
+                @if (diagnosticsSnapshot != null)
+                {
+                    <RadzenTabsItem Text="Runtime">
+                    <div class="diagnostics-section">
+                        <h2 class="visually-hidden">Runtime snapshot</h2>
+                        <div class="key-grid">
+                            <div class="key-card"><div class="key-name">Environment</div><div class="key-value">@diagnosticsSnapshot.Environment</div></div>
+                            <div class="key-card"><div class="key-name">Machine</div><div class="key-value">@diagnosticsSnapshot.MachineName</div></div>
+                            <div class="key-card"><div class="key-name">.NET</div><div class="key-value">@diagnosticsSnapshot.DotNetVersion</div></div>
+                            <div class="key-card"><div class="key-name">Build</div><div class="key-value">@diagnosticsSnapshot.BuildStamp</div></div>
+                            <div class="key-card"><div class="key-name">OS</div><div class="key-value">@diagnosticsSnapshot.OsVersion</div></div>
+                        </div>
+                    </div>
+                    </RadzenTabsItem>
+                    <RadzenTabsItem Text="Keys">
+                    <div class="diagnostics-section">
+                        <h2 class="visually-hidden">Critical keys</h2>
+                        <div class="key-grid">
+                            @foreach (var key in diagnosticsSnapshot.KeyStatus)
                             {
-                                <details>
-                                    <summary class="error-summary">Error Details</summary>
-                                    <pre class="error-details">@check.Exception</pre>
-                                </details>
+                                <div class="key-card @(key.Exists ? "key-present" : "key-missing")">
+                                    <div class="key-name">@key.Key</div>
+                                    <div class="key-value">@(key.Value ?? "missing")</div>
+                                </div>
                             }
                         </div>
                     </div>
-                </div>
-            }
-        </div>
-
-        @if (diagnosticsSnapshot != null)
-        {
-            <details class="diagnostics-section">
-                <summary><h3>Runtime Snapshot</h3></summary>
-                <div class="key-grid">
-                    <div class="key-card"><div class="key-name">Environment</div><div class="key-value">@diagnosticsSnapshot.Environment</div></div>
-                    <div class="key-card"><div class="key-name">Machine</div><div class="key-value">@diagnosticsSnapshot.MachineName</div></div>
-                    <div class="key-card"><div class="key-name">.NET</div><div class="key-value">@diagnosticsSnapshot.DotNetVersion</div></div>
-                    <div class="key-card"><div class="key-name">Build</div><div class="key-value">@diagnosticsSnapshot.BuildStamp</div></div>
-                    <div class="key-card"><div class="key-name">OS</div><div class="key-value">@diagnosticsSnapshot.OsVersion</div></div>
-                </div>
-            </details>
-
-            <details class="diagnostics-section">
-                <summary><h3>Critical Keys</h3></summary>
-                <div class="key-grid">
-                    @foreach (var key in diagnosticsSnapshot.KeyStatus)
-                    {
-                        <div class="key-card @(key.Exists ? "key-present" : "key-missing")">
-                            <div class="key-name">@key.Key</div>
-                            <div class="key-value">@(key.Value ?? "missing")</div>
+                    </RadzenTabsItem>
+                    <RadzenTabsItem Text="Config">
+                    <div class="diagnostics-section">
+                        <h2 class="visually-hidden">Configuration values</h2>
+                        <div class="config-table">
+                            @foreach (var item in diagnosticsSnapshot.Config)
+                            {
+                                <div class="config-row">
+                                    <div class="config-key">@item.Key</div>
+                                    <div class="config-value">@item.Value</div>
+                                </div>
+                            }
                         </div>
-                    }
-                </div>
-            </details>
+                    </div>
+                    </RadzenTabsItem>
+                }
+                <RadzenTabsItem Text="Effects">
+                @* Effect and sound preferences. Frame-budget numbers are in the console: poseeFx.stats(). *@
+                <section class="fx-panel glass">
+                    <h2 class="visually-hidden">Graphics &amp; audio</h2>
 
-            <details class="diagnostics-section">
-                <summary><h3>Configuration Values</h3></summary>
-                <div class="config-table">
-                    @foreach (var item in diagnosticsSnapshot.Config)
-                    {
-                        <div class="config-row">
-                            <div class="config-key">@item.Key</div>
-                            <div class="config-value">@item.Value</div>
+                    <div class="fx-controls">
+                        <div class="fx-control-row">
+                            <span class="fx-control-label">Effects tier</span>
+                            <div class="fx-tier-buttons" role="group" aria-label="Effects tier">
+                                @foreach (var tier in new[] { FxTier.Off, FxTier.Lite, FxTier.Full })
+                                {
+                                    <button type="button"
+                                            class="chip-toggle @(_caps.Tier == tier ? "chip-toggle--active" : "")"
+                                            aria-pressed="@(_caps.Tier == tier ? "true" : "false")"
+                                            disabled="@_caps.ReducedMotion"
+                                            @onclick="() => SetTierAsync(tier)">
+                                        @tier
+                                    </button>
+                                }
+                            </div>
                         </div>
-                    }
-                </div>
-            </details>
-        }
 
-        <div class="actions">
-            <button class="btn btn-primary" @onclick="LoadHealthStatus">
-                🔄 Refresh Status
-            </button>
-            <a href="/" class="btn btn-secondary">← Back to Home</a>
-        </div>
-    }
+                        <div class="fx-control-row">
+                            <span class="fx-control-label">Sound</span>
+                            <button type="button" class="chip-toggle @(_audioEnabled ? "chip-toggle--active" : "")"
+                                    aria-pressed="@(_audioEnabled ? "true" : "false")" aria-label="Sound"
+                                    @onclick="ToggleAudioAsync">
+                                @(_audioEnabled ? "On" : "Off")
+                            </button>
+                        </div>
+
+                        @* Haptics INHERIT the sound preference and can be switched off on their own — never
+                           on on their own. Someone who muted the app did not thereby ask to be buzzed
+                           instead. Hidden where the Vibration API does not exist, because a toggle that
+                           cannot do anything is worse than no toggle. *@
+                        @if (_caps.Haptics)
+                        {
+                            <div class="fx-control-row">
+                                <span class="fx-control-label">Haptics</span>
+                                <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
+                                        aria-pressed="@(_haptics.Enabled ? "true" : "false")" aria-label="Haptics"
+                                        @onclick="ToggleHapticsAsync">
+                                    @(_haptics.Enabled ? "On" : "Off")@(_haptics.Explicit ? "" : " (follows sound)")
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <ul class="fx-notes">
+                        @if (_caps.ReducedMotion)
+                        {
+                            <li><strong>The OS asked for reduced motion.</strong> The tier is pinned to Off and the control above is disabled — offering a toggle that ignores the system preference would be worse than hiding it.</li>
+                        }
+                        @if (_caps.AutoDowngraded)
+                        {
+                            <li class="fx-bad"><strong>Auto-downgraded.</strong> Frame time stayed over budget for ~1.5s, so the watchdog dropped a tier. This is not persisted; a reload restores your choice.</li>
+                        }
+                    </ul>
+                </section>
+                </RadzenTabsItem>
+            </Tabs>
+        </RadzenTabs>
+    </RadzenScope>
+    </ChildContent>
 </PageShell>
 }
 

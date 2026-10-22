@@ -250,3 +250,20 @@
     stop-color: var(--color-brand-alt);
 }
 
+
+/* The generation wait. Isolated, so the ink canvas's negative z-index keeps it behind the stepper
+   and storyboard without escaping the stage. It overhangs the column a little: the sim fades at
+   its own edges, and a hard canvas border around ink would read as a box. */
+.generation-stage {
+    position: relative;
+    isolation: isolate;
+}
+
+.ink-fluid {
+    position: absolute;
+    inset: calc(-1 * var(--space-lg)) calc(-1 * var(--space-md));
+    width: calc(100% + 2 * var(--space-md));
+    height: calc(100% + 2 * var(--space-lg));
+    z-index: -1;
+    pointer-events: none;
+}
