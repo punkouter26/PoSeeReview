@@ -13,7 +13,15 @@ public sealed class DiscoveryState
 
     public List<RestaurantDto> Restaurants { get; private set; } = [];
 
+    /// <summary>Raised by <see cref="Clear"/>, so a discovery page already on screen drops its results too.</summary>
+    public event Action? Cleared;
+
     public void Set(string? query, List<RestaurantDto> restaurants) => (Query, Restaurants) = (query, restaurants);
 
-    public void Clear() => Set(null, []);
+    /// <summary>Back to the landing — what the brand link does.</summary>
+    public void Clear()
+    {
+        Set(null, []);
+        Cleared?.Invoke();
+    }
 }

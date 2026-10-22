@@ -141,7 +141,9 @@
 
 .location-prompt--compact .search-row {
     flex: 1 1 26rem;
-    flex-wrap: nowrap;
+    /* The count and List/Map switch live in this row now; wrap lets them drop to a second line
+       on a phone instead of crushing the search field. */
+    flex-wrap: wrap;
     min-width: 0;
 }
 
@@ -159,8 +161,8 @@
     flex-shrink: 0;
 }
 
-/* The bar's own × clears the results; the field's native one beside it read as a duplicate. */
-.location-prompt--compact .search-field::-webkit-search-cancel-button {
+/* The bar's own × clears the field; the native one beside it read as a duplicate. */
+.search-field::-webkit-search-cancel-button {
     display: none;
 }
 

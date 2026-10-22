@@ -3,11 +3,13 @@
 @using PoSeeReview.Shared.Dtos
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject DiscoveryState Discovery
 @implements IDisposable
 
 <div class="top-row">
     <div class="nav-shell">
-        <a class="navbar-brand" href="">
+        @* Home is the landing, not the last search: discovery restores its results otherwise. *@
+        <a class="navbar-brand" href="" @onclick="Discovery.Clear">
             <svg class="brand-icon" width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true">
                 <rect x="1" y="1" width="11" height="11" rx="2" fill="currentColor" fill-opacity="0.9" stroke="currentColor" stroke-width="0.5"/>
                 <rect x="15" y="1" width="11" height="11" rx="2" fill="currentColor" fill-opacity="0.7" stroke="currentColor" stroke-width="0.5"/>

@@ -10,6 +10,12 @@
 
 /* Settled rows recede rather than disappear — a moderator needs to be able to find what they
    already decided, just not to trip over it. */
+/* The DataGrid's columns carry minimum widths; scroll them inside the grid, never the document. */
+.moderation-grid {
+    min-width: 0;
+    overflow-x: auto;
+}
+
 /* A data attribute, not a class: a RowRender "class" replaces Radzen's own row class. */
 .moderation-grid ::deep [data-reviewed] {
     opacity: 0.72;
@@ -45,6 +51,67 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3xs);
+}
+
+.moderation-menu-btn {
+    --btn-pad-x: var(--space-2xs);
+    font-weight: 700;
+}
+
+/* The UA sheet centres a popover; pin the row menu to the top-right instead so it reads as a
+   dropdown from the actions column. On a phone the shared .popover-menu turns it into a sheet. */
+.moderation-popover {
+    inset: auto;
+    top: calc(3.75rem + env(safe-area-inset-top));
+    right: max(var(--space-md), env(safe-area-inset-right));
+    margin: 0;
+}
+
+.moderation-menu-item--danger {
+    color: var(--color-danger-text);
+}
+
+.moderation-menu-item--danger:hover {
+    background: var(--color-danger-surface);
+}
+
+/* The triage drawer: a right-hand panel over a scrim, kept out of the grid so it can never
+   push rows around. */
+.moderation-drawer-scrim {
+    position: fixed;
+    inset: 0;
+    background: var(--surface-inverse-veil);
+    z-index: 100;
+}
+
+.moderation-drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: min(24rem, 100vw);
+    background: var(--color-surface);
+    border-inline-start: 1px solid var(--color-border-strong);
+    padding: var(--space-lg);
+    z-index: 101;
+    display: grid;
+    gap: var(--space-md);
+    align-content: start;
+    overflow-y: auto;
+    box-shadow: var(--shadow-md);
+}
+
+.moderation-drawer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm);
+}
+
+.moderation-drawer-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
 }
 
 /* AI triage: advice beside the row, never an action. The rule colour says which way it leans. */

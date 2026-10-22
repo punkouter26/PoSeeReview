@@ -57,32 +57,33 @@ else
                         </div>
                     </div>
 
-                    <div class="health-checks">
-                        <h3>Dependency Health Checks</h3>
-                        @foreach (var check in healthStatus.Checks)
-                        {
-                            <div class="health-check-card @GetStatusClass(check.Status)">
-                                <div class="check-header">
-                                    <span class="check-icon">@GetStatusIcon(check.Status)</span>
-                                    <h4>@FormatCheckName(check.Name)</h4>
-                                    <span class="check-status">@check.Status</span>
-                                </div>
-                                <div class="check-body">
-                                    <p class="check-description">@check.Description</p>
-                                    <div class="check-meta">
-                                        <span><strong>Duration:</strong> @check.DurationMilliseconds.ToString("F0") ms</span>
-                                        @if (!string.IsNullOrEmpty(check.Exception))
-                                        {
-                                            <details>
-                                                <summary class="error-summary">Error Details</summary>
-                                                <pre class="error-details">@check.Exception</pre>
-                                            </details>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
+                    <RadzenDataGrid TItem="HealthCheckStatusDto" Data="@healthStatus.Checks" AllowSorting="true" Density="Density.Compact">
+                        <Columns>
+                            <RadzenDataGridColumn Property="@nameof(HealthCheckStatusDto.Name)" Title="Check" MinWidth="12rem">
+                                <Template Context="check">@FormatCheckName(check.Name)</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Title="Status" Sortable="false" Width="8rem">
+                                <Template Context="check">
+                                    <RadzenBadge BadgeStyle="@StatusBadgeStyle(check.Status)" Text="@check.Status" />
+                                </Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Property="@nameof(HealthCheckStatusDto.Description)" Title="Description" />
+                            <RadzenDataGridColumn Property="@nameof(HealthCheckStatusDto.DurationMilliseconds)" Title="Duration" Width="7rem" TextAlign="TextAlign.End">
+                                <Template Context="check">@check.DurationMilliseconds.ToString("F0") ms</Template>
+                            </RadzenDataGridColumn>
+                            <RadzenDataGridColumn Title="Error" Sortable="false">
+                                <Template Context="check">
+                                    @if (!string.IsNullOrEmpty(check.Exception))
+                                    {
+                                        <details>
+                                            <summary class="error-summary">Error Details</summary>
+                                            <pre class="error-details">@check.Exception</pre>
+                                        </details>
+                                    }
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
                 }
                 </RadzenTabsItem>
                 @if (diagnosticsSnapshot != null)
@@ -116,15 +117,12 @@ else
                     <RadzenTabsItem Text="Config">
                     <div class="diagnostics-section">
                         <h2 class="visually-hidden">Configuration values</h2>
-                        <div class="config-table">
-                            @foreach (var item in diagnosticsSnapshot.Config)
-                            {
-                                <div class="config-row">
-                                    <div class="config-key">@item.Key</div>
-                                    <div class="config-value">@item.Value</div>
-                                </div>
-                            }
-                        </div>
+                        <RadzenDataGrid TItem="ConfigurationValueDto" Data="@diagnosticsSnapshot.Config" AllowSorting="true" Density="Density.Compact">
+                            <Columns>
+                                <RadzenDataGridColumn Property="@nameof(ConfigurationValueDto.Key)" Title="Key" MinWidth="12rem" />
+                                <RadzenDataGridColumn Property="@nameof(ConfigurationValueDto.Value)" Title="Value" />
+                            </Columns>
+                        </RadzenDataGrid>
                     </div>
                     </RadzenTabsItem>
                 }
@@ -191,6 +189,14 @@ else
         "degraded" => "!",
         "unhealthy" => "✗",
         _ => "?"
+    };
+
+    private static BadgeStyle StatusBadgeStyle(string status) => status.ToLowerInvariant() switch
+    {
+        "healthy" => BadgeStyle.Success,
+        "degraded" => BadgeStyle.Warning,
+        "unhealthy" => BadgeStyle.Danger,
+        _ => BadgeStyle.Secondary
     };
 
     private string FormatCheckName(string name) => name

@@ -13,6 +13,27 @@
     animation: fadeSlideUp 0.4s ease-out both;
 }
 
+/* ── Back + floating share ──────────────────────────────────────────────────────────────────
+   The back control sits outside the card's grid so it cannot fight the two-column layout. On a
+   phone the one action stays pinned to the bottom edge while the strip and story scroll under it,
+   so Share never leaves the screen on a long comic. */
+.comic-toolbar {
+    max-width: 980px;
+    margin: 0 auto var(--space-sm);
+}
+
+@media (max-width: 63.99rem) {
+    .comic-container ::deep .comic-actions {
+        position: sticky;
+        bottom: var(--space-sm);
+        z-index: 2;
+    }
+
+    .comic-container ::deep .comic-actions .action-share {
+        box-shadow: var(--shadow-md);
+    }
+}
+
 /* ── Desktop: one screen, two columns ─────────────────────────────────────────────────────────
    The strip owns the left column; the title, score, actions and story stack in the right one.
    The title used to span a full-width row of its own, which cost the strip ~130px of height and
@@ -22,6 +43,10 @@
    Children of child COMPONENTS (the strip's tilt wrapper, the action bar) need ::deep; this
    component's own elements do not. */
 @media (min-width: 64rem) {
+    .comic-toolbar {
+        max-width: 1180px;
+    }
+
     .comic-container {
         max-width: 1180px;
         display: grid;

@@ -6,6 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>PoSeeReview</title>
     <base href="/" />
+    <script>
+        // Applied before CSS paints so a pinned choice never flashes the other scheme. Follows
+        // the device until the user pins Light or Dark on the Settings page.
+        (function () {
+            var theme = localStorage.getItem('posee_theme');
+            if (theme === 'light' || theme === 'dark') {
+                document.documentElement.dataset.theme = theme;
+            }
+            window.poseeTheme = {
+                get: function () { return document.documentElement.dataset.theme || 'auto'; },
+                set: function (value) {
+                    if (value === 'light' || value === 'dark') {
+                        document.documentElement.dataset.theme = value;
+                        localStorage.setItem('posee_theme', value);
+                    } else {
+                        delete document.documentElement.dataset.theme;
+                        localStorage.removeItem('posee_theme');
+                    }
+                }
+            };
+        })();
+    </script>
     <link rel="stylesheet" href="fonts/fonts.css" />
     <!-- Bootstrap removed: 31KB gzipped for six classes, all of which app.css already redefined,
          and whose duplicates were feeding the cascade conflicts the layer system now prevents.

@@ -87,59 +87,53 @@
                             <RadzenDataGridColumn Property="@nameof(ModerationItemDto.HasLiveComic)" Title="Comic" Width="6rem">
                                 <Template Context="item">@(item.HasLiveComic ? "cached" : "expired")</Template>
                             </RadzenDataGridColumn>
-                            <RadzenDataGridColumn Title="Actions" Sortable="false" MinWidth="20rem">
+                            <RadzenDataGridColumn Title="Actions" Sortable="false" MinWidth="9rem">
                                 <Template Context="item">
                                     <div class="moderation-actions">
                                         <RadzenButton Text="Open" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base"
                                                       Click="@(() => Navigation.NavigateTo($"/comic/{item.PlaceId}"))" />
-                                        @if (item.IsHidden)
-                                        {
-                                            <RadzenButton Text="Clear" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
-                                                          Click="@(() => ActAsync(item, ModerationAction.Restore))" />
-                                        }
-                                        else
-                                        {
-                                            <RadzenButton Text="Hide" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
-                                                          Click="@(() => ActAsync(item, ModerationAction.Hide))" />
-                                        }
-                                        @if (!item.IsSuppressed)
-                                        {
-                                            <RadzenButton Text="Suppress" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Base" Disabled="@_isBusy"
-                                                          title="Blocks anyone from drawing this restaurant again"
-                                                          Click="@(() => ActAsync(item, ModerationAction.Suppress))" />
-                                        }
-                                        <RadzenButton Text="Remove" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Disabled="@_isBusy"
-                                                      Click="@(() => ConfirmRemoveAsync(item))" />
-                                        @if (item.HasLiveComic)
-                                        {
-                                            <RadzenButton Text="@(_triaging == item.PlaceId ? "Reading…" : item.Triage is null ? "AI triage" : "Re-triage")"
-                                                          Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
-                                                          Disabled="@(_isBusy || _triaging is not null)"
-                                                          title="Ask an AI to compare the comic with its reviews. Advice only."
-                                                          Click="@(() => TriageAsync(item))" />
-                                        }
+                                        @* One overflow menu instead of five inline buttons: the row stays
+                                           compact and every action is still one tap away. *@
+                                        <button type="button" class="btn btn-secondary btn-icon moderation-menu-btn"
+                                                popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                title="More actions" aria-label="@($"More actions for {item.RestaurantName}")">
+                                            <span aria-hidden="true">⋯</span>
+                                        </button>
+                                        <div id="@($"mod-menu-{item.PlaceId}")" class="popover-menu moderation-popover" popover>
+                                            @if (item.IsHidden)
+                                            {
+                                                <button type="button" class="popover-menu-item" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                        disabled="@_isBusy" @onclick="() => ActAsync(item, ModerationAction.Restore)">Clear</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="popover-menu-item" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                        disabled="@_isBusy" @onclick="() => ActAsync(item, ModerationAction.Hide)">Hide</button>
+                                            }
+                                            @if (!item.IsSuppressed)
+                                            {
+                                                <button type="button" class="popover-menu-item" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                        disabled="@_isBusy" @onclick="() => ActAsync(item, ModerationAction.Suppress)">Suppress</button>
+                                            }
+                                            @if (item.HasLiveComic)
+                                            {
+                                                <button type="button" class="popover-menu-item" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                        disabled="@(_isBusy || _triaging is not null)"
+                                                        @onclick="() => TriageAsync(item)">@(_triaging == item.PlaceId ? "Reading…" : item.Triage is null ? "AI triage" : "Re-triage")</button>
+                                            }
+                                            @if (item.Triage is not null)
+                                            {
+                                                <button type="button" class="popover-menu-item" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                        @onclick="() => _drawerItem = item">View triage</button>
+                                            }
+                                            <hr class="popover-menu-divider" />
+                                            <button type="button" class="popover-menu-item moderation-menu-item--danger" popovertarget="@($"mod-menu-{item.PlaceId}")"
+                                                    disabled="@_isBusy" @onclick="() => ConfirmRemoveAsync(item)">Remove</button>
+                                        </div>
                                     </div>
                                     @if (!string.IsNullOrWhiteSpace(item.Reason))
                                     {
                                         <p class="moderation-note">@item.Reason</p>
-                                    }
-                                    @if (item.Triage is { } triage)
-                                    {
-                                        <div class="moderation-triage" data-suggestion="@triage.Suggestion" data-testid="moderation-triage">
-                                            <p class="moderation-triage-verdict">
-                                                AI suggests <strong>@triage.Suggestion</strong> · @triage.Confidence% sure
-                                            </p>
-                                            <p class="moderation-triage-summary">@triage.Summary</p>
-                                            @if (triage.Concerns.Length > 0)
-                                            {
-                                                <ul class="moderation-triage-concerns">
-                                                    @foreach (var concern in triage.Concerns)
-                                                    {
-                                                        <li>@concern</li>
-                                                    }
-                                                </ul>
-                                            }
-                                        </div>
                                     }
                                 </Template>
                             </RadzenDataGridColumn>
@@ -150,6 +144,43 @@
             }
         </Authorized>
     </AuthorizeView>
+
+    @* The triage readout lives in a side drawer, not inside the row: it used to blow the row open
+       and re-introduce the exact layout shift the Remove confirm was moved into a dialog to fix. *@
+    @if (_drawerItem is { } drawer)
+    {
+        <div class="moderation-drawer-scrim" @onclick="() => _drawerItem = null"></div>
+        <aside class="moderation-drawer" role="dialog" aria-modal="true" aria-labelledby="moderation-drawer-title">
+            <div class="moderation-drawer-head">
+                <h2 id="moderation-drawer-title" class="moderation-drawer-title">
+                    AI triage · @(string.IsNullOrWhiteSpace(drawer.RestaurantName) ? drawer.PlaceId : drawer.RestaurantName)
+                </h2>
+                <button type="button" class="btn btn-secondary btn-icon" aria-label="Close triage" @onclick="() => _drawerItem = null">
+                    <span aria-hidden="true">&#215;</span>
+                </button>
+            </div>
+            @if (drawer.Triage is { } triage)
+            {
+                <div class="moderation-triage" data-suggestion="@triage.Suggestion" data-testid="moderation-triage">
+                    <p class="moderation-triage-verdict">AI suggests <strong>@triage.Suggestion</strong> · @triage.Confidence% sure</p>
+                    <p class="moderation-triage-summary">@triage.Summary</p>
+                    @if (triage.Concerns.Length > 0)
+                    {
+                        <ul class="moderation-triage-concerns">
+                            @foreach (var concern in triage.Concerns)
+                            {
+                                <li>@concern</li>
+                            }
+                        </ul>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="moderation-note">No triage advice yet.</p>
+            }
+        </aside>
+    }
 </PageShell>
 
 @code {
@@ -159,6 +190,7 @@
     private string? _error;
     private bool _isBusy;
     private string? _triaging;
+    private ModerationItemDto? _drawerItem;
 
     /// <summary>
     /// One at a time: each is a paid model call, and the answer lands on the row it was asked for
@@ -172,6 +204,7 @@
         try
         {
             item.Triage = await ModerationApi.TriageAsync(item.PlaceId);
+            _drawerItem = item;
         }
         catch (HttpRequestException ex)
         {

@@ -346,7 +346,7 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   map by default, List remembered in `posee_discovery_layout` — and the live board's toggle.
   Discovery's map overlay holds "Search this area" (after a user pan/zoom, zoom ≥ 11; reported by
   `AreaMoved`, which code-driven framing never fires). With results the search bar is compact and
-  is the one control strip (query, clear, count, List/Map); its "Near me" searches quietly when the
+  is the one control strip (query, clear, count, List/Map); its × empties the field only — the brand link (`DiscoveryState.Clear`, which a showing discovery page listens to) is the way back to the landing; its "Near me" searches quietly when the
   map is up. Quiet searches keep results on screen; an area search keeps the camera (`KeepCamera`)
   and zeroes distances. Under 64rem the three nearest drawable cards sit under the map; from 64rem
   map and cards are side by side (`--map-height`, read by `.map-view-canvas`). The landing is two

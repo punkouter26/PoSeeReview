@@ -1,5 +1,6 @@
 @page "/"
 @attribute [Authorize]
+@implements IDisposable
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
 @using Microsoft.JSInterop
@@ -61,7 +62,16 @@
                     }
                     <label for="city-search-input" class="visually-hidden">Search city, address, or ZIP code</label>
                     <input id="city-search-input" class="search-field" type="search" autocomplete="off" enterkeyhint="search"
+                           @ref="_searchInput"
                            @bind="_searchQuery" @bind:event="oninput" placeholder="@_searchPlaceholder" @onkeydown="HandleSearchKeyDown" />
+                    @* Clears the text only; the results stay. The brand link is the way back to the landing. *@
+                    @if (!string.IsNullOrEmpty(_searchQuery))
+                    {
+                        <button type="button" class="btn btn-secondary btn-icon clear-search-btn" @onclick="ClearQueryAsync"
+                                title="Clear the search box" aria-label="Clear the search box">
+                            <span aria-hidden="true">&#215;</span>
+                        </button>
+                    }
                     <button type="button" class="btn btn-secondary"
                             @onclick="SearchByLocationAsync"
                             disabled="@(IsBusy || string.IsNullOrWhiteSpace(_searchQuery))"
@@ -70,29 +80,22 @@
                     </button>
                     @if (HasResults)
                     {
-                        <button type="button" class="btn btn-secondary btn-icon clear-search-btn" @onclick="ClearSearch"
-                                title="Clear the results" aria-label="Clear the results">
-                            <span aria-hidden="true">&#215;</span>
-                        </button>
+                        <div class="results-meta">
+                            <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
+                            @if (!_mapUnavailable)
+                            {
+                                <div class="layout-toggle" role="group" aria-label="Show results as">
+                                    <button type="button" class="chip-toggle @(_layout == ResultsLayout.List ? "chip-toggle--active" : "")"
+                                            aria-pressed="@(_layout == ResultsLayout.List ? "true" : "false")"
+                                            @onclick="() => SetLayoutAsync(ResultsLayout.List)">List</button>
+                                    <button type="button" class="chip-toggle @(_layout == ResultsLayout.Map ? "chip-toggle--active" : "")"
+                                            aria-pressed="@(_layout == ResultsLayout.Map ? "true" : "false")"
+                                            @onclick="() => SetLayoutAsync(ResultsLayout.Map)">Map</button>
+                                </div>
+                            }
+                        </div>
                     }
                 </div>
-                @if (HasResults)
-                {
-                    <div class="results-meta">
-                        <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
-                        @if (!_mapUnavailable)
-                        {
-                            <div class="layout-toggle" role="group" aria-label="Show results as">
-                                <button type="button" class="chip-toggle @(_layout == ResultsLayout.List ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_layout == ResultsLayout.List ? "true" : "false")"
-                                        @onclick="() => SetLayoutAsync(ResultsLayout.List)">List</button>
-                                <button type="button" class="chip-toggle @(_layout == ResultsLayout.Map ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_layout == ResultsLayout.Map ? "true" : "false")"
-                                        @onclick="() => SetLayoutAsync(ResultsLayout.Map)">Map</button>
-                            </div>
-                        }
-                    </div>
-                }
                 @if (_flowState == LocationFlowState.Denied)
                 {
                     <p class="denied-alert" role="alert">
@@ -109,7 +112,50 @@
         @if (ShowLanding && HasLandingSide)
         {
             <aside class="landing-side" aria-label="Already drawn">
-                @if (_topComics is { Count: > 0 })
+                @if (_topComics is { Count: > 0 } && _recent is { Count: > 0 })
+                {
+                    <section class="landing-board" aria-labelledby="landing-board-title">
+                        <div class="landing-board-head">
+                            <h2 id="landing-board-title" class="comic-rows-heading">Already drawn</h2>
+                            <a href="@(_landingTab == LandingTab.Strangest ? "/leaderboard" : "/my-comics")">@(_landingTab == LandingTab.Strangest ? "Hall of Fame →" : "My comics →")</a>
+                        </div>
+                        <div class="layout-toggle" role="group" aria-label="Show">
+                            <button type="button" class="chip-toggle @(_landingTab == LandingTab.Strangest ? "chip-toggle--active" : "")"
+                                    aria-pressed="@(_landingTab == LandingTab.Strangest ? "true" : "false")"
+                                    @onclick="() => _landingTab = LandingTab.Strangest">Strangest</button>
+                            <button type="button" class="chip-toggle @(_landingTab == LandingTab.Recent ? "chip-toggle--active" : "")"
+                                    aria-pressed="@(_landingTab == LandingTab.Recent ? "true" : "false")"
+                                    @onclick="() => _landingTab = LandingTab.Recent">Recent</button>
+                        </div>
+                        @if (_landingTab == LandingTab.Strangest)
+                        {
+                            <ol class="comic-rows comic-rows--stack">
+                                @foreach (var entry in _topComics)
+                                {
+                                    <ComicRow Href="@($"/comic/{entry.PlaceId}")"
+                                              Name="@entry.RestaurantName"
+                                              Score="@((int)Math.Round(entry.StrangenessScore))"
+                                              ImageUrl="@ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId)"
+                                              Meta="@entry.Address" />
+                                }
+                            </ol>
+                        }
+                        else
+                        {
+                            <ul class="comic-rows comic-rows--stack">
+                                @foreach (var entry in _recent)
+                                {
+                                    <ComicRow Href="@($"/comic/{entry.PlaceId}")"
+                                              Name="@entry.RestaurantName"
+                                              Score="@entry.StrangenessScore"
+                                              ImageUrl="@ComicImageUrl.SameOrigin(entry.PlaceId)"
+                                              Meta="@RelativeTime.Format(entry.ViewedAt)" />
+                                }
+                            </ul>
+                        }
+                    </section>
+                }
+                else if (_topComics is { Count: > 0 })
                 {
                     <section class="landing-board" aria-labelledby="landing-board-title">
                         <div class="landing-board-head">
@@ -128,7 +174,7 @@
                         </ol>
                     </section>
                 }
-                @if (_recent is { Count: > 0 })
+                else if (_recent is { Count: > 0 })
                 {
                     <section class="landing-board" aria-labelledby="landing-recent-title">
                         <div class="landing-board-head">
@@ -272,6 +318,7 @@
     [SupplyParameterFromQuery(Name = "q")]
     public string? Q { get; set; }
     private string _searchQuery = string.Empty;
+    private ElementReference _searchInput;
     private string _searchPlaceholder = "City or ZIP";
     private string _lastSearch = string.Empty;
     private bool _isNavigatingToComic;
@@ -284,6 +331,11 @@
     private List<LeaderboardEntryDto>? _topComics;
 
     private enum ResultsLayout { List, Map }
+
+    /// <summary>Which list the landing's single "Already drawn" panel shows.</summary>
+    private enum LandingTab { Strangest, Recent }
+
+    private LandingTab _landingTab = LandingTab.Strangest;
 
     private const string LayoutKey = "posee_discovery_layout";
 
@@ -536,6 +588,7 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
+        Discovery.Cleared += OnDiscoveryCleared;
         await RestoreLayoutAsync();
 
         if (Discovery.Restaurants.Count > 0 && (Q is null || Q == Discovery.Query))
@@ -864,14 +917,23 @@
         Navigation.NavigateTo($"/comic/{restaurant.PlaceId}?generate=true");
     }
 
-    private async Task ClearSearch()
+    private async Task ClearQueryAsync()
     {
-        Discovery.Clear();
-        if (Q is not null)
-        {
-            Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("q", (string?)null), replace: true);
-        }
+        _searchQuery = string.Empty;
+        await _searchInput.FocusAsync();
+    }
 
+    /// <summary>The brand link cleared <see cref="DiscoveryState"/> while this page was showing results.</summary>
+    private void OnDiscoveryCleared() => _ = InvokeAsync(async () =>
+    {
+        await ResetToLandingAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Discovery.Cleared -= OnDiscoveryCleared;
+
+    private async Task ResetToLandingAsync()
+    {
         if (_topComics is null)
         {
             _ = LoadTopComicsAsync();

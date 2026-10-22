@@ -1,13 +1,32 @@
 @page "/settings"
 @attribute [Authorize]
 @using PoSeeReview.Client.Services
+@using Microsoft.JSInterop
 @inject FxService Fx
+@inject IJSRuntime JS
 
 <PageTitle>Settings - PoSeeReview</PageTitle>
 
 @* Every optional extra lives here, and every one starts at its simplest: sound off, standard
    effects. All of it is stored in this browser only. *@
 <PageShell Title="Settings" Width="PageShell.ShellWidth.Narrow">
+    <section class="settings-group glass" aria-labelledby="settings-appearance">
+        <h2 id="settings-appearance">Appearance</h2>
+        <div class="settings-row" role="group" aria-label="Color theme">
+            @foreach (var (theme, label) in Themes)
+            {
+                <button type="button"
+                        class="chip-toggle @(_theme == theme ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_theme == theme ? "true" : "false")"
+                        data-testid="@($"settings-theme-{theme}")"
+                        @onclick="() => SetThemeAsync(theme)">
+                    @label
+                </button>
+            }
+        </div>
+        <p class="settings-note">Auto follows your device; pick Light or Dark to pin it.</p>
+    </section>
+
     <section class="settings-group glass" aria-labelledby="settings-sound">
         <h2 id="settings-sound">Sound</h2>
 
@@ -88,6 +107,11 @@
     private static readonly (FxTier Tier, string Label)[] Tiers =
         [(FxTier.Off, "None"), (FxTier.Lite, "Standard"), (FxTier.Full, "Full")];
 
+    private static readonly (string Value, string Label)[] Themes =
+        [("auto", "Auto"), ("light", "Light"), ("dark", "Dark")];
+
+    private string _theme = "auto";
+
     private FxCapabilities _caps;
     private bool _sound;
     private FxToggleState _haptics;
@@ -107,7 +131,14 @@
         _haptics = await Fx.GetHapticsAsync();
         _music = await Fx.IsSoundtrackEnabledAsync();
         _volume = (int)Math.Round(await Fx.GetVolumeAsync() * 100);
+        _theme = await JS.InvokeAsync<string>("poseeTheme.get");
         StateHasChanged();
+    }
+
+    private async Task SetThemeAsync(string theme)
+    {
+        _theme = theme;
+        await JS.InvokeVoidAsync("poseeTheme.set", theme);
     }
 
     /// <summary>The interop call is the first thing the click does: audio only starts on a gesture.</summary>

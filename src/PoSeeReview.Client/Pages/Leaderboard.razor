@@ -95,7 +95,12 @@
                                   Score="@((int)Math.Round(entry.StrangenessScore))"
                                   ImageUrl="@(entry.ImageExpired ? null : ComicImageUrl.For(entry.ComicBlobUrl, entry.PlaceId))"
                                   Meta="@entry.Region">
-                            <Leading><span class="rank-badge medal @GetMedalClass(entry.Rank)">@GetMedal(entry.Rank)</span></Leading>
+                            <Leading>
+                                <span class="rank-badge medal @GetMedalClass(entry.Rank)">
+                                    <span class="visually-hidden">Rank @entry.Rank</span>
+                                    <span aria-hidden="true">@GetMedal(entry.Rank)</span>
+                                </span>
+                            </Leading>
                         </ComicRow>
                     }
                 </ol>
@@ -123,7 +128,12 @@
                           Score="@((int)Math.Round(picked.StrangenessScore))"
                           ImageUrl="@ComicImageUrl.For(picked.ComicBlobUrl, picked.PlaceId)"
                           Meta="@picked.Address">
-                    <Leading><span class="rank-badge medal @GetMedalClass(picked.Rank)">@GetMedal(picked.Rank)</span></Leading>
+                    <Leading>
+                        <span class="rank-badge medal @GetMedalClass(picked.Rank)">
+                            <span class="visually-hidden">Rank @picked.Rank</span>
+                            <span aria-hidden="true">@GetMedal(picked.Rank)</span>
+                        </span>
+                    </Leading>
                 </ComicRow>
             </ol>
         }
@@ -145,7 +155,8 @@
                           data-delta="@delta">
                     <Leading>
                         <span class="rank-badge medal @GetMedalClass(entry.Rank)">
-                            @GetMedal(entry.Rank)
+                            <span class="visually-hidden">Rank @entry.Rank</span>
+                            <span aria-hidden="true">@GetMedal(entry.Rank)</span>
                             @if (delta is { } d and not 0)
                             {
                                 <span class="rank-delta" data-direction="@(d > 0 ? "up" : "down")"
