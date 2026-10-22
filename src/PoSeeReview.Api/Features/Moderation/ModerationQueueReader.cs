@@ -22,6 +22,7 @@ public sealed class ModerationQueueReader(
     IComicRepository comicRepository,
     IOptions<AzureStorageOptions> storageOptions,
     IOptions<ModerationOptions> moderationOptions,
+    ModerationTriageService triageService,
     TimeProvider timeProvider)
 {
     private readonly TableClient _reports =
@@ -40,6 +41,7 @@ public sealed class ModerationQueueReader(
         var placeIds = reportsByPlace.Keys.Union(state.Keys, StringComparer.Ordinal).ToList();
 
         var items = new List<ModerationItemDto>(placeIds.Count);
+        var liveComicIds = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var placeId in placeIds)
         {
@@ -48,6 +50,10 @@ public sealed class ModerationQueueReader(
 
             var comic = await comicRepository.GetByPlaceIdAsync(PlaceId.From(placeId));
             var hasLiveComic = comic is not null && comic.ExpiresAt > timeProvider.GetUtcNow();
+            if (hasLiveComic)
+            {
+                liveComicIds[ModerationEntity.RowKeyFor(PlaceId.From(placeId))] = comic!.Id.Value;
+            }
 
             items.Add(new ModerationItemDto
             {
@@ -64,6 +70,12 @@ public sealed class ModerationQueueReader(
                 Reason = row?.Reason ?? string.Empty,
                 HasLiveComic = hasLiveComic
             });
+        }
+
+        var triage = await triageService.GetStoredAsync(liveComicIds, cancellationToken);
+        foreach (var item in items)
+        {
+            item.Triage = triage.GetValueOrDefault(ModerationEntity.RowKeyFor(PlaceId.From(item.PlaceId)));
         }
 
         return new ModerationQueueDto

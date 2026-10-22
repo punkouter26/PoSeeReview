@@ -7,7 +7,7 @@
 //
 // OPT-IN, unlike every other sound in the app. A cue is a second long; a loop is not, and music
 // nobody asked for under a page is the fastest way to get the whole app muted. The switch sits
-// in the account menu next to sound and haptics, stored as `posee_soundtrack`.
+// in /settings next to sound and haptics, stored as `posee_soundtrack`.
 //
 // What the score does (the seed only ever picks notes):
 //   * scale     — the same SCALES ladder the motif uses, so the loop and the motif agree
@@ -23,40 +23,12 @@
 //
 // It never knows about narration: fx.js ducks it while the narrative is being read.
 
+import { hashString, seededRandom, SCALES, SEMITONE } from './audio.js';
+
 const STORAGE_KEY = 'posee_soundtrack';
 const LOOKAHEAD_S = 0.3;
 const TICK_MS = 90;
 const LEVEL = 0.55;
-
-const SCALES = [
-    [0, 2, 4, 7, 9],
-    [0, 2, 3, 7, 9],
-    [0, 2, 3, 5, 7, 8, 10],
-    [0, 1, 3, 4, 6, 7, 9, 10],
-    [0, 1, 4, 6, 7, 10]
-];
-const SEMITONE = Math.pow(2, 1 / 12);
-
-function hashString(text) {
-    let hash = 0x811c9dc5;
-    const value = String(text ?? '');
-    for (let i = 0; i < value.length; i++) {
-        hash ^= value.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193);
-    }
-    return hash >>> 0;
-}
-
-function seededRandom(seed) {
-    let a = seed >>> 0;
-    return () => {
-        a = (a + 0x6d2b79f5) >>> 0;
-        let t = a;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
 
 function readEnabled() {
     try {

@@ -20,4 +20,14 @@ public class CachedComicsResponse
     /// it; a place that is not drawn yet has no score to show and is absent.
     /// </summary>
     public Dictionary<string, int> Scores { get; set; } = [];
+
+    /// <summary>
+    /// The weirdness forecast for places with no live comic: the score the scorer last gave their
+    /// reviews under the current prompt, keyed by place id. Read from a cache, never computed for
+    /// the request, so it covers only places someone has tried before. Absent when unknown.
+    /// </summary>
+    public Dictionary<string, int> Forecasts { get; set; } = [];
+
+    /// <summary>The score below which a comic is refused as too ordinary (<c>Comics:MinimumStrangenessScore</c>).</summary>
+    public int ForecastFloor { get; set; }
 }

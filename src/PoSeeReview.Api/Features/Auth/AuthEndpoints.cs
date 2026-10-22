@@ -57,7 +57,6 @@ internal static class AuthEndpoints
         });
 
         group.MapGet("/logout", LogoutAsync);
-        group.MapPost("/logout", LogoutAsync);
 
         group.MapGet("/me", (ClaimsPrincipal user, string? returnUrl) =>
         {

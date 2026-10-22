@@ -126,63 +126,56 @@ public sealed class GenerationBudgetService(
     /// Applies <paramref name="delta"/> under optimistic concurrency, refusing to cross
     /// <paramref name="limit"/>. Returns the new count, or -1 when the limit blocked the change.
     /// </summary>
-    private async Task<int> IncrementAsync(
+    private Task<int> IncrementAsync(
         string partitionKey,
         string rowKey,
         int delta,
         int limit,
-        CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; attempt < _options.MaxConcurrencyRetries; attempt++)
+        CancellationToken cancellationToken) =>
+        TableConcurrency.RetryAsync(_options.MaxConcurrencyRetries, async () =>
         {
-            try
+            var existing = await TryGetAsync(partitionKey, rowKey, cancellationToken);
+
+            if (existing is null)
             {
-                var existing = await TryGetAsync(partitionKey, rowKey, cancellationToken);
-
-                if (existing is null)
-                {
-                    if (delta > 0 && delta > limit)
-                    {
-                        return -1;
-                    }
-
-                    var created = new GenerationBudgetEntity
-                    {
-                        PartitionKey = partitionKey,
-                        RowKey = rowKey,
-                        Count = Math.Max(0, delta)
-                    };
-
-                    // AddEntity, not Upsert: a 409 here means a concurrent writer created the
-                    // row first, which the retry loop then reads and updates.
-                    await _table.AddEntityAsync(created, cancellationToken);
-                    return created.Count;
-                }
-
-                var next = existing.Count + delta;
-
-                if (delta > 0 && next > limit)
+                if (delta > 0 && delta > limit)
                 {
                     return -1;
                 }
 
-                existing.Count = Math.Max(0, next);
-                await _table.UpdateEntityAsync(existing, existing.ETag, TableUpdateMode.Replace, cancellationToken);
-                return existing.Count;
-            }
-            catch (RequestFailedException ex) when (ex.Status is 409 or 412)
-            {
-                // Lost the race; re-read and try again.
-            }
-        }
+                var created = new GenerationBudgetEntity
+                {
+                    PartitionKey = partitionKey,
+                    RowKey = rowKey,
+                    Count = Math.Max(0, delta)
+                };
 
-        // Fail open. A contended counter must not become an outage on the app's primary action;
-        // the shortfall is visible as missing budget telemetry rather than as user-facing errors.
-        logger.LogWarning(
-            "Generation budget counter {RowKey} stayed contended after {Attempts} attempts; allowing the request uncounted",
-            rowKey, _options.MaxConcurrencyRetries);
-        return 0;
-    }
+                // AddEntity, not Upsert: a 409 here means a concurrent writer created the
+                // row first, which the retry then reads and updates.
+                await _table.AddEntityAsync(created, cancellationToken);
+                return created.Count;
+            }
+
+            var next = existing.Count + delta;
+
+            if (delta > 0 && next > limit)
+            {
+                return -1;
+            }
+
+            existing.Count = Math.Max(0, next);
+            await _table.UpdateEntityAsync(existing, existing.ETag, TableUpdateMode.Replace, cancellationToken);
+            return existing.Count;
+        },
+        onExhausted: () =>
+        {
+            // Fail open. A contended counter must not become an outage on the app's primary action;
+            // the shortfall is visible as missing budget telemetry rather than as user-facing errors.
+            logger.LogWarning(
+                "Generation budget counter {RowKey} stayed contended after {Attempts} attempts; allowing the request uncounted",
+                rowKey, _options.MaxConcurrencyRetries);
+            return 0;
+        });
 
     private async Task<GenerationBudgetEntity?> TryGetAsync(
         string partitionKey, string rowKey, CancellationToken cancellationToken)

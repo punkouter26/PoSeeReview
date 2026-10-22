@@ -32,10 +32,11 @@ internal sealed class TableStorageInitializer(
             storageOptions.HallOfFameTableName,
             storageOptions.BudgetTableName,
             storageOptions.ShareLinksTableName,
-            storageOptions.ModerationTableName
+            storageOptions.ModerationTableName,
+            storageOptions.AnalysesTableName
         ];
 
-        // Created concurrently: these are independent round trips, and running eight of them in
+        // Created concurrently: these are independent round trips, and running nine of them in
         // series put the whole set on the startup critical path. A failure in any one still
         // propagates and fails the host fast, which is the point of doing this at startup.
         await Task.WhenAll(tableNames.Select(async tableName =>

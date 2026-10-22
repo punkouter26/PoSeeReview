@@ -241,25 +241,6 @@
     margin: 0;
 }
 
-.nav-sound {
-    display: grid;
-    gap: var(--space-xs);
-    padding: var(--space-xs) var(--space-sm);
-}
-
-.nav-sound-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xs);
-}
-
-.nav-volume {
-    flex: 1;
-    min-width: 0;
-    min-height: var(--tap-target);
-    accent-color: var(--color-brand);
-}
-
 /* The bar is 3.25rem on a phone, not 3.5rem. After the base rule on purpose — same
    specificity, so source order decides. */
 @media (max-width: 40rem) {

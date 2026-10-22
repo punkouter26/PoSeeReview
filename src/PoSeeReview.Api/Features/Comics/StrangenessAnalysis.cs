@@ -18,9 +18,19 @@ namespace PoSeeReview.Api.Features.Comics;
 /// One illustrator brief per panel, the same panels the captions describe. Null only for a
 /// hand-constructed value; callers pass it through <see cref="ChatPrompts.NormalizeScenes"/>.
 /// </param>
+/// <param name="Ratings">The three 0-10 judgements the score is computed from. Null for a hand-built value.</param>
+/// <param name="PanelSources">
+/// Per panel, the 1-based numbers of the reviews it draws on, already checked against the reviews
+/// that were sent. Empty for a panel the model did not ground. Null for a hand-built value.
+/// </param>
 public sealed record StrangenessAnalysis(
     int StrangenessScore,
     int PanelCount,
     string Narrative,
     IReadOnlyList<string>? Captions = null,
-    IReadOnlyList<string>? Scenes = null);
+    IReadOnlyList<string>? Scenes = null,
+    StrangenessRatings? Ratings = null,
+    IReadOnlyList<IReadOnlyList<int>>? PanelSources = null);
+
+/// <summary>The model's three ratings, kept so the page can say why a score is what it is.</summary>
+public sealed record StrangenessRatings(int Absurdity, int Specificity, int StoryPotential);

@@ -130,3 +130,23 @@
     color: var(--color-text-muted);
     text-align: center;
 }
+
+/* The weirdness forecast: a cached score for a place not drawn yet. */
+.forecast-chip,
+.forecast-hint {
+    margin: 0;
+    font-size: var(--text-sm);
+}
+
+.forecast-chip {
+    align-self: flex-start;
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--brand-a08);
+    border: 1px solid var(--brand-a12);
+    color: var(--color-brand-ink);
+}
+
+.forecast-hint {
+    color: var(--color-text-muted);
+}

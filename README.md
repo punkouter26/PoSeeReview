@@ -32,9 +32,11 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 
 **2. One-tap comic generation.** A single tap on a restaurant card initiates the AI pipeline. The loading state is presented as numbered steps (Fetching reviews → Analyzing strangeness → Writing narrative → Generating artwork → Composing strip) so users understand the system is working rather than broken. The generation target is under 10 seconds.
 
-**3. Strangeness scoring.** Azure OpenAI (GPT-4o-mini, temperature 0.3) reads the top reviews and returns a strangeness score (0–100) along with a one-paragraph narrative. The scoring model prioritizes one-star reviews as the highest-signal source. If no reviews of sufficient quality exist, the API returns a 422 with a clear user-facing message rather than generating a low-quality output.
+**3. Strangeness scoring.** Azure OpenAI (`gpt-5.4-nano`, temperature 0.3) reads up to five reviews, lowest-rated first, and returns three 0–10 ratings (absurdity, specificity, story potential), a narrative and a 1–2 panel script; the code computes the 0–100 score. Every panel cites the review numbers it draws on (`reviewIds`); citations outside the reviews sent are dropped. The verdict is cached per place in `PoSeeReviewAnalyses`, keyed by a hash of the reviews and `Comics:PromptVersion`, so a redraw keeps its score and a "too ordinary" place is never re-scored for nothing. The comic page shows the breakdown ("Why 54?") and which reviews, by position and stars, each strip came from, with a link to the listing rather than a quote. The system message is kept above Azure's 1024-token prompt-cache threshold (measured: 1024 of ~1265 input tokens cached). Places that score below `Comics:MinimumStrangenessScore` get a 422 and a refund.
 
-**4. Comic image generation.** Google Gemini Imagen 4 renders the four-panel comic as a PNG. The `ComicTextOverlayService` then stamps the strangeness score and narrative directly onto the image, producing a single self-contained artifact. The image is stored in Azure Blob Storage with an 8-day SAS URL (outliving the 24-hour comic cache).
+**4. Comic image generation — draft, then remaster.** Every comic is drawn first by the cheap painter (`Ai:ImageProvider`, default `AzureOpenAI` = `gpt-image-1-mini` at low quality, ~$0.005). `ComicRemasterService` redraws the live board's top `Remaster:TopN` with the premium painter (`Ai:RemasterProvider`, default `Gemini` = `gemini-2.5-flash-image`, ~$0.04) from the same scenes and captions, at most `Remaster:MaxPerRun` every `Remaster:IntervalMinutes`; the score never moves, the blob is overwritten in place so board and archive rows follow, and a refused or failed remaster is recorded and never retried. `ComicTextOverlayService` draws the captions. A sampled vision check (`ImageQa:SampleRate`, `ImageQa:Deployment`) scores panel count, stray lettering, scene match and character consistency per image model (`Comics.ImageQa.*`) — it measures, never redraws. `Ai:ImageProvider=Local` (Development only) draws through a local OpenAI-compatible server (`LocalImage:*`) so image-prompt work costs nothing.
+
+**4a. Weirdness forecast and pre-draw.** `GET /api/comics/cached` also returns `forecasts` — the cached score for undrawn places — and `forecastFloor`; discovery greys out places already known to be too ordinary. Nothing is computed for the probe. Each forecast sighting and each comic-page miss counts as demand; `ComicPredrawService` draws, once a day, up to `Predraw:MaxPerRun` places scoring at least `Predraw:MinScore` with `Predraw:MinDemand` sightings and no live comic, zeroing their demand before each attempt so a failure is not retried nightly.
 
 **1a. Map-first discovery.** Results open on a map (List is the remembered alternative; devices without WebGL fall back to the list on their own). Pan or zoom and a **Search this area** button re-runs nearby search at the map's centre without moving the camera. Once results are showing, the search bar turns compact and carries the query (edit it and search again), a clear button, the count and the List / Map switch; its **Near me** locates the user, draws a "you are here" dot and, with the map up, searches around it without leaving the map. On a phone the three nearest drawable places sit under the map as cards ("Nearest to you", or "In this area" for a panned or typed search, where distances are hidden because they are not from the user) with a link to the full list; from 64rem the map and every drawable card sit side by side, the cards scrolling beside the map, and a tapped pin's card moves to the top. The landing pairs the search with what is already drawn — the live top five and this browser's recent comics — in two columns on a desktop. The live Hall of Fame folds its scope and layout into one switch: Right now · By week · Map. Pins are coloured and numbered by the live comic's score (`GET /api/comics/cached` returns `scores` alongside `cachedPlaceIds`); an undrawn place is a small dashed pin. A pin tap only selects — the place's usual card or row appears under the map, so opening or paying for a comic is still that card's own button. Leaderboard rows carry `latitude` / `longitude` from the comic that wrote them; rows older than that have none and the board's toggle stays hidden until some do.
 
@@ -42,12 +44,14 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 
 **6. Content takedown.** Restaurant owners or legal representatives can request removal of a specific comic via `POST /api/takedowns` authenticated with an `X-Api-Key` header. The controller atomically deletes the comic table row, the blob asset, and the leaderboard entry. Telemetry events are emitted for moderation audit trails.
 
+**6a. AI-assisted moderation.** The pre-publish screen layers Azure AI Content Safety (`Moderation:ContentSafetyEndpoint`, the shared AI Services resource and the scorer's key) under the lexical word lists; it fails open to the lexical verdict. `POST /api/moderation/{placeId}/triage` (Moderator role) asks `Moderation:TriageDeployment` (`gpt-5.4-mini`) to compare the live comic with its reviews and reports and suggest keep / hide / remove with reasons; the advice is stored beside the queue row and shown on `/moderation`. It never changes state.
+
 **7. Ephemeral by design.** Comics expire after 24 hours. The `ExpiredComicCleanupService` runs on a 30-minute background loop and batch-purges expired rows and blobs (batch size 25, configurable 5–200). This keeps storage costs bounded and the leaderboard fresh. Users who want to regenerate a comic can force-refresh at any time.
 
 ### Non-Goals (v1)
 
 - No user accounts, saved comics, or personalized history.
-- No moderation queue (takedown is direct delete, not review-and-approve).
+- No automated moderation decisions: the AI triage advises, a moderator acts.
 - No real-time collaborative features beyond optimistic concurrency on the same restaurant.
 - No mobile native app — Blazor WASM in the browser is the delivery target.
 - No paid tier or premium features.
@@ -76,13 +80,13 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 | Layer | Technologies |
 |---|---|
 | Edge Delivery | Browser (Blazor WASM), Azure App Service host |
-| Compute | ASP.NET Core 10 API, `ExpiredComicCleanupService` |
+| Compute | ASP.NET Core 10 API, `ExpiredComicCleanupService`, `ComicRemasterService`, `ComicPredrawService`, `ComicImageQaService` |
 | Data | Azure Table Storage, Azure Blob Storage, Azure Key Vault |
-| External AI | Azure OpenAI GPT-4o-mini, Google Gemini Imagen 4, Google Maps Places |
+| External AI | Azure OpenAI (`gpt-5.4-nano` scorer and image QA, `gpt-5.4-mini` moderation triage, `gpt-image-1-mini` drafts), Azure AI Content Safety, Google Gemini (`gemini-2.5-flash-image` remasters), Google Maps Places. Local: Ollama (chat), any OpenAI-compatible image server (Development) |
 | Observability | Application Insights, OpenTelemetry, Serilog |
 | Imaging | SkiaSharp (caption overlay, lossy WebP, share and duel cards); Bangers and DM Sans embedded |
 | Operator UI | Radzen.Blazor 12.0.6 on `/moderation` (DataGrid, confirm dialog) and `/diagnostics` (tabs) only, through `RadzenScope`; its `material-base` theme is fetched into the `vendor` cascade layer and re-coloured from the app's tokens by the `--rz-*` bridge in `app.css`. The trimmed assembly and the framework pieces it pulls in add ~0.97 MB brotli to the boot download |
-| Graphics & audio | Hand-written WebGL2 shaders on one shared rAF loop with a frame-budget tier (`off`/`lite`/`full`); WebGPU compute for the score burst (WebGL2 fallback); Web Audio synthesis, no audio assets. 3D mode loads transformers.js 4.3.1 (jsDelivr, in a worker) and `onnx-community/depth-anything-v2-small` (q4f16/q4, ~20–27 MB, first use only, WebGPU only — a heuristic depth runs everywhere else) |
+| Graphics & audio | One hand-written WebGL2 backdrop shader on a shared rAF loop with a frame-budget tier (`off`/`lite`/`full`, `lite` by default); Web Audio synthesis, no audio assets, off by default. Every optional extra (sound, haptics, soundtrack, effects tier) is switched on `/settings` |
 | Maps | MapLibre GL JS 5.24.0 (UMD, jsDelivr, SRI-pinned, loaded only when a map opens) over OpenFreeMap vector tiles — no key, no per-load billing |
 | Alerting | `infra/alerts.bicep`: Http5xx, AI spend, in-band generation failures, fail-open guards, image refusals, moderation queue → email action group |
 | Quality gates | axe-core (`Deque.AxeCore.Playwright` 4.13.0) in the E2E UI suite; Lighthouse CI (`@lhci/cli` 0.15.1, `SCRIPTS/lighthouserc.json`) in the deploy smoke job |
@@ -194,17 +198,11 @@ dotnet watch --project src/PoSeeReview.Api --launch-profile https
 
 ## Cloud Smoke Testing
 
-After deploying with `azd up`, discover the live URL:
+After a deploy (push to `master`), the live URL is:
 
 ```powershell
-# Show all environment values including the deployed URL
-azd env show
-
-# Or show the App Service hostname via Azure CLI
 az webapp show --name app-poseereview --resource-group PoSeeReview --query defaultHostName -o tsv
 ```
-
-The base URL will be printed as `SERVICE_WEB_URL` or `SERVICE_API_URL` in the `azd env show` output.
 
 The same post-deploy checks CI runs (Blazor render tree, `/health`) can be run by hand:
 

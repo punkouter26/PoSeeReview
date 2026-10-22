@@ -1,10 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // APPLIED BY HAND, NOT BY CI. `.github/workflows/deploy.yml` only publishes and deploys the app
 // — it never runs a deployment of this template. Infrastructure changes reach Azure through
-// `azd provision` or `az deployment sub create -f infra/main.bicep`, run by a person.
-// That is deliberate: an azure.yaml that says `host: appservice` plus a pipeline that swaps a
-// package is a smaller thing to keep working than a provisioning job nobody watches. It does
-// mean a change here is not exercised until someone applies it.
+// `az deployment sub create -f infra/main.bicep`, run by a person. That is deliberate: a pipeline
+// that swaps a package is a smaller thing to keep working than a provisioning job nobody watches.
+// It does mean a change here is not exercised until someone applies it.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 targetScope = 'subscription'

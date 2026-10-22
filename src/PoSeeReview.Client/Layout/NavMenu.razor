@@ -3,7 +3,6 @@
 @using PoSeeReview.Shared.Dtos
 @inject HttpClient Http
 @inject NavigationManager Navigation
-@inject FxService Fx
 @implements IDisposable
 
 <div class="top-row">
@@ -56,33 +55,10 @@
                         <NavLink class="popover-menu-item" href="my-comics">
                             <span aria-hidden="true">🗂️</span> My comics
                         </NavLink>
-
-                        @* Audio defaults on, so the switch has to be somewhere a user can find it. Sound and
-                           its volume share one row; what only matters while sound is on sits under it. *@
-                        <div class="nav-sound" role="group" aria-label="Sound and haptics">
-                            <div class="nav-sound-row">
-                                <button type="button" class="chip-toggle @(_sound ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_sound ? "true" : "false")" @onclick="ToggleSoundAsync">
-                                    Sound
-                                </button>
-                                <input class="nav-volume" type="range" min="0" max="100" aria-label="Volume" disabled="@(!_sound)"
-                                       @bind="_volume" @bind:event="oninput" @bind:after="ApplyVolumeAsync" />
-                            </div>
-                            <div class="nav-sound-row">
-                                @if (_haptics.Supported)
-                                {
-                                    <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
-                                            aria-pressed="@(_haptics.Enabled ? "true" : "false")" @onclick="ToggleHapticsAsync">
-                                        Haptics
-                                    </button>
-                                }
-                                @* Opt-in, unlike the cues: a loop nobody asked for gets the whole app muted. *@
-                                <button type="button" class="chip-toggle @(_music ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_music ? "true" : "false")" disabled="@(!_sound)" @onclick="ToggleMusicAsync">
-                                    Music
-                                </button>
-                            </div>
-                        </div>
+                        @* Sound, music and effects all live on the settings page, off or simple by default. *@
+                        <NavLink class="popover-menu-item" href="settings">
+                            <span aria-hidden="true">⚙️</span> Settings
+                        </NavLink>
                         <hr class="popover-menu-divider" />
                         <button type="button" class="popover-menu-item" @onclick="Logout">Sign out</button>
                     </div>
@@ -94,10 +70,6 @@
 
 @code {
     private bool _isMockData;
-    private bool _sound;
-    private FxToggleState _haptics;
-    private bool _music;
-    private int _volume = 100;
 
     protected override async Task OnInitializedAsync()
     {
@@ -113,35 +85,6 @@
             _isMockData = false;
         }
     }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            _sound = await Fx.IsAudioEnabledAsync();
-            _haptics = await Fx.GetHapticsAsync();
-            _music = await Fx.IsSoundtrackEnabledAsync();
-            _volume = (int)Math.Round(await Fx.GetVolumeAsync() * 100);
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>The interop call is the first thing the click does: audio only starts on a gesture.</summary>
-    private async Task ToggleSoundAsync()
-    {
-        _sound = await Fx.SetAudioEnabledAsync(!_sound);
-        _haptics = await Fx.GetHapticsAsync();   // Haptics follow sound unless switched off.
-    }
-
-    private async Task ToggleHapticsAsync()
-    {
-        await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
-        _haptics = await Fx.GetHapticsAsync();
-    }
-
-    private async Task ToggleMusicAsync() => _music = await Fx.SetSoundtrackEnabledAsync(!_music);
-
-    private Task ApplyVolumeAsync() => Fx.SetVolumeAsync(_volume / 100.0);
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
         StateHasChanged();

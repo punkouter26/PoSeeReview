@@ -7,7 +7,6 @@ using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Restaurants;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
-using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.HostedServices;
 
@@ -109,18 +108,27 @@ public sealed class StartupSecretValidator(
         var usesAzureChat = string.IsNullOrWhiteSpace(chatProviderSetting)
             || string.Equals(chatProviderSetting, nameof(AiChatProvider.AzureOpenAI), StringComparison.OrdinalIgnoreCase);
 
-        var usesGeminiImages = string.IsNullOrWhiteSpace(imageProviderSetting)
-            || string.Equals(imageProviderSetting, nameof(AiImageProvider.Gemini), StringComparison.OrdinalIgnoreCase);
+        var imageProvider = string.IsNullOrWhiteSpace(imageProviderSetting)
+            ? InfrastructureServiceCollectionExtensions.DefaultImageProvider.ToString()
+            : imageProviderSetting;
+        var usesGeminiImages = string.Equals(imageProvider, nameof(AiImageProvider.Gemini), StringComparison.OrdinalIgnoreCase);
+        var usesAzureImages = string.Equals(imageProvider, nameof(AiImageProvider.AzureOpenAI), StringComparison.OrdinalIgnoreCase);
 
         var prodRequired = new List<string>(capacity: 4);
 
-        if (usesAzureChat)
+        if (usesAzureChat || usesAzureImages)
         {
             prodRequired.Add("AzureOpenAI:Endpoint");
             prodRequired.Add("AzureOpenAI:ApiKey");
+        }
+
+        if (usesAzureChat)
+        {
             prodRequired.Add("AzureOpenAI:DeploymentName");
         }
 
+        // Only the DRAFT painter's secrets are required. The remaster painter (Gemini by default)
+        // is an upgrade: without its key, remastering switches itself off and comics still draw.
         if (usesGeminiImages)
         {
             prodRequired.Add("Google:GeminiApiKey");

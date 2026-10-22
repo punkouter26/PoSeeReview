@@ -55,6 +55,19 @@ public class ComicEntity : ITableEntity
     /// <summary>Panel scenes as a JSON array, for the same reason as <see cref="CaptionsJson"/>.</summary>
     public string ScenesJson { get; set; } = string.Empty;
 
+    /// <summary>The scorer's ratings. Null on older rows, which have no breakdown.</summary>
+    public int? Absurdity { get; set; }
+    public int? Specificity { get; set; }
+    public int? StoryPotential { get; set; }
+
+    /// <summary>Per-panel source reviews as JSON. Absent on older rows.</summary>
+    public string SourcesJson { get; set; } = string.Empty;
+
+    public string ImageModel { get; set; } = string.Empty;
+
+    /// <summary><see cref="Shared.Enums.RemasterState"/> by name; absent reads as None.</summary>
+    public string RemasterState { get; set; } = string.Empty;
+
     /// <summary>
     /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
@@ -75,7 +88,13 @@ public class ComicEntity : ITableEntity
             RequestedByUserId = comic.RequestedByUserId.Value,
             PromptVersion = comic.PromptVersion,
             CaptionsJson = comic.Captions.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Captions),
-            ScenesJson = comic.Scenes.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Scenes)
+            ScenesJson = comic.Scenes.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Scenes),
+            Absurdity = comic.Breakdown?.Absurdity,
+            Specificity = comic.Breakdown?.Specificity,
+            StoryPotential = comic.Breakdown?.StoryPotential,
+            SourcesJson = comic.Sources.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Sources),
+            ImageModel = comic.ImageModel,
+            RemasterState = comic.RemasterState == Shared.Enums.RemasterState.None ? string.Empty : comic.RemasterState.ToString()
         };
     }
 
@@ -98,26 +117,34 @@ public class ComicEntity : ITableEntity
             PromptVersion = PromptVersion,
             Captions = ReadStrings(CaptionsJson),
             Scenes = ReadStrings(ScenesJson),
+            Breakdown = Absurdity is { } a && Specificity is { } s && StoryPotential is { } p
+                ? new ComicScoreBreakdown(a, s, p)
+                : null,
+            Sources = ReadJson<ComicSource[]>(SourcesJson) ?? [],
+            ImageModel = ImageModel,
+            RemasterState = Enum.TryParse<RemasterState>(RemasterState, out var remaster) ? remaster : Shared.Enums.RemasterState.None,
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated
         };
     }
 
     /// <summary>A corrupt column costs the alt text, never the comic.</summary>
-    private static string[] ReadStrings(string json)
+    private static string[] ReadStrings(string json) => ReadJson<string[]>(json) ?? [];
+
+    private static T? ReadJson<T>(string json) where T : class
     {
         if (string.IsNullOrWhiteSpace(json))
         {
-            return [];
+            return null;
         }
 
         try
         {
-            return JsonSerializer.Deserialize<string[]>(json) ?? [];
+            return JsonSerializer.Deserialize<T>(json);
         }
         catch (JsonException)
         {
-            return [];
+            return null;
         }
     }
 }

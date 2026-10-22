@@ -35,6 +35,15 @@ public sealed class ModerationClient(HttpClient httpClient)
     public Task RemoveAsync(string placeId, string reason, CancellationToken cancellationToken = default) =>
         ActAsync(HttpMethod.Delete, $"/api/moderation/{placeId}", reason, cancellationToken);
 
+    /// <summary>Asks for an AI second opinion on the live comic. Advice only; nothing changes state.</summary>
+    public async Task<ModerationTriageDto?> TriageAsync(string placeId, CancellationToken cancellationToken = default)
+    {
+        using var response = await httpClient.PostAsync($"/api/moderation/{placeId}/triage", content: null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync(AppJsonContext.Default.ModerationTriageDto, cancellationToken);
+    }
+
     private async Task ActAsync(HttpMethod method, string url, string reason, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, url);

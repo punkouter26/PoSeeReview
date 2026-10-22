@@ -7,12 +7,8 @@
 //  1. An AudioContext created before a user gesture starts 'suspended' and never recovers on
 //     its own. So the context is created lazily on the first real interaction, and every play
 //     call is a no-op until then rather than an error.
-//  2. Sound defaults ON — a reversal of the rule this file used to state ("opt-out-able and must
-//     default to quiet"). The cues are part of the product rather than a garnish, and a switch
-//     nobody finds is not much of an opt-out. What keeps it honest is rule 1: a context cannot
-//     start before a gesture, so nothing is heard until the user has tapped something. Haptics
-//     inherit this preference, both keep switches on /diagnostics, and an explicit
-//     reduced-motion request still forces silence.
+//  2. Sound defaults OFF: the simplest app is a quiet one. It is switched on in /settings,
+//     haptics inherit the preference, and an explicit reduced-motion request still forces silence.
 
 import { gfx } from './gfx-core.js';
 
@@ -44,13 +40,12 @@ const state = {
     utterance: null    // Held so the engine cannot collect it mid-sentence.
 };
 
-// Only an explicit "false" is off. An absent key means the user has never decided, and the
-// default is on; a browser that blocks localStorage keeps that default rather than muting.
+// Only an explicit "true" is on: an absent key, or a browser that blocks localStorage, is quiet.
 function readStoredEnabled() {
     try {
-        return localStorage.getItem(STORAGE_KEY) !== 'false';
+        return localStorage.getItem(STORAGE_KEY) === 'true';
     } catch {
-        return true;
+        return false;
     }
 }
 
@@ -68,6 +63,41 @@ const on = () => state.enabled && !state.silenced;
 // narrationEnded() hands out this promise; endNarration resolves it. Resolving twice is harmless.
 let narrationDone = Promise.resolve();
 let endNarration = () => { };
+
+function canSpeak() {
+    try {
+        return typeof window.speechSynthesis !== 'undefined'
+            && typeof window.SpeechSynthesisUtterance === 'function';
+    } catch {
+        return false;
+    }
+}
+
+/** One utterance through speechSynthesis, ending `done` however it ends. */
+function speakUtterance(value, done) {
+    if (!canSpeak()) return false;
+    try {
+        // Always cancel first. Chrome queues utterances indefinitely, so a user tapping
+        // narrate twice would otherwise hear the whole thing twice, back to back.
+        window.speechSynthesis.cancel();
+
+        const spoken = value.slice(0, 800);
+        const utterance = new SpeechSynthesisUtterance(spoken);
+        utterance.rate = 1.02;
+        utterance.volume = 0.9 * state.volume;
+        utterance.onend = done;
+        utterance.onerror = done;
+        // Chrome can collect an utterance mid-speech and then never fires its events, and a
+        // backgrounded tab can stall the queue outright. Nothing may wait on this forever.
+        setTimeout(done, 10000 + spoken.length * 150);
+        state.utterance = utterance;
+
+        window.speechSynthesis.speak(utterance);
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * A room, synthesised rather than downloaded. Exponentially decaying stereo noise is the
@@ -293,17 +323,6 @@ function noiseBuffer(seconds) {
     return buffer;
 }
 
-/** A soft-clipping transfer curve; `drive` 1 is nearly clean, 6 is fuzz. */
-function driveCurve(drive) {
-    const curve = new Float32Array(1024);
-    const norm = Math.tanh(drive);
-    for (let i = 0; i < curve.length; i++) {
-        const x = (i / (curve.length - 1)) * 2 - 1;
-        curve[i] = Math.tanh(x * drive) / norm;
-    }
-    return curve;
-}
-
 /**
  * Maps a screen x coordinate to a stereo position. Clamped to ±0.85 rather than ±1: a sound
  * hard-panned to one channel disappears entirely on a phone held with one speaker covered, and
@@ -319,13 +338,13 @@ function panForClientX(clientX) {
 // effectively random order; on a diatonic scale that produces semitone clashes.
 const PENTATONIC = [523.25, 587.33, 698.46, 783.99, 932.33]; // C5 D5 F5 G5 A#5
 
-// ── Seeded generation, for the per-comic signature ───────────────────────────────────────
+// ── Seeded generation, for the per-comic signature (and soundtrack.js) ───────────────────
 
 /**
  * FNV-1a over a string. Any stable hash would do; this one is four lines and has no collisions
  * that matter at the scale of "one motif per restaurant".
  */
-function hashString(text) {
+export function hashString(text) {
     let hash = 0x811c9dc5;
     const value = String(text ?? '');
     for (let i = 0; i < value.length; i++) {
@@ -336,7 +355,7 @@ function hashString(text) {
 }
 
 /** mulberry32 — a small, fast, well-distributed PRNG. Deterministic from its seed, which is the point. */
-function seededRandom(seed) {
+export function seededRandom(seed) {
     let a = seed >>> 0;
     return () => {
         a = (a + 0x6d2b79f5) >>> 0;
@@ -353,7 +372,7 @@ function seededRandom(seed) {
  * single biggest carrier of "how weird is this" — bigger than tempo, bigger than timbre — which
  * is why it is chosen by score rather than by the seed.
  */
-const SCALES = [
+export const SCALES = [
     [0, 2, 4, 7, 9],           // major pentatonic — mundane
     [0, 2, 3, 7, 9],           // minor pentatonic — a bit off
     [0, 2, 3, 5, 7, 8, 10],    // natural minor — unsettled
@@ -361,7 +380,7 @@ const SCALES = [
     [0, 1, 4, 6, 7, 10]        // no name worth having — reserved for the top band
 ];
 
-const SEMITONE = Math.pow(2, 1 / 12);
+export const SEMITONE = Math.pow(2, 1 / 12);
 
 /**
  * A restaurant's four-note figure. The seed picks the notes and the contour; the SCORE picks the
@@ -528,29 +547,6 @@ export const audio = {
     },
 
     /**
-     * One tick of the strangeness count-up. Pitch rises with the score so the reveal audibly
-     * climbs; the note is picked from a pentatonic set so ticks never clash.
-     */
-    scoreTick(value, target) {
-        if (!canPlay() || throttled('tick', 22)) return;
-
-        const progress = target > 0 ? Math.min(1, value / target) : 0;
-        const note = PENTATONIC[Math.min(PENTATONIC.length - 1, Math.floor(progress * PENTATONIC.length))];
-        voice({
-            type: 'square',
-            freq: note,
-            attack: 0.001,
-            decay: 0.045,
-            // Ticks fade back as the count rises so the final chord is the loudest thing.
-            peak: 0.10 + progress * 0.06,
-            // The count-up sweeps left to right as it climbs, so the reveal has direction as
-            // well as pitch. Narrow (±0.5) — a full-width sweep on a ticking counter is seasick.
-            pan: (progress * 2 - 1) * 0.5,
-            send: 0.18
-        });
-    },
-
-    /**
      * Resolution chord when the count lands. Voiced by score: a low strangeness resolves to a
      * plain major triad, a high one adds a major seventh and a tritone above for unease.
      */
@@ -589,9 +585,9 @@ export const audio = {
     },
 
     /**
-     * The whole count-up in one call: the ticks `scoreTick` plays one at a time, then the landing
-     * chord, all placed on the context clock. A tick per interop round trip arrived whenever the
-     * renderer got to it; scheduled here they are evenly spaced whatever the main thread is doing.
+     * The whole count-up in one call: pentatonic ticks that climb and pan with the count, then the
+     * landing chord, all placed on the context clock so they stay evenly spaced whatever the main
+     * thread is doing.
      */
     scoreRoll(score, durationMs) {
         if (!canPlay() || throttled('roll', 300)) return;
@@ -860,80 +856,7 @@ export const audio = {
         motif(seed, score);
     },
 
-    // ── Cues for the shader moments ──────────────────────────────────────────────────────
-    //
-    // Each of these is driven by a callback from a graphics module, composed in fx.js. None of
-    // the graphics modules knows the app makes noise.
-
-    /**
-     * Ink blooming during the generation wait: a band of noise swept upward through a resonant
-     * filter, as loud as the splat that caused it. Barely there — it runs for ten seconds.
-     */
-    inkSwell(energy = 0.5) {
-        if (!canPlay() || throttled('inkSwell', 140)) return;
-        const e = Math.min(1, Math.max(0, energy));
-        const ctx = state.ctx;
-        const t0 = ctx.currentTime;
-        const duration = 0.5 + e * 0.5;
-        const source = ctx.createBufferSource();
-        source.buffer = noiseBuffer(duration);
-        const filter = ctx.createBiquadFilter();
-        filter.type = 'bandpass';
-        filter.Q.value = 6;
-        filter.frequency.setValueAtTime(260, t0);
-        filter.frequency.exponentialRampToValueAtTime(900 + e * 1600, t0 + duration);
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.05 + e * 0.12, t0 + duration * 0.35);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-        const output = makeOutput((Math.random() - 0.5) * 0.8, 0.6);
-        source.connect(filter);
-        filter.connect(gain);
-        gain.connect(output.node);
-        source.start(t0);
-        source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); output.dispose(); };
-    },
-
-    /** The ink draining into the frame as the comic arrives: one falling breath into the room. */
-    inkDrain() {
-        if (!canPlay() || throttled('inkDrain', 800)) return;
-        voice({ type: 'sine', startFreq: 520, endFreq: 130, attack: 0.02, decay: 0.6, peak: 0.12, send: 0.7 });
-        noise({ duration: 0.55, peak: 0.07, filterHz: 700, send: 0.6 });
-    },
-
-    /**
-     * The particle burst's peak, for a score worth celebrating. A sub-bass drop under a
-     * clipped knock: the waveshaper is what makes it a hit rather than a hum. Scaled by score,
-     * so a 52 thuds and a 95 detonates.
-     */
-    thump(score = 50) {
-        if (!canPlay() || throttled('thump', 400)) return;
-        const strange = Math.min(1, Math.max(0, score / 100));
-        const ctx = state.ctx;
-        const t0 = ctx.currentTime;
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(110 + strange * 40, t0);
-        osc.frequency.exponentialRampToValueAtTime(38, t0 + 0.32);
-        const shaper = ctx.createWaveShaper();
-        shaper.curve = driveCurve(1 + strange * 5);
-        const gain = ctx.createGain();
-        gain.gain.setValueAtTime(0.0001, t0);
-        gain.gain.exponentialRampToValueAtTime(0.5 + strange * 0.35, t0 + 0.006);
-        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45 + strange * 0.25);
-        const output = makeOutput(0, 0.15 + strange * 0.3);
-        osc.connect(shaper);
-        shaper.connect(gain);
-        gain.connect(output.node);
-        osc.start(t0);
-        osc.stop(t0 + 0.75);
-        osc.onended = () => { osc.disconnect(); shaper.disconnect(); gain.disconnect(); output.dispose(); };
-        noise({ duration: 0.08, peak: 0.25, filterHz: 3200, send: 0.2 });
-        if (strange >= 0.8) {
-            // The top band gets a debris tail: a long dark rumble that the room swallows.
-            noise({ duration: 1.1, peak: 0.12, filterHz: 260, delay: 0.04, send: 0.8 });
-        }
-    },
+    // ── Moment cues, composed in fx.js ───────────────────────────────────────────────────
 
     /**
      * "Too normal to draw." A deflating sad-trombone: three falling sawtooth notes, the last one
@@ -1004,53 +927,6 @@ export const audio = {
         source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); output.dispose(); };
     },
 
-    /** The duel's arc igniting: a dry electric crack with a falling zap behind it. */
-    duelIgnite() {
-        if (!canPlay() || throttled('duelIgnite', 600)) return;
-        noise({ duration: 0.09, peak: 0.4, filterHz: 5200, filterType: 'highpass', send: 0.2 });
-        voice({ type: 'sawtooth', startFreq: 2400, endFreq: 140, attack: 0.002, decay: 0.32, peak: 0.12, send: 0.35 });
-        voice({ type: 'square', startFreq: 1800, endFreq: 90, attack: 0.002, decay: 0.28, peak: 0.05, detune: 30, send: 0.2 });
-    },
-
-    /** The arc landing: a low boom under a buzz. */
-    duelStrike() {
-        if (!canPlay() || throttled('duelStrike', 600)) return;
-        this.thump(70);
-        voice({ type: 'sawtooth', freq: 55, attack: 0.01, decay: 0.5, peak: 0.08, send: 0.3 });
-    },
-
-    /**
-     * Call and response: each comic's own motif, panned to its side of the card, then the
-     * winner's side answers with a chord. A tie gets both motifs at once — a clash, not a duet.
-     */
-    duelWinner(side, seedA, scoreA, seedB, scoreB) {
-        if (!canPlay() || throttled('duelWinner', 1200)) return;
-        const tie = side === 'tie';
-        motif(seedA, scoreA, { pan: -0.7 });
-        motif(seedB, scoreB, { pan: 0.7, delay: tie ? 0 : 0.7 });
-        if (tie) return;
-        const winnerScore = side === 'left' ? scoreA : scoreB;
-        const pan = side === 'left' ? -0.5 : 0.5;
-        const room = 0.3 + (winnerScore / 100) * 0.4;
-        const root = 261.63;
-        [1, 1.26, 1.5, 2].forEach((ratio, i) => voice({
-            type: 'triangle', freq: root * ratio, attack: 0.01, decay: 1.1, peak: 0.16 - i * 0.02,
-            delay: 1.5 + i * 0.04, pan, send: room
-        }));
-    },
-
-    /** A printed sheet coming off the page: a short run of dry, bright paper crackle. */
-    paperLift() {
-        if (!canPlay() || throttled('paperLift', 600)) return;
-        for (let i = 0; i < 5; i++) {
-            noise({
-                duration: 0.05 + Math.random() * 0.06, peak: 0.08 + Math.random() * 0.06,
-                filterHz: 2800 + Math.random() * 3000, filterType: 'highpass',
-                delay: i * 0.07 + Math.random() * 0.03, pan: 0.2 + i * 0.1, send: 0.18
-            });
-        }
-    },
-
     /** The rubber stamp landing: a wooden knock over a dull body thud. */
     pressClunk() {
         if (!canPlay() || throttled('pressClunk', 500)) return;
@@ -1090,12 +966,7 @@ export const audio = {
     // over each other is worse than either.
 
     canNarrate() {
-        try {
-            return typeof window.speechSynthesis !== 'undefined'
-                && typeof window.SpeechSynthesisUtterance === 'function';
-        } catch {
-            return false;
-        }
+        return canSpeak();
     },
 
     /**
@@ -1109,32 +980,11 @@ export const audio = {
         const value = String(text ?? '').trim();
         if (!value) return false;
 
-        try {
-            // Always cancel first. Chrome queues utterances indefinitely, so a user tapping
-            // narrate twice would otherwise hear the whole thing twice, back to back.
-            window.speechSynthesis.cancel();
-            endNarration();
-
-            const spoken = value.slice(0, 800);
-            const utterance = new SpeechSynthesisUtterance(spoken);
-            utterance.rate = 1.02;
-            utterance.volume = 0.9 * state.volume;
-
-            narrationDone = new Promise((resolve) => { endNarration = resolve; });
-            const done = endNarration;
-            utterance.onend = done;
-            utterance.onerror = done;
-            // Chrome can collect an utterance mid-speech and then never fires its events, and a
-            // backgrounded tab can stall the queue outright. Nothing may wait on this forever.
-            setTimeout(done, 10000 + spoken.length * 150);
-            state.utterance = utterance;
-
-            window.speechSynthesis.speak(utterance);
-            return true;
-        } catch {
-            endNarration();
-            return false;
-        }
+        this.stopNarration();
+        narrationDone = new Promise((resolve) => { endNarration = resolve; });
+        if (speakUtterance(value, endNarration)) return true;
+        endNarration();
+        return false;
     },
 
     stopNarration() {

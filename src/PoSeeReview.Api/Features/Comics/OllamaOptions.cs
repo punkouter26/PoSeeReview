@@ -20,8 +20,12 @@ public class OllamaOptions
     /// <summary>OpenAI-compatible base URL. Ollama serves this path natively.</summary>
     public string BaseUrl { get; set; } = "http://localhost:11434/v1";
 
-    /// <summary>Model id as Ollama knows it (<c>ollama list</c>).</summary>
-    public string ChatModel { get; set; } = "qwen2.5:3b-instruct";
+    /// <summary>
+    /// Model id as Ollama knows it (<c>ollama list</c>). gemma3:4b won the 2026-10-22 golden-set
+    /// bake-off on a CPU-only box: 11/15 in band, 0.8-point spread; phi4-mini 9/15, llama3.2
+    /// over-scored, and qwen3:4b's thinking mode timed out every call.
+    /// </summary>
+    public string ChatModel { get; set; } = "gemma3:4b";
 
     /// <summary>
     /// Completion cap for the analysis call. Safe to set here — a local instruct model has no

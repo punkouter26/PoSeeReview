@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Configuration;

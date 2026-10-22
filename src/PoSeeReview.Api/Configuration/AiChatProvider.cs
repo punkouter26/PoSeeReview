@@ -1,4 +1,4 @@
-namespace PoSeeReview.Shared.Enums;
+namespace PoSeeReview.Api.Configuration;
 
 /// <summary>
 /// Selects the chat backend for strangeness analysis and panel captions, bound from

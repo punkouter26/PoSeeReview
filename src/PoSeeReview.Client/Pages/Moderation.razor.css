@@ -46,3 +46,31 @@
     align-items: center;
     gap: var(--space-3xs);
 }
+
+/* AI triage: advice beside the row, never an action. The rule colour says which way it leans. */
+.moderation-triage {
+    margin: var(--space-2xs) 0 0;
+    padding: var(--space-3xs) var(--space-xs);
+    border-left: 3px solid var(--color-border-strong);
+    background: var(--color-surface-alt);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    white-space: normal;
+}
+
+.moderation-triage[data-suggestion="keep"] { border-left-color: var(--color-success); }
+.moderation-triage[data-suggestion="hide"] { border-left-color: var(--color-warning-text); }
+.moderation-triage[data-suggestion="remove"] { border-left-color: var(--color-danger); }
+
+.moderation-triage p,
+.moderation-triage-concerns {
+    margin: 0;
+}
+
+.moderation-triage-verdict {
+    color: var(--color-text-primary);
+}
+
+.moderation-triage-concerns {
+    padding-inline-start: var(--space-md);
+}

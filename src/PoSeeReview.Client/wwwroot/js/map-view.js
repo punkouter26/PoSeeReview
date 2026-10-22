@@ -19,7 +19,8 @@
 // Nothing here may throw into .NET: every export catches and returns a benign value, and a 0
 // handle means "no map" (MapView then offers the list instead).
 
-import { gfx } from './gfx-core.js';
+import { gfx, prefersDark } from './gfx-core.js';
+import { loadScript, loadLayeredStyle } from './vendor.js';
 
 const MAPLIBRE = 'https://cdn.jsdelivr.net/npm/maplibre-gl@5.24.0/dist/';
 const SCRIPT_SRI = 'sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp';
@@ -35,41 +36,13 @@ let library = null;
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-function isDark() {
-    const theme = document.documentElement.dataset.theme;
-    return theme ? theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-}
-
-const tileStyle = () => (isDark() ? TILE_STYLES.dark : TILE_STYLES.light);
-
-function loadScript() {
-    if (window.maplibregl) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = `${MAPLIBRE}maplibre-gl.js`;
-        script.integrity = SCRIPT_SRI;
-        script.crossOrigin = 'anonymous';
-        script.onload = resolve;
-        script.onerror = () => reject(new Error('maplibre-gl failed to load'));
-        document.head.append(script);
-    });
-}
-
-// Fetched and wrapped in @layer rather than linked: an unlayered sheet beats every layer in
-// app.css (see its header), and the `vendor` layer sits below `page` and `shared` so the app's
-// own pin and control styles win.
-async function loadStyles() {
-    if (document.querySelector('style[data-vendor="maplibre"]')) return;
-    const response = await fetch(`${MAPLIBRE}maplibre-gl.css`, { integrity: STYLES_SRI, mode: 'cors' });
-    if (!response.ok) throw new Error(`maplibre-gl.css ${response.status}`);
-    const style = document.createElement('style');
-    style.dataset.vendor = 'maplibre';
-    style.textContent = `@layer vendor {\n${await response.text()}\n}`;
-    document.head.append(style);
-}
+const tileStyle = () => (prefersDark() ? TILE_STYLES.dark : TILE_STYLES.light);
 
 function loadLibrary() {
-    library ??= Promise.all([loadScript(), loadStyles()])
+    library ??= Promise.all([
+        loadScript(`${MAPLIBRE}maplibre-gl.js`, { integrity: SCRIPT_SRI, ready: () => !!window.maplibregl }),
+        loadLayeredStyle('maplibre', `${MAPLIBRE}maplibre-gl.css`, { init: { integrity: STYLES_SRI, mode: 'cors' } })
+    ])
         .then(() => window.maplibregl)
         .catch((error) => {
             library = null; // a flaky network gets another try on the next open
@@ -289,7 +262,7 @@ function heatPalette() {
     const css = getComputedStyle(document.documentElement);
     const token = (name, fallback) => hexToRgb(css.getPropertyValue(name), fallback);
     return {
-        dark: isDark(),
+        dark: prefersDark(),
         low: token('--color-brand', [0.49, 0.23, 0.93]),
         mid: token('--color-accent', [0.96, 0.62, 0.04]),
         high: token('--color-danger', [0.84, 0.15, 0.21])

@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using System.ClientModel;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Logging;

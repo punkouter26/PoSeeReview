@@ -1,0 +1,87 @@
+.score-why {
+    margin-top: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+}
+
+.score-why-title {
+    margin: 0 0 var(--space-xs);
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    color: var(--color-text-primary);
+}
+
+.score-why-list {
+    display: grid;
+    gap: var(--space-2xs);
+    margin: 0;
+}
+
+.score-why-row {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.score-why-row dt {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.score-why-row dd {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    margin: 0;
+}
+
+/* A native meter, restyled: the browser's traffic-light colours read as good/bad, and a high
+   absurdity is neither. */
+.score-why-row meter {
+    flex: 1;
+    height: 0.6rem;
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--color-border);
+}
+
+.score-why-row meter::-webkit-meter-bar {
+    border: none;
+    border-radius: var(--radius-pill);
+    background: var(--color-border);
+}
+
+.score-why-row meter::-webkit-meter-optimum-value,
+.score-why-row meter::-webkit-meter-suboptimum-value,
+.score-why-row meter::-webkit-meter-even-less-good-value {
+    border-radius: var(--radius-pill);
+    background: var(--color-brand);
+}
+
+.score-why-row meter::-moz-meter-bar {
+    border-radius: var(--radius-pill);
+    background: var(--color-brand);
+}
+
+.score-why-value {
+    min-width: 1.5rem;
+    text-align: end;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+}
+
+.score-why-note,
+.score-why-sources {
+    margin: var(--space-xs) 0 0;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.score-why-sources a {
+    color: var(--color-brand-ink);
+}

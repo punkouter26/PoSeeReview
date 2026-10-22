@@ -7,7 +7,6 @@
 @using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Web
 @inject ShareService ShareService
-@inject AnalyticsService Analytics
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject FxService Fx
@@ -82,15 +81,13 @@
     private async Task ShareAsync()
     {
         _isBusy = true;
-        _ = Fx.WarmPeelAsync();
 
         try
         {
             var outcome = await ShareService.ShareComicAsync(Comic.PlaceId, Comic.RestaurantName, Comic.StrangenessScore);
             if (outcome is ShareOutcome.Shared or ShareOutcome.Copied)
             {
-                Analytics.Track(FunnelSteps.ComicShared);
-                await Fx.PeelComicAsync(Comic.PlaceId, ".action-share");
+                await Fx.StampComicAsync();
             }
         }
         finally
@@ -114,9 +111,8 @@
             // download attribute is ignored by every browser, and the blob host sends no CORS.
             if (await JS.InvokeAsync<bool>("shareUtils.saveComic", Comic.PlaceId))
             {
-                Analytics.Track(FunnelSteps.ComicSaved);
                 await Fx.PlayConfirmAsync();
-                await Fx.PeelComicAsync(Comic.PlaceId, ".action-save");
+                await Fx.StampComicAsync();
                 Toasts.Show("Saved to your device");
                 return;
             }

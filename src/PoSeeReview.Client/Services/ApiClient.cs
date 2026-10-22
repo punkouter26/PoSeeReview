@@ -292,18 +292,18 @@ public class ApiClient
 
     /// <summary>
     /// Which of these places already have a live comic — the ones that will open instantly and
-    /// cost nothing — mapped to each one's strangeness score. Returns an empty map on failure, so
-    /// the map simply shows every pin as undrawn rather than promising a free result it cannot
-    /// confirm.
+    /// cost nothing — with each one's strangeness score, plus the weirdness forecast for the ones
+    /// that do not. Returns an empty probe on failure, so the map simply shows every pin as undrawn
+    /// rather than promising a free result it cannot confirm.
     /// </summary>
-    public async Task<Dictionary<string, int>> GetCachedScoresAsync(
+    public async Task<CachedComicsResponse> GetComicProbeAsync(
         IEnumerable<string> placeIds,
         CancellationToken cancellationToken = default)
     {
         var ids = placeIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
         if (ids.Count == 0)
         {
-            return [];
+            return new();
         }
 
         try
@@ -314,19 +314,15 @@ public class ApiClient
 
             if (!response.IsSuccessStatusCode)
             {
-                return [];
+                return new();
             }
 
-            var payload = await response.Content.ReadFromJsonAsync(
-                AppJsonContext.Default.CachedComicsResponse, cancellationToken);
-
-            return payload is null
-                ? []
-                : payload.CachedPlaceIds.ToDictionary(id => id, id => payload.Scores.GetValueOrDefault(id), StringComparer.Ordinal);
+            return await response.Content.ReadFromJsonAsync(
+                AppJsonContext.Default.CachedComicsResponse, cancellationToken) ?? new();
         }
         catch (HttpRequestException)
         {
-            return [];
+            return new();
         }
     }
 

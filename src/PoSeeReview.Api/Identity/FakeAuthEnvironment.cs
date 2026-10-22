@@ -1,4 +1,4 @@
-using PoSeeReview.Shared;
+using PoSeeReview.Api.Configuration;
 
 namespace PoSeeReview.Api.Identity;
 

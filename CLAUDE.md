@@ -73,6 +73,8 @@ $env:BASE_URL = "https://app-poseereview.azurewebsites.net"; node SCRIPTS/post-d
 ```
 
 `SCRIPTS/setup.ps1` is the first-run bootstrap (WinGet/Docker/Azure CLI checks).
+`SCRIPTS/rotate-google-key.ps1` copies a new Google Maps key from the clipboard into kv-poshared
+(`GoogleMaps--ApiKey` and `PoSeeReview--GoogleMaps--ApiKey`).
 `SCRIPTS/ui-check.mjs` (`$env:BASE_URL=…; node SCRIPTS/ui-check.mjs`) is a Playwright regression
 pass over a live app — it performs **one real, paid** comic generation.
 
@@ -132,7 +134,8 @@ source-generated `AppJsonContext` trim-safe).
 
 The WASM client never handles tokens. Session = `__Host-PoSeeReview.Auth` cookie (HttpOnly,
 SameSite=Strict, Secure). Routes: `/auth/login/microsoft` (Entra `/common` OIDC), `/auth/login/fake`
-(guest cookie, 404 in Prod), `/auth/logout`, `/auth/me`.
+(guest cookie, 404 in Prod), `/auth/logout` (GET only — the cookie is SameSite=Strict, so a
+cross-site link cannot sign anyone out), `/auth/me`.
 
 **Authz is deny-by-default**: `AddBffAuthentication` sets a `FallbackPolicy` of
 `RequireAuthenticatedUser`. Public endpoints opt out with `.AllowAnonymous()` — `/auth`, `/health*`,
@@ -159,10 +162,13 @@ button in **both** Development and Test — every E2E UI test clicks it.
   Azure; locally `dotnet user-secrets` — the one exception to the no-user-secrets rule.
 - `AzureAd:ClientId` / `AllowedTenants` stay in appsettings.json (public identifiers);
   `AzureAd:ClientSecret` is Key Vault only.
-- `Ai:ImageProvider` (`Gemini` default, `AzureOpenAI` = gpt-image-1-mini, ~1/10 the price, rougher)
-  and `Ai:ChatProvider` (`AzureOpenAI` default, `Ollama` for free local runs) are chosen separately,
-  so an image-model experiment is not also a scorer experiment. An unparseable value fails startup.
-  `StartupSecretValidator` requires only the secrets of the selected providers.
+- `Ai:ImageProvider` (the **draft** painter: `AzureOpenAI` = gpt-image-1-mini default, `Gemini`,
+  or `Local` — Development only, refused at startup elsewhere), `Ai:RemasterProvider` (the premium
+  painter for popular comics, `Gemini` default; the same value as the draft painter disables
+  remastering) and `Ai:ChatProvider` (`AzureOpenAI` default, `Ollama` for free local runs) are
+  chosen separately, so an image-model experiment is not also a scorer experiment. An unparseable
+  value fails startup. `StartupSecretValidator` requires only the secrets of the draft and chat
+  providers; a missing remaster key switches remastering off rather than failing startup.
 
 ### Pipeline ordering that matters
 
@@ -175,7 +181,7 @@ Rate limiting: global fixed window (`RateLimiting:GlobalPermitLimit`, 240/min) p
 anonymous) — an unpartitioned policy is one bucket for the whole app. The SPA document and `/auth` call
 `.DisableRateLimiting()` — a 429 on `index.html` is a blank white page with no retry.
 
-Tables (`PoSeeReview{Comics,Restaurants,Leaderboard,Reports,HallOfFame,Budget,ShareLinks,Moderation}`)
+Tables (`PoSeeReview{Comics,Restaurants,Leaderboard,Reports,HallOfFame,Budget,ShareLinks,Moderation,Analyses}`)
 and the `comics` blob container are created concurrently at startup by `TableStorageInitializer`;
 repositories never call `CreateIfNotExists`, and startup fails fast if storage is unreachable.
 
@@ -200,10 +206,23 @@ POST; the host serves the client, so there is no older API to fall back to.
 - The client request must call `SetBrowserResponseStreamingEnabled(true)`; `ResponseHeadersRead`
   alone buffers the whole body on WASM and the stepper never moves.
 
-**One chat call.** The analysis returns score inputs, `narrative` and `panels: [{scene, caption}]`
-together (`ChatPrompts.ToAnalysis` makes the result total). `ComicTextOverlayService` is
-text-in/pixels-out. The painter draws the scorer's shot list: each panel's `scene` is a numbered line
-of `ComicImagePrompt`.
+**One chat call.** The analysis returns score inputs, `narrative` and
+`panels: [{scene, caption, reviewIds}]` together (`ChatPrompts.ToAnalysis` makes the result total and
+drops citations of reviews that were never sent). `ComicTextOverlayService` is text-in/pixels-out.
+The painter draws the scorer's shot list: each panel's `scene` is a numbered line of
+`ComicImagePrompt`. The comic keeps the three ratings (`Breakdown`) and per-panel `Sources`
+(review position + stars, never text or author) for the page's "Why 54?" panel.
+
+**The verdict is cached apart from the comic** (`AnalysisRepository`, table `PoSeeReviewAnalyses`,
+keyed by place + a hash of the masked reviews + `PromptVersion`). A redraw keeps its score; a
+too-ordinary verdict is cached too, which is what `/api/comics/cached` returns as `forecasts`.
+`Demand` counts forecast sightings and comic-page misses for `ComicPredrawService`; saves merge with
+`Demand` null so a re-analysis keeps the count.
+
+**The system message must stay above 1024 tokens** — Azure's prompt-cache threshold (measured 1024
+of ~1265 cached). `AiPipelineTests` guards the length; `Ai.Tokens` `Direction=cached` shows hits.
+Don't give the model a copyable example identity: "a diner in a yellow raincoat" ended up in every
+comic.
 
 **The model rates, the code scores.** The model returns `absurdity`, `specificity`,
 `storyPotential` (0–10); `ChatPrompts.ComputeScore` multiplies:
@@ -214,7 +233,12 @@ Judge a prompt change with the golden set:
 ```powershell
 dotnet run SCRIPTS/prompt-eval.cs -- --model gemma3:4b      # Ollama, free
 dotnet run SCRIPTS/prompt-eval.cs -- --provider azure        # needs AZURE_OPENAI_ENDPOINT/_API_KEY
+dotnet run SCRIPTS/prompt-eval.cs -- --provider azure --judge gpt-5.4-mini --verbose   # + writing grades
 ```
+
+It reports in-band, spread, grounded panels and blunted terms; `--judge` adds funny / drawable /
+faithful (1–5) and invented facts. The judge wobbles ±0.4 between identical runs at n=15 — compare
+like with like.
 
 gpt-5.4-nano defaults to no reasoning. Do not set `reasoning_effort`: any value but `none` rejects
 the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`, which OpenAI SDK
@@ -224,8 +248,23 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   re-reads the cache under it so a double-tap pays once.
 - **`Comics:PromptVersion` is part of the cache key.** A prompt tune misses the cache on its own;
   rows written before versioning read back as 0.
-- **Cost.** `AiCostTracker` emits `Ai.Cost.Usd` / `Ai.Tokens` priced per input and output rate from
-  `AiPricing:Models`; `AiPricing:FreeProviders` keeps Ollama at $0.
+- **Cost.** `AiCostTracker` (`Telemetry/`, shared by every slice) emits `Ai.Cost.Usd` / `Ai.Tokens`
+  priced per input, cached-input and output rate from `AiPricing:Models`, **per 1K tokens** — a
+  per-million price typed in once over-reported every scorer call ~300x (`AiPipelineTests` guards it).
+  `AiPricing:FreeProviders` keeps Ollama at $0.
+- **Draft, then remaster.** Every comic is drawn by the cheap painter and records `ImageModel`.
+  `ComicRemasterService` redraws the live board's top `Remaster:TopN` with the remaster painter from
+  the stored scenes and captions, under the generation lock, overwriting the same blob so board and
+  Hall of Fame rows follow. One attempt per comic (`RemasterState` Declined/Failed is final); rows
+  with no `ImageModel` predate it and are skipped. `Remaster:MaxPerRun` × runs/day is the ceiling.
+  Both background spenders (`Remaster`, `Predraw`) are **off in `appsettings.Development.json`**:
+  local dev talks to production storage, and a laptop must not remaster the live board alongside
+  the deployed app.
+- **Pre-draw.** `ComicPredrawService` runs the normal pipeline once a day for analyses with
+  `Predraw:MinScore`, `Predraw:MinDemand` and no live comic, zeroing demand **before** each attempt
+  so a refusal is not re-billed nightly.
+- **Image QA measures, never redraws.** `ComicImageQaService` (Azure chat only) checks a sample of
+  fresh comics with a vision call and emits `Comics.ImageQa.*` dimensioned by image model.
 - **An image refusal is a refusal.** `ImageDeclinedException` → 422 and a moderation flag. Never
   redraw a substitute scene under the reviews' score. `ComicImagePrompt` blunts filter-tripping
   terms and reports them via `*.Image.PromptTermsBlunted`.
@@ -245,11 +284,12 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 - **Daily budget** (`GenerationBudgetService`, table `PoSeeReviewBudget`): a UTC-day counter per
   principal and app-wide, reserved **before** the pipeline, refunded on a cache hit and on failures
   that provably preceded the image call. The service ceiling is checked first. It **fails open**
-  after `MaxConcurrencyRetries`. `GET /api/comics/budget` is free so the UI greys out the button
+  after `MaxConcurrencyRetries`. Table Storage 409/412 retries (budget, moderation) go through
+  `Storage/TableConcurrency`. `GET /api/comics/budget` is free so the UI greys out the button
   before a tap.
 - **`GET /api/comics/{placeId}/image`** re-serves the blob from this origin so it can be saved (the
-  `download` attribute is ignored cross-origin). Not used for display, but every shader that samples
-  the artwork (print reveal, 3D mode, page curl) loads it as a texture — the SAS blob sends no CORS.
+  `download` attribute is ignored cross-origin). Not used for display; Share attaches the image
+  file from it too — the SAS blob sends no CORS.
 - **Reports** (`/api/reports`): session required, rate limited, deduped by reporter (RowKey is the
   principal), only ever writes a row.
 - **Moderation** is graded: **Hide** (reversible, what auto-hide at 3 distinct reporters does),
@@ -259,7 +299,13 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   The gate **fails open** on read errors. A withheld comic is **451**, except on the share card (404).
 - **Pre-publish screening.** `IContentSafetyScreener` runs on the narrative before the paid image
   call. Allegation language **flags** (publishes, queues for a human); only categories with no
-  legitimate reading **block**. Word-boundary matching; figurative food words excluded.
+  legitimate reading **block**. Word-boundary matching; figurative food words excluded. With
+  `Moderation:ContentSafetyEndpoint` set, `AzureContentSafetyScreener` adds Azure AI Content Safety
+  under the lexical screen (lexical runs first and keeps its verdict; severity ≥4 sexual/hate/self-harm
+  blocks, ≥2 flags, violence flags only at ≥4) and fails open to the lexical verdict.
+- **AI triage advises.** `POST /api/moderation/{placeId}/triage` (`Moderation:TriageDeployment`)
+  stores keep/hide/remove advice in the moderation table's `TRIAGE` partition (a moderator's state
+  write is a full replace of the `MOD` row and must not erase it), tied to the comic id it read.
 
 ### Hall of Fame, share cards, previews
 
@@ -282,8 +328,8 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 - **History.** `ComicHistoryService` keeps seen comics in `localStorage` (`posee_comic_history`) for
   `/my-comics`; `BoardMemoryService` keeps last-seen ranks per region. Both degrade to no-ops when
   storage throws, and both types are in `AppJsonContext`.
-- **Account menu.** `/my-comics` is linked from the identity badge's native `popover`, never from
-  `nav.nav-links`, which `HeaderContractUiTests` pins at exactly two items. Under 40rem every
+- **Account menu.** `/my-comics` and `/settings` are linked from the identity badge's native
+  `popover`, never from `nav.nav-links`, which `HeaderContractUiTests` pins at exactly two items. Under 40rem every
   `.popover-menu` is a bottom sheet over a scrim (shared layer, so callers' placement loses). `/diagnostics` and
   `/moderation` have no nav entry.
 - **Components.** `ComicRow` is every list of comics; `StateCard` is every empty/error/404 screen;
@@ -313,7 +359,6 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   out. No WebGL → `OnUnavailable`, and both pages drop to the list for the visit.
 - **Duel.** `/duel/{a}/{b}` shows `GET /share/duel/{a}/{b}/card.png` (404 if either comic is gone or
   withheld); crawlers get Open Graph HTML for it from `SocialPreviewMiddleware`.
-- **`AnalyticsService`** only writes debug logs; nothing is sent anywhere.
 
 ### Design system (`wwwroot/css/app.css`)
 
@@ -346,17 +391,20 @@ Read its header comment before adding CSS.
 
 Live modules: `gfx-core.js`, `gradient.js`, `audio.js`, `haptics.js`, `comic-reveal.js`,
 `panel-scrub.js`, `view-transitions.js`, `scroll-guard.js`, `modal.js`, `glass.js`, `soundtrack.js`,
-`confetti.js`, `ink-fluid.js`, `halftone-reveal.js`, `particles.js`, `duel-seam.js`, `page-curl.js`,
-`depth-diorama.js` (+ `share-utils.js`, a classic script loaded by `index.html`; `map-view.js` is
-imported by `MapView` on its own).
+`confetti.js`, `vendor.js` (+ `share-utils.js`, a classic script loaded by `index.html`;
+`map-view.js` is imported by `MapView` and `radzen-theme.js` by `RadzenScope`, both on their own).
+Shared helpers live once: `prefersDark` in `gfx-core.js`, `hashString`/`seededRandom`/`SCALES` in
+`audio.js`, script and `@layer vendor` stylesheet loading in `vendor.js`.
+
+**Simplest by default, extras in `/settings`.** Sound is **off** until switched on, the effects tier
+is `lite` until the user picks Full, and the soundtrack is opt-in. Every switch is on the
+`/settings` page (linked from the account menu); nothing else offers one.
 
 - **`gfx-core.js`**: one shared `requestAnimationFrame` loop (never start a private rAF), a 20ms
   frame budget that steps the tier down after **1500ms** of sustained overrun (milliseconds, not
   frames; each frame adds at most 100ms, so a single compile stall is a hitch, not a downgrade; not persisted), tiers `off`/`lite`/`full` stamped on `<html data-fx-tier>`. `off` is forced
   by reduced motion or no WebGL2. `createSurface` gives one WebGL2 context per canvas.
-  `poseeFx.stats()` in the console is the frame-budget readout. It also holds the shared helpers for
-  effects that sample the comic (`comicImageUrl`, `loadImage`, `createTexture`) and one lazily
-  requested WebGPU device (`getGpuDevice`, null without WebGPU).
+  `poseeFx.stats()` in the console is the frame-budget readout.
 - **Backdrop** (`gradient.js`, `full` tier): built from `--color-surface` / `--color-brand-surface`
   / `--color-brand`, re-read on a theme flip (OS scheme or `data-theme`). It leans on score, pointer,
   scroll and the audio level, restarts itself when the tier returns to `full`, and a lost WebGL
@@ -367,7 +415,7 @@ imported by `MapView` on its own).
 - **Nothing may throw into .NET.** `FxService` swallows `JSException` and returns a benign default
   (0 handle = not running, except the gradient, above). `SafeAsync<T>` needs its `[DynamicallyAccessedMembers]` annotation or
   the trimmed client fails `IL2091`.
-- **Audio** is synthesised (no assets), defaults **on**, and cannot start before a trusted gesture;
+- **Audio** is synthesised (no assets), defaults **off**, and cannot start before a trusted gesture;
   `unlock()` **races** the resume against a short deadline — Chrome leaves an unhonoured resume
   pending forever, which once hung the whole discovery search. Reduced motion forces silence as a
   runtime gate that never overwrites the stored preference. Master volume is `0.22 × volume`
@@ -376,39 +424,29 @@ imported by `MapView` on its own).
   `panel-scrub.js` replays its notes as panels cross mid-screen. Narration (`speechSynthesis`) must
   `cancel()` before `speak()` and on teardown — the queue is browser-global.
 - **Haptics** follow the sound preference and can be switched off on their own, never on on their
-  own. Three fixed patterns (tap / confirm / error). Sound, haptics, music and volume live in the account
-  menu; the tier switch is on the Development-only `/diagnostics`.
+  own. Three fixed patterns (tap / confirm / error). Sound, haptics, music, volume and the tier all
+  live on `/settings`.
 - **Ink development** (`comic-reveal.js`): a freshly drawn comic develops top-down via a
   `mask-image` driven by the registered `--comic-reveal` property (initial value 1 = fully visible).
   **Every exit path must clear `data-comic-reveal`**, which is why `ComicStrip.DisposeAsync`
-  finishes the reveal first. At `full` it is **printed** instead (`halftone-reveal.js`: CMYK plates
-  landing in register, canvas beside the masked container, not in it); a 0 from that falls back to
-  the mask. fx.js's reveal handle remembers which one runs.
-- **The generation wait, moment by moment.** `ink-fluid.js` (stable fluids, half-float targets,
-  `full` only) churns behind the stepper; each SSE phase squirts a colour, and on `complete` the ink
-  drains for 700ms before the comic replaces it. The score landing fires `particles.js` from the
-  ring (WebGPU compute, WebGL2 fallback, `full` only) and, above 50, a ring through the backdrop
-  (`gradient.shock`) plus `audio.thump`. "Too normal" fizzles grey motes off the card and plays a
-  sad trombone, not the error cue.
-- **Share / save** (`page-curl.js`): a printed copy curls off and flies into the button, then a
-  CERTIFIED STRANGE stamp lands (`.fx-stamp` in app.css). `lite` gets the stamp alone.
+  finishes the reveal first.
+- **"Too normal"** plays a sad trombone (`playFizzle`), not the error cue.
+- **Share / save**: a CERTIFIED STRANGE stamp lands on the comic (`stampComic` in fx.js, `.fx-stamp`
+  and its `fx-stamp-slam` keyframes in app.css), `lite` and up.
 - **Board** moves are damped springs (climbers overshoot, fallers bounce) in `animateBoardMoves`;
   a climb into #1 fires `confetti.js` (2D canvas, tiny inked panels) and `audio.crown`.
-- **Duel** (`duel-seam.js`): an arc over the card leaning toward the stranger comic, then the
-  winner's half floods while both motifs answer each other. It starts only once the card has
-  loaded **and** both scores are in, whichever comes last. Below `full` a CSS seam stands in.
-- **3D mode** (`depth-diorama.js`, the comic page's "3D" toggle): parallax-occlusion over a
-  segmented "cut-out cards" depth. On WebGPU, transformers.js 4.3.1 + Depth-Anything-V2-small run
-  in a Blob module **worker** (on the main thread the session build stalled frames until the
-  watchdog killed the effect) and blend in; ~25MB on first use only. Captions and panel borders
-  stay on the zero-parallax plane. `DepthEnded` resets the toggle when it stops on its own.
+- **Duel**: CSS only — the card slams, a seam pulses and the winner's half floods once the card has
+  loaded **and** both scores are in, whichever comes last; the winner's motif plays.
+- **Removed (2026-10):** the ink-fluid wait, score particles, halftone print reveal, page curl,
+  duel arc shader, 3D mode, sticker maker and AI voice. If one comes back, it goes behind a
+  `/settings` switch that starts off.
 - **Map** heat glow is a MapLibre custom layer in MapLibre's own context; it pulses only at `full`.
 - **Liquid glass** (`glass.js`): a generated lens-edge displacement map applied as an SVG backdrop
   filter, keyed off `:root[data-glass="liquid"]`, which is set only on Chromium at `full` — other
   engines parse `backdrop-filter: url()` and then draw no backdrop. One specular light for the page
   (`--glass-lx/-ly`, a `fixed` gradient) follows the pointer or a permission-free tilt.
-- **Soundtrack** (`soundtrack.js`) is the one **opt-in** sound (`posee_soundtrack`, the account
-  menu's Music chip): a four-bar loop seeded by place id, scheduled look-ahead on the audio clock,
+- **Soundtrack** (`soundtrack.js`) is opt-in even with sound on (`posee_soundtrack`, the
+  "Comic soundtrack" switch on `/settings`): a four-bar loop seeded by place id, scheduled look-ahead on the audio clock,
   ducked under narration, released when the comic page is disposed.
 - **View transitions**: forward is the halftone dot mask; back is an ink blot (`--ink-blot`) growing
   from the tap point (`--vt-x/-y`). Never await rAF inside the update callback (rendering is suppressed while it

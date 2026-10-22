@@ -84,4 +84,19 @@ public class Comic
     /// pictured. Empty on rows written before scenes were persisted.
     /// </summary>
     public string[] Scenes { get; set; } = [];
+
+    /// <summary>The three ratings the score was computed from. Null on older comics.</summary>
+    public ComicScoreBreakdown? Breakdown { get; set; }
+
+    /// <summary>Which reviews each panel was drawn from. Empty on older comics.</summary>
+    public ComicSource[] Sources { get; set; } = [];
+
+    /// <summary>
+    /// The image model that drew the current artwork. Empty on comics drawn before it was
+    /// recorded, which are never remastered.
+    /// </summary>
+    public string ImageModel { get; set; } = string.Empty;
+
+    /// <summary>Whether this comic has been redrawn by the remaster model, or tried and could not be.</summary>
+    public RemasterState RemasterState { get; set; } = RemasterState.None;
 }

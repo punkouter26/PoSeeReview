@@ -42,7 +42,8 @@ public sealed class ComicLoopUiTests(PlaywrightFixture fixture)
         await page.ReloadAsync();
         await page.Locator(".index-container").WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });
 
-        var cards = page.Locator("[data-testid='restaurant-card']");
+        // Not a card the forecast already marks too ordinary: those have no generate button.
+        var cards = page.Locator("[data-testid='restaurant-card']:not([data-forecast='ordinary'])");
         try
         {
             await cards.First.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = RenderTimeout });

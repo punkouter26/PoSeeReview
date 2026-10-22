@@ -63,4 +63,10 @@ public class AzureStorageOptions
     /// problem rather than to the catalogue.
     /// </summary>
     public string ModerationTableName { get; set; } = "PoSeeReviewModeration";
+
+    /// <summary>
+    /// Name of the table caching the scorer's analysis per place, keyed by a hash of the reviews
+    /// and the prompt version. Outlives the comic: a redraw, a remaster or a forecast reuses it.
+    /// </summary>
+    public string AnalysesTableName { get; set; } = "PoSeeReviewAnalyses";
 }

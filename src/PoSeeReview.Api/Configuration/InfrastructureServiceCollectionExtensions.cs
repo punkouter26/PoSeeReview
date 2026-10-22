@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using System.Net;
 using Azure.AI.OpenAI;
 using Azure.Data.Tables;
@@ -14,10 +15,10 @@ using PoSeeReview.Api.Features.Comics;
 using PoSeeReview.Api.Features.Leaderboard;
 using PoSeeReview.Api.Features.Moderation;
 using PoSeeReview.Api.Features.Restaurants;
+using PoSeeReview.Api.HostedServices;
 using PoSeeReview.Api.Storage;
 using PoSeeReview.Shared.Contracts;
 using PoSeeReview.Shared.Ids;
-using PoSeeReview.Shared.Enums;
 
 namespace PoSeeReview.Api.Configuration;
 
@@ -35,6 +36,34 @@ public static class InfrastructureServiceCollectionExtensions
 
     /// <summary>Configuration path for <see cref="AiChatProvider"/>. Absent means Azure OpenAI.</summary>
     public const string AiChatProviderConfigurationKey = "Ai:ChatProvider";
+
+    /// <summary>
+    /// Configuration path for the premium painter that redraws popular comics. Absent means Gemini;
+    /// the same value as <see cref="AiProviderConfigurationKey"/> means there is nothing to upgrade to.
+    /// </summary>
+    public const string AiRemasterProviderConfigurationKey = "Ai:RemasterProvider";
+
+    /// <summary>The draft painter when <see cref="AiProviderConfigurationKey"/> is absent: the cheap one.</summary>
+    public const AiImageProvider DefaultImageProvider = AiImageProvider.AzureOpenAI;
+
+    private static AiImageProvider ParseImageProvider(IConfiguration configuration, string key, AiImageProvider fallback)
+    {
+        var setting = configuration[key];
+        return string.IsNullOrWhiteSpace(setting)
+            ? fallback
+            : Enum.TryParse<AiImageProvider>(setting, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed)
+                ? parsed
+                : throw new InvalidOperationException(
+                    $"'{setting}' is not a valid {key}. Valid values: {string.Join(", ", Enum.GetNames<AiImageProvider>())}.");
+    }
+
+    /// <summary>The painter a provider value selects, built on demand so its secrets are only required when chosen.</summary>
+    private static IImageGenerationService CreatePainter(IServiceProvider sp, AiImageProvider provider) => provider switch
+    {
+        AiImageProvider.AzureOpenAI => ActivatorUtilities.CreateInstance<AzureOpenAIImageService>(sp),
+        AiImageProvider.Local => ActivatorUtilities.CreateInstance<LocalImageService>(sp),
+        _ => ActivatorUtilities.CreateInstance<GeminiComicService>(sp)
+    };
 
     /// <summary>
     /// Registers all infrastructure services and Azure clients
@@ -61,17 +90,27 @@ public static class InfrastructureServiceCollectionExtensions
             configuration.GetSection(OllamaOptions.SectionName));
         services.Configure<AiPricingOptions>(
             configuration.GetSection(AiPricingOptions.SectionName));
+        services.Configure<ImageQaOptions>(
+            configuration.GetSection(ImageQaOptions.SectionName));
+        services.Configure<LocalImageOptions>(
+            configuration.GetSection(LocalImageOptions.SectionName));
+        services.Configure<RemasterOptions>(
+            configuration.GetSection(RemasterOptions.SectionName));
+        services.Configure<PredrawOptions>(
+            configuration.GetSection(PredrawOptions.SectionName));
 
         // Chat and image are chosen separately, so an image-model experiment is not also a
-        // scorer experiment.
-        var providerSetting = configuration[AiProviderConfigurationKey];
-        var imageProvider = string.IsNullOrWhiteSpace(providerSetting)
-            ? AiImageProvider.Gemini
-            : Enum.TryParse<AiImageProvider>(providerSetting, ignoreCase: true, out var parsedImage)
-                ? parsedImage
-                : throw new InvalidOperationException(
-                    $"'{providerSetting}' is not a valid {AiProviderConfigurationKey}. " +
-                    $"Valid values: {string.Join(", ", Enum.GetNames<AiImageProvider>())}.");
+        // scorer experiment. Drafts and remasters are chosen separately too: cheap for every
+        // comic, premium for the few that get the views.
+        var imageProvider = ParseImageProvider(configuration, AiProviderConfigurationKey, DefaultImageProvider);
+        var remasterProvider = ParseImageProvider(configuration, AiRemasterProviderConfigurationKey, AiImageProvider.Gemini);
+
+        // A local model's output is not what the product publishes, and a laptop is not a server.
+        if ((imageProvider == AiImageProvider.Local || remasterProvider == AiImageProvider.Local) && !environment.IsDevelopment())
+        {
+            throw new InvalidOperationException(
+                $"{AiImageProvider.Local} is a Development-only image provider; it cannot run in {environment.EnvironmentName}.");
+        }
 
         var chatProviderSetting = configuration[AiChatProviderConfigurationKey];
         var chatProvider = string.IsNullOrWhiteSpace(chatProviderSetting)
@@ -167,7 +206,17 @@ public static class InfrastructureServiceCollectionExtensions
         // concrete type, Comics/Reports/Takedowns go through the Shared contract.
         services.AddScoped<IContentModerationGate>(sp => sp.GetRequiredService<ModerationRepository>());
         services.AddScoped<ModerationQueueReader>();
-        services.AddScoped<IContentSafetyScreener, LexicalContentSafetyScreener>();
+        services.AddScoped<LexicalContentSafetyScreener>();
+        services.AddScoped<IContentSafetyScreener>(sp =>
+            string.IsNullOrWhiteSpace(configuration[$"{ModerationOptions.SectionName}:{nameof(ModerationOptions.ContentSafetyEndpoint)}"])
+                ? sp.GetRequiredService<LexicalContentSafetyScreener>()
+                : ActivatorUtilities.CreateInstance<AzureContentSafetyScreener>(sp));
+        // The screen sits before the paid image call on every generation: a slow classifier is
+        // given a few seconds and then the lexical verdict stands.
+        services.AddHttpClient(AzureContentSafetyScreener.HttpClientName)
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(4));
+        services.AddScoped<ModerationTriageService>();
+        services.AddScoped<IAnalysisRepository, AnalysisRepository>();
         services.AddModerationAuthorization(configuration);
         services.AddScoped<GenerationBudgetService>();
         services.AddScoped<DiagnosticsSnapshotQueryHandler>();
@@ -217,19 +266,56 @@ public static class InfrastructureServiceCollectionExtensions
         // twice. Singleton because the gates must be shared across requests, not per request.
         services.AddSingleton<ComicGenerationLock>();
 
-        // Image provider: Gemini (GeminiComicService) or gpt-image on Azure (AzureOpenAIImageService),
-        // both prompted by ComicImagePrompt. The named HttpClient carries a timeout and NOTHING
-        // else — no retry, no hedging. An image POST that is slow or answers 5xx may already
-        // have been billed, so re-sending it can pay for the same comic twice.
-        var imageClientName = imageProvider == AiImageProvider.AzureOpenAI ? "AzureOpenAIImageApi" : "GeminiApi";
-        services.AddHttpClient(imageClientName)
-            .SetHandlerLifetime(TimeSpan.FromMinutes(5))
-            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
+        // Image providers: gpt-image on Azure (AzureOpenAIImageService), Gemini (GeminiComicService)
+        // or a local server (LocalImageService), all prompted by ComicImagePrompt. The named
+        // HttpClients carry a timeout and NOTHING else — no retry, no hedging. An image POST that
+        // is slow or answers 5xx may already have been billed, so re-sending it can pay for the
+        // same comic twice. All are registered: the draft and remaster painters can differ.
+        foreach (var imageClientName in new[] { "AzureOpenAIImageApi", "GeminiApi" })
+        {
+            services.AddHttpClient(imageClientName)
+                .SetHandlerLifetime(TimeSpan.FromMinutes(5))
+                .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(90));
+        }
 
-        if (imageProvider == AiImageProvider.AzureOpenAI)
-            services.AddScoped<IImageGenerationService, AzureOpenAIImageService>();
-        else
-            services.AddScoped<IImageGenerationService, GeminiComicService>();
+        services.AddHttpClient(LocalImageService.HttpClientName)
+            .ConfigureHttpClient((sp, client) =>
+                client.Timeout = TimeSpan.FromSeconds(Math.Max(30, sp.GetRequiredService<IOptions<LocalImageOptions>>().Value.TimeoutSeconds)));
+
+        services.AddScoped(sp => CreatePainter(sp, imageProvider));
+
+        // The remaster painter exists only when it is a different painter from the draft one —
+        // otherwise there is nothing to upgrade to — and only when its own secrets are present,
+        // so a missing Gemini key disables remastering rather than failing startup.
+        if (remasterProvider != imageProvider)
+        {
+            services.AddKeyedScoped<IImageGenerationService>(RemasterOptions.ServiceKey, (sp, _) =>
+            {
+                try
+                {
+                    return CreatePainter(sp, remasterProvider);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    sp.GetRequiredService<ILoggerFactory>().CreateLogger(nameof(ComicRemasterService))
+                        .LogWarning(ex, "Remaster painter {Provider} is not configured; remastering is off", remasterProvider);
+                    // Null is a supported factory result: GetKeyedService hands it back, and the
+                    // remaster pass treats "no painter" as "nothing to do".
+                    return null!;
+                }
+            });
+            services.AddHostedService<ComicRemasterService>();
+        }
+
+        services.AddHostedService<ComicPredrawService>();
+
+        // A sampled vision check of drawn comics. It reads the scorer's Azure resource, so it
+        // exists only when Azure is the chat provider; the pipeline treats it as optional.
+        if (useAzureChat)
+        {
+            services.AddSingleton<ComicImageQaQueue>();
+            services.AddHostedService<ComicImageQaService>();
+        }
         services.AddScoped<IComicTextOverlayService, ComicTextOverlayService>();
         services.AddScoped<ShareCardService>();
         services.AddScoped<IComicGenerationService, ComicGenerationService>();

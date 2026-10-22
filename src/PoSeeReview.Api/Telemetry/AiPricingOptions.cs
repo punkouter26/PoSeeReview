@@ -1,4 +1,4 @@
-namespace PoSeeReview.Api.Features.Comics;
+namespace PoSeeReview.Api.Telemetry;
 
 /// <summary>
 /// Published token prices, so cost telemetry reports a number that can be trusted.
@@ -11,7 +11,8 @@ namespace PoSeeReview.Api.Features.Comics;
 /// </para>
 /// <para>
 /// Rates are configuration, not code: providers reprice, and a reprice must not need a deploy.
-/// Everything here is per 1000 tokens in USD.
+/// Everything here is per 1000 tokens in USD: a published per-million price divided by 1000.
+/// Entering the per-million figure once made every scorer call report ~300x what it cost.
 /// </para>
 /// </summary>
 public class AiPricingOptions
@@ -59,6 +60,9 @@ public class AiPricingOptions
 public class AiModelRate
 {
     public double InputPer1KTokens { get; set; }
+
+    /// <summary>Rate for input served from the provider's prompt cache. Null bills it as ordinary input.</summary>
+    public double? CachedInputPer1KTokens { get; set; }
 
     public double OutputPer1KTokens { get; set; }
 }

@@ -42,4 +42,14 @@ public sealed class ModerationOptions
     /// model. Off would mean publishing model-written text about a named business unchecked.
     /// </summary>
     public bool ScreenGeneratedContent { get; set; } = true;
+
+    /// <summary>
+    /// Azure AI Content Safety endpoint layered under the word lists. The shared AI Services
+    /// resource exposes it, and the scorer's key authenticates it. Empty turns it off and leaves
+    /// the lexical screen alone.
+    /// </summary>
+    public string ContentSafetyEndpoint { get; set; } = string.Empty;
+
+    /// <summary>Chat deployment that writes the moderation queue's AI triage. Judgement, so not the nano.</summary>
+    public string TriageDeployment { get; set; } = "gpt-5.4-mini";
 }

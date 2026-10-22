@@ -31,6 +31,8 @@ public partial class ComicGenerationService : IComicGenerationService
     private readonly TelemetryClient _telemetryClient;
     private readonly TimeProvider _timeProvider;
     private readonly ComicGenerationLock _generationLock;
+    private readonly IAnalysisRepository? _analysisRepository;
+    private readonly ComicImageQaQueue? _imageQa;
 
     private readonly ComicOptions _options;
 
@@ -48,8 +50,12 @@ public partial class ComicGenerationService : IComicGenerationService
         TelemetryClient telemetryClient,
         ComicGenerationLock generationLock,
         IOptions<ComicOptions> options,
+        IAnalysisRepository? analysisRepository = null,
+        ComicImageQaQueue? imageQa = null,
         TimeProvider? timeProvider = null)
     {
+        _analysisRepository = analysisRepository;
+        _imageQa = imageQa;
         _restaurantService = restaurantService ?? throw new ArgumentNullException(nameof(restaurantService));
         _chatService = chatService ?? throw new ArgumentNullException(nameof(chatService));
         _imageGenerationService = imageGenerationService ?? throw new ArgumentNullException(nameof(imageGenerationService));
@@ -160,15 +166,15 @@ public partial class ComicGenerationService : IComicGenerationService
 
         // Prioritize 1-star reviews (most interesting), then add higher ratings if needed
         var prioritizedReviews = PrioritizeReviewsByRating(reviews);
-        var reviewTexts = prioritizedReviews.Select(r => r.Text).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
 
         _logger.LogInformation("Selected {OneStarCount} one-star reviews, {TwoStarCount} two-star reviews, {OtherCount} other reviews",
             prioritizedReviews.Count(r => r.Rating == 1),
             prioritizedReviews.Count(r => r.Rating == 2),
             prioritizedReviews.Count(r => r.Rating > 2));
 
-        // Filter inappropriate content
-        var filteredReviews = FilterInappropriateReviews(reviewTexts);
+        // Filter inappropriate content. Ratings travel with the text so a panel's cited review
+        // number can be turned back into a star rating.
+        var filteredReviews = PrepareReviews(prioritizedReviews.Where(r => !string.IsNullOrWhiteSpace(r.Text)));
         if (filteredReviews.Count < _options.MinimumReviewsRequired)
         {
             _logger.LogWarning("Insufficient appropriate reviews after filtering for placeId: {PlaceId}", placeId);
@@ -179,12 +185,10 @@ public partial class ComicGenerationService : IComicGenerationService
         // Limit to top N reviews for analysis (cost control)
         var reviewsForAnalysis = filteredReviews.Take(_options.MaximumReviewsForAnalysis).ToList();
 
-        _logger.LogInformation("Analyzing {Count} reviews for strangeness", reviewsForAnalysis.Count);
-
         // Analyze strangeness and generate narrative with panel count
         progress?.Report(ComicGenerationPhase.AnalyzingStrangeness);
         var analysisStopwatch = Stopwatch.StartNew();
-        var analysis = await _chatService.AnalyzeStrangenessAsync(reviewsForAnalysis, cancellationToken);
+        var (analysis, sources) = await AnalyzeAsync(placeId, restaurant.Name, reviewsForAnalysis, cancellationToken);
         analysisStopwatch.Stop();
 
         var strangenessScore = analysis.StrangenessScore;
@@ -314,7 +318,10 @@ public partial class ComicGenerationService : IComicGenerationService
             CacheState = ComicCacheState.Generated,
             Captions = [.. captions],
             Scenes = [.. scenes],
-            PromptVersion = _options.PromptVersion
+            PromptVersion = _options.PromptVersion,
+            Breakdown = analysis.Ratings is { } r ? new ComicScoreBreakdown(r.Absurdity, r.Specificity, r.StoryPotential) : null,
+            Sources = sources,
+            ImageModel = _imageGenerationService.Model ?? string.Empty
         };
 
         // Save to cache
@@ -351,6 +358,9 @@ public partial class ComicGenerationService : IComicGenerationService
         {
             await _blobStorageService.DeleteBlobAsync(previous.ImageUrl);
         }
+
+        // Sampled, off the request path: a vision model checks the artwork against the shot list.
+        _imageQa?.TryEnqueue(new ComicImageQaRequest(placeId, imageBytes, scenes, captions, comic.ImageModel));
 
         _logger.ComicGenerationComplete(placeId.Value);
 
@@ -393,10 +403,74 @@ public partial class ComicGenerationService : IComicGenerationService
     /// leet-normalised copy so "sh1t" and "a$$" match like their plain spellings.
     /// </summary>
     private static List<string> FilterInappropriateReviews(List<string> reviews) =>
+        [.. reviews.Select(review => review.Normalize(System.Text.NormalizationForm.FormC)).Where(IsPublishable).Select(MaskProfanity)];
+
+    /// <summary><see cref="FilterInappropriateReviews(List{string})"/>, keeping each review's stars beside its text.</summary>
+    private static List<PreparedReview> PrepareReviews(IEnumerable<Review> reviews) =>
         [.. reviews
-            .Select(review => review.Normalize(System.Text.NormalizationForm.FormC))
-            .Where(review => !ExplicitContentRegex().IsMatch(NormalizeLeetSpeak(review)))
-            .Select(MaskProfanity)];
+            .Select(review => (Text: review.Text.Normalize(System.Text.NormalizationForm.FormC), review.Rating))
+            .Where(review => IsPublishable(review.Text))
+            .Select(review => new PreparedReview(MaskProfanity(review.Text), review.Rating))];
+
+    private static bool IsPublishable(string review) => !ExplicitContentRegex().IsMatch(NormalizeLeetSpeak(review));
+
+    /// <summary>A review as the scorer sees it: masked text, plus the stars it was posted with.</summary>
+    private sealed record PreparedReview(string Text, int Rating);
+
+    /// <summary>
+    /// The scorer's verdict on these reviews, from the analysis cache when the reviews and the
+    /// prompt are unchanged — so a redraw keeps its score — and from the chat model otherwise.
+    /// A verdict is cached even when it is too ordinary to draw: that is what lets discovery
+    /// grey out a place before anyone pays to find out again.
+    /// </summary>
+    private async Task<(StrangenessAnalysis Analysis, ComicSource[] Sources)> AnalyzeAsync(
+        PlaceId placeId, string restaurantName, List<PreparedReview> reviews, CancellationToken cancellationToken)
+    {
+        var hash = HashReviews(reviews);
+
+        if (_analysisRepository is not null
+            && await _analysisRepository.GetAsync(placeId, cancellationToken) is { } cached
+            && cached.ReviewsHash == hash
+            && cached.PromptVersion == _options.PromptVersion)
+        {
+            _telemetryClient.GetMetric("Comics.Analysis.CacheHit").TrackValue(1);
+            return (cached.Analysis, cached.Sources);
+        }
+
+        _logger.LogInformation("Analyzing {Count} reviews for strangeness", reviews.Count);
+        var analysis = await _chatService.AnalyzeStrangenessAsync([.. reviews.Select(r => r.Text)], cancellationToken);
+
+        // The panel's citations are the only grounding signal there is; a panel citing nothing
+        // is a scene the model may have invented, and its rate is what a prompt change should move.
+        _telemetryClient.GetMetric("Comics.Analysis.UngroundedPanels").TrackValue(ChatPrompts.CountUngroundedPanels(analysis));
+
+        ComicSource[] sources = [.. (analysis.PanelSources ?? [])
+            .SelectMany((ids, panel) => ids
+                .Where(id => id >= 1 && id <= reviews.Count)
+                .Select(id => new ComicSource(panel + 1, id, reviews[id - 1].Rating)))];
+
+        if (_analysisRepository is not null && !string.IsNullOrWhiteSpace(analysis.Narrative))
+        {
+            try
+            {
+                await _analysisRepository.SaveAsync(
+                    new CachedAnalysis(placeId, restaurantName, hash, _options.PromptVersion, analysis, sources, Demand: 0),
+                    cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // A cache write is an optimisation; the comic does not wait on it.
+                _logger.LogWarning(ex, "Failed to cache the analysis for {PlaceId}", placeId.Value);
+            }
+        }
+
+        return (analysis, sources);
+    }
+
+    /// <summary>What the scorer was shown, in order. A change to any review re-asks the scorer.</summary>
+    private static string HashReviews(List<PreparedReview> reviews) =>
+        Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(string.Join("\u001f", reviews.Select(r => $"{r.Rating}|{r.Text}")))))[..32];
 
     /// <summary>
     /// Matched on the normalised copy, masked in the original. The substitutions are one

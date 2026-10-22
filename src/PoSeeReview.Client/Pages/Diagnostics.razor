@@ -6,7 +6,6 @@
 @inject ILogger<Diagnostics> Logger
 @using Radzen
 @using Radzen.Blazor
-@inject FxService Fx
 @inject Microsoft.AspNetCore.Components.WebAssembly.Hosting.IWebAssemblyHostEnvironment HostEnvironment
 
 <PageTitle>Diagnostics - PoSeeReview</PageTitle>
@@ -129,66 +128,6 @@ else
                     </div>
                     </RadzenTabsItem>
                 }
-                <RadzenTabsItem Text="Effects">
-                @* Effect and sound preferences. Frame-budget numbers are in the console: poseeFx.stats(). *@
-                <section class="fx-panel glass">
-                    <h2 class="visually-hidden">Graphics &amp; audio</h2>
-
-                    <div class="fx-controls">
-                        <div class="fx-control-row">
-                            <span class="fx-control-label">Effects tier</span>
-                            <div class="fx-tier-buttons" role="group" aria-label="Effects tier">
-                                @foreach (var tier in new[] { FxTier.Off, FxTier.Lite, FxTier.Full })
-                                {
-                                    <button type="button"
-                                            class="chip-toggle @(_caps.Tier == tier ? "chip-toggle--active" : "")"
-                                            aria-pressed="@(_caps.Tier == tier ? "true" : "false")"
-                                            disabled="@_caps.ReducedMotion"
-                                            @onclick="() => SetTierAsync(tier)">
-                                        @tier
-                                    </button>
-                                }
-                            </div>
-                        </div>
-
-                        <div class="fx-control-row">
-                            <span class="fx-control-label">Sound</span>
-                            <button type="button" class="chip-toggle @(_audioEnabled ? "chip-toggle--active" : "")"
-                                    aria-pressed="@(_audioEnabled ? "true" : "false")" aria-label="Sound"
-                                    @onclick="ToggleAudioAsync">
-                                @(_audioEnabled ? "On" : "Off")
-                            </button>
-                        </div>
-
-                        @* Haptics INHERIT the sound preference and can be switched off on their own — never
-                           on on their own. Someone who muted the app did not thereby ask to be buzzed
-                           instead. Hidden where the Vibration API does not exist, because a toggle that
-                           cannot do anything is worse than no toggle. *@
-                        @if (_caps.Haptics)
-                        {
-                            <div class="fx-control-row">
-                                <span class="fx-control-label">Haptics</span>
-                                <button type="button" class="chip-toggle @(_haptics.Enabled ? "chip-toggle--active" : "")"
-                                        aria-pressed="@(_haptics.Enabled ? "true" : "false")" aria-label="Haptics"
-                                        @onclick="ToggleHapticsAsync">
-                                    @(_haptics.Enabled ? "On" : "Off")@(_haptics.Explicit ? "" : " (follows sound)")
-                                </button>
-                            </div>
-                        }
-                    </div>
-
-                    <ul class="fx-notes">
-                        @if (_caps.ReducedMotion)
-                        {
-                            <li><strong>The OS asked for reduced motion.</strong> The tier is pinned to Off and the control above is disabled — offering a toggle that ignores the system preference would be worse than hiding it.</li>
-                        }
-                        @if (_caps.AutoDowngraded)
-                        {
-                            <li class="fx-bad"><strong>Auto-downgraded.</strong> Frame time stayed over budget for ~1.5s, so the watchdog dropped a tier. This is not persisted; a reload restores your choice.</li>
-                        }
-                    </ul>
-                </section>
-                </RadzenTabsItem>
             </Tabs>
         </RadzenTabs>
     </RadzenScope>
@@ -197,45 +136,12 @@ else
 }
 
 @code {
-    private FxCapabilities _caps;
-    private bool _audioEnabled;
-    private FxToggleState _haptics;
-
-    private async Task InitFxPanelAsync()
-    {
-        _caps = await Fx.GetCapabilitiesAsync(refresh: true);
-        _audioEnabled = await Fx.IsAudioEnabledAsync();
-        _haptics = await Fx.GetHapticsAsync();
-    }
-
-    private async Task SetTierAsync(FxTier tier)
-    {
-        // A button press is a trusted gesture, so this doubles as the audio unlock point.
-        await Fx.UnlockAudioAsync();
-        await Fx.SetTierAsync(tier);
-        _caps = await Fx.GetCapabilitiesAsync();
-    }
-
-    // Switching sound on plays its own tick in JS; no confirmation cue is needed here.
-    private async Task ToggleAudioAsync() =>
-        _audioEnabled = await Fx.SetAudioEnabledAsync(!_audioEnabled);
-
-    private async Task ToggleHapticsAsync()
-    {
-        await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
-        _haptics = await Fx.GetHapticsAsync();
-    }
-
     private bool isLoading = true;
     private HealthStatusDto? healthStatus;
     private DiagnosticsSnapshotDto? diagnosticsSnapshot;
     private string? errorMessage;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadHealthStatus();
-        await InitFxPanelAsync();
-    }
+    protected override Task OnInitializedAsync() => LoadHealthStatus();
 
     private async Task LoadHealthStatus()
     {

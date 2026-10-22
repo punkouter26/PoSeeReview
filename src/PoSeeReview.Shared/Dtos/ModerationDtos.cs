@@ -31,6 +31,28 @@ public class ModerationItemDto
 
     /// <summary>True while a live, unexpired comic exists for this place.</summary>
     public bool HasLiveComic { get; set; }
+
+    /// <summary>The AI triage of the live comic, when a moderator has asked for one. Advice only.</summary>
+    public ModerationTriageDto? Triage { get; set; }
+}
+
+/// <summary>
+/// An AI second opinion on a queued comic: keep, hide or remove, how sure, and why. It never acts
+/// on its own; a moderator reads it beside the comic and decides.
+/// </summary>
+public class ModerationTriageDto
+{
+    /// <summary><c>keep</c>, <c>hide</c> or <c>remove</c>.</summary>
+    public string Suggestion { get; set; } = string.Empty;
+
+    /// <summary>0-100.</summary>
+    public int Confidence { get; set; }
+
+    public string Summary { get; set; } = string.Empty;
+
+    public string[] Concerns { get; set; } = [];
+
+    public DateTimeOffset TriagedAt { get; set; }
 }
 
 /// <summary>The queue, plus the thresholds it is being judged against.</summary>

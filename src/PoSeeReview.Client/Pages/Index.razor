@@ -9,7 +9,6 @@
 @inject ApiClient ApiClient
 @inject NavigationManager Navigation
 @inject FxService Fx
-@inject AnalyticsService Analytics
 @inject DiscoveryState Discovery
 @inject ToastService Toast
 @inject ComicHistoryService History
@@ -223,6 +222,8 @@
                                 @key="restaurant.PlaceId"
                                 Restaurant="restaurant"
                                 IsCached="@_cachedScores.ContainsKey(restaurant.PlaceId)"
+                                Forecast="@ForecastFor(restaurant.PlaceId)"
+                                ForecastFloor="@_forecastFloor"
                                 IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                                 OnRestaurantClick="HandleRestaurantClick" />
                         }
@@ -245,6 +246,8 @@
                     <RestaurantCard
                         Restaurant="restaurant"
                         IsCached="@_cachedScores.ContainsKey(restaurant.PlaceId)"
+                        Forecast="@ForecastFor(restaurant.PlaceId)"
+                        ForecastFloor="@_forecastFloor"
                         IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
                         OnRestaurantClick="HandleRestaurantClick" />
                 }
@@ -276,6 +279,8 @@
 
     /// <summary>Live comic score per place that already has one; absent means not drawn yet.</summary>
     private Dictionary<string, int> _cachedScores = [];
+    private Dictionary<string, int> _forecasts = [];
+    private int _forecastFloor;
     private List<LeaderboardEntryDto>? _topComics;
 
     private enum ResultsLayout { List, Map }
@@ -449,7 +454,9 @@
                 Score = _cachedScores.TryGetValue(r.PlaceId, out var score) ? score : null,
                 Label = _cachedScores.TryGetValue(r.PlaceId, out var s)
                     ? $"{r.Name}, strangeness {s}, comic ready"
-                    : $"{r.Name}, not drawn yet"
+                    : ForecastFor(r.PlaceId) is { } forecast
+                        ? $"{r.Name}, not drawn yet, forecast strangeness {forecast}"
+                        : $"{r.Name}, not drawn yet"
             })
     ];
 
@@ -484,10 +491,18 @@
     /// </summary>
     private async Task RefreshCachedPlacesAsync()
     {
-        _cachedScores = _restaurants.Count == 0
-            ? []
-            : await ApiClient.GetCachedScoresAsync(_restaurants.Select(r => r.PlaceId));
+        var probe = _restaurants.Count == 0
+            ? new CachedComicsResponse()
+            : await ApiClient.GetComicProbeAsync(_restaurants.Select(r => r.PlaceId));
+
+        _cachedScores = probe.CachedPlaceIds.ToDictionary(id => id, id => probe.Scores.GetValueOrDefault(id), StringComparer.Ordinal);
+        _forecasts = probe.Forecasts;
+        _forecastFloor = probe.ForecastFloor;
     }
+
+    /// <summary>The cached forecast for an undrawn place, or null when nobody has tried it under this prompt.</summary>
+    private int? ForecastFor(string placeId) =>
+        !_cachedScores.ContainsKey(placeId) && _forecasts.TryGetValue(placeId, out var score) ? score : null;
 
     /// <summary>Best-effort: the landing page works without it, so a failure just hides it.</summary>
     private async Task LoadTopComicsAsync()
@@ -521,7 +536,6 @@
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        Analytics.Track(FunnelSteps.AppOpened);
         await RestoreLayoutAsync();
 
         if (Discovery.Restaurants.Count > 0 && (Q is null || Q == Discovery.Query))
@@ -620,8 +634,6 @@
             {
                 if (result.PermissionDenied)
                 {
-                    // Invisible to the server, and the single biggest drop-off in the funnel.
-                    Analytics.Track(FunnelSteps.LocationDenied);
                     _flowState = LocationFlowState.Denied;
                     await ForgetGeoPreferenceAsync();
                 }
@@ -634,8 +646,7 @@
                 return;
             }
 
-            Analytics.Track(FunnelSteps.LocationGranted);
-            _me = (result.Latitude, result.Longitude);
+            _me =(result.Latitude, result.Longitude);
             _origin = ResultsOrigin.Me;
             await RememberDiscoveryModeAsync(GeoMode);
 
@@ -705,7 +716,6 @@
         await Fx.UnlockAudioAsync();
         await Fx.PlayLocatingAsync();
 
-        Analytics.Track(FunnelSteps.SearchPerformed);
         _lastAttempt = DiscoveryAttempt.Search;
         _keepCamera = false;
         _origin = ResultsOrigin.Text;
@@ -845,7 +855,6 @@
             return;
         }
 
-        Analytics.Track(FunnelSteps.RestaurantTapped);
         _isNavigatingToComic = true;
         _activeComicPlaceId = restaurant.PlaceId;
         // No tap cue here: RestaurantCard already played one, panned to where the tap landed.
@@ -870,6 +879,7 @@
 
 
         _cachedScores = [];
+        _forecasts = [];
         _selectedPlaceId = null;
         _restaurants = new();
         _lastSearch = string.Empty;
@@ -896,11 +906,6 @@
         // than in a projection the render has to remember to use.
         _restaurants = [.. restaurants.OrderBy(r => r.Distance)];
         _selectedPlaceId = null;
-
-        if (_restaurants.Count > 0)
-        {
-            Analytics.Track(FunnelSteps.ResultsShown);
-        }
 
         if (_restaurants.Count == 0)
         {

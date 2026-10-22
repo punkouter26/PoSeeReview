@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -33,6 +34,9 @@ public sealed class AzureOpenAIImageService : IImageGenerationService
     private readonly ILogger<AzureOpenAIImageService> _logger;
     private readonly TelemetryClient _telemetryClient;
     private readonly AiCostTracker _costTracker;
+
+    /// <inheritdoc />
+    public string Model => _options.ImageDeployment;
 
     public AzureOpenAIImageService(
         IHttpClientFactory httpClientFactory,
@@ -105,8 +109,7 @@ public sealed class AzureOpenAIImageService : IImageGenerationService
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        var b64 = root.GetProperty("data")[0].GetProperty("b64_json").GetString()
-            ?? throw new InvalidOperationException("Azure image API returned no image data.");
+        var image = OpenAiImageResponse.FirstImage(root, "Azure image API");
 
         if (root.TryGetProperty("usage", out var usage))
         {
@@ -123,6 +126,6 @@ public sealed class AzureOpenAIImageService : IImageGenerationService
             "Generated Azure comic image ({PanelCount} panels, {Deployment}, {Quality}) in {Duration}ms",
             panelCount, _options.ImageDeployment, _options.ImageQuality, stopwatch.Elapsed.TotalMilliseconds);
 
-        return Convert.FromBase64String(b64);
+        return image;
     }
 }

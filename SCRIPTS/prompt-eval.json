@@ -96,5 +96,28 @@
       "Waited an hour, total [bleep]show, and then a mariachi band marched through the kitchen and out the back door without playing a note.",
       "The host handed everyone a raw potato at the door as a 'welcome gift'. Nobody explained."
     ]
+  },
+  {
+    "name": "hyperbole-rant",
+    "expect": [0, 25],
+    "reviews": [
+      "ABSOLUTE NIGHTMARE!!! The burger was a CRIME against humanity and I will be in therapy for years. Zero stars if I could.",
+      "Slowest service in the history of the universe. I aged a decade waiting for a milkshake."
+    ]
+  },
+  {
+    "name": "positive-weird",
+    "expect": [35, 80],
+    "reviews": [
+      "Love this place! The owner greets every table by juggling three lemons and makes you name your sandwich before he will cook it.",
+      "Mine was christened 'Sir Reginald'. They wrote it on a tiny flag and saluted it when it arrived. Delicious."
+    ]
+  },
+  {
+    "name": "long-but-ordinary",
+    "expect": [0, 25],
+    "reviews": [
+      "We arrived at 7:15 on a Friday and were told the wait would be twenty minutes, which turned into thirty-five. Once seated, our server took drink orders promptly but the appetizers took a while. The calamari was slightly rubbery and the marinara was fine. Mains were decent: my steak was cooked medium as ordered, my partner's pasta was a little salty. Dessert was a standard tiramisu. The bill came to about ninety dollars before tip, which felt a bit high for what it was. Parking was tight but we found a spot on the street. Might come back for a weekday lunch."
+    ]
   }
 ]

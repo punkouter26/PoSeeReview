@@ -52,6 +52,43 @@ public class TableStorageTests : IClassFixture<AzuriteFixture>
     }
 
     [Fact]
+    public async Task AnalysisRepository_ReanalysisKeepsDemand_AndPredrawQueryHonoursTheThresholds()
+    {
+        // Two storage behaviours the analysis cache leans on: a merge with Demand left null keeps
+        // the stored count, and the candidate query filters on a column some rows do not have.
+        var options = Microsoft.Extensions.Options.Options.Create(new PoSeeReview.Api.Storage.AzureStorageOptions());
+        await _fixture.CreateTestTableAsync(options.Value.AnalysesTableName);
+        await _fixture.ClearTableAsync(options.Value.AnalysesTableName);
+        var repository = new PoSeeReview.Api.Features.Comics.AnalysisRepository(_fixture.TableServiceClient, options, TimeProvider.System);
+
+        PoSeeReview.Api.Features.Comics.CachedAnalysis Analysis(string id, int score) => new(
+            PlaceId.From(id), id, "hash", 4,
+            new PoSeeReview.Api.Features.Comics.StrangenessAnalysis(score, 1, "n", ["c"], ["s"], new(5, 5, 5), [[1]]),
+            [new ComicSource(1, 1, 2)], 0);
+
+        await repository.SaveAsync(Analysis("ChIJwanted", 70));
+        await repository.SaveAsync(Analysis("ChIJordinary", 10));
+        await repository.SaveAsync(Analysis("ChIJunseen", 80));
+        foreach (var _ in Enumerable.Range(0, 3))
+        {
+            await repository.RecordDemandAsync(PlaceId.From("ChIJwanted"));
+            await repository.RecordDemandAsync(PlaceId.From("ChIJordinary"));
+        }
+
+        await repository.SaveAsync(Analysis("ChIJwanted", 72));   // a re-analysis
+        var wanted = await repository.GetAsync(PlaceId.From("ChIJwanted"));
+        Assert.Equal(3, wanted!.Demand);
+        Assert.Equal(72, wanted.Analysis.StrangenessScore);
+        Assert.Equal([new ComicSource(1, 1, 2)], wanted.Sources);
+
+        var candidates = await repository.GetPredrawCandidatesAsync(promptVersion: 4, minScore: 40, minDemand: 3, limit: 10);
+        Assert.Equal(["ChIJwanted"], candidates.Select(c => c.PlaceId.Value));
+
+        await repository.ResetDemandAsync(PlaceId.From("ChIJwanted"));
+        Assert.Empty(await repository.GetPredrawCandidatesAsync(4, 40, 3, 10));
+    }
+
+    [Fact]
 
     [Trait("Category", "Integration")]
     public async Task UpsertRestaurantEntity_ValidEntity_StoresSuccessfully()

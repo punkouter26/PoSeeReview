@@ -2,7 +2,6 @@
 @attribute [Authorize]
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
-@implements IAsyncDisposable
 @inject ApiClient ApiClient
 @inject FxService Fx
 
@@ -20,9 +19,9 @@
     {
         @* The card is drawn by the server (the same image a link preview shows); width and
            height reserve its box before it loads. *@
-        @* The stage carries the clash: an arc shader over the card at the full tier, and the
-           slam, shake and a CSS-only seam everywhere else motion is allowed. data-clash is set
-           once the card has loaded, so nothing slams onto an empty box. *@
+        @* The stage carries the clash in CSS: the slam, a shake, a seam and a wash over the
+           winning half. data-clash is set once the card has loaded, so nothing slams onto an
+           empty box. *@
         <div class="duel-stage" data-clash="@(_clash ? "on" : "off")"
              data-winner="@Winner">
             <img class="duel-card" width="1200" height="630"
@@ -30,7 +29,6 @@
                  alt="@($"{NameOf(_a, "The first comic")} versus {NameOf(_b, "the second comic")}, side by side with their strangeness scores")"
                  @onload="OnCardLoadedAsync"
                  @onerror="() => _failed = true" />
-            <canvas @ref="_seam" class="duel-seam" aria-hidden="true"></canvas>
         </div>
         <div class="duel-links">
             <a class="btn btn-secondary" href="@($"/comic/{Uri.EscapeDataString(A)}")">@NameOf(_a, "First comic")</a>
@@ -48,8 +46,6 @@
     private bool _failed;
     private bool _clash;
     private bool _cardLoaded;
-    private int _seamHandle;
-    private ElementReference _seam;
 
     /// <summary>Which half is stranger; the CSS floods that side. Empty until both scores are known.</summary>
     private string Winner => (_a, _b) switch
@@ -75,9 +71,9 @@
     }
 
     /// <summary>
-    /// Strikes the arc once the card is on screen AND both scores are known — the seam leans
-    /// toward the stranger comic. Either can finish first (a cached card beats the two reads), so
-    /// both call this. A duel whose comics could not be read keeps the plain card.
+    /// Clashes once the card is on screen AND both scores are known — the wash needs the winner.
+    /// Either can finish first (a cached card beats the two reads), so both call this. A duel
+    /// whose comics could not be read keeps the plain card. The winner's own motif sounds it out.
     /// </summary>
     private async Task ClashAsync()
     {
@@ -87,10 +83,9 @@
         }
 
         _clash = true;
-        _seamHandle = await Fx.StartDuelAsync(_seam, _a.PlaceId, _a.StrangenessScore, _b.PlaceId, _b.StrangenessScore);
+        var winner = _b.StrangenessScore > _a.StrangenessScore ? _b : _a;
+        await Fx.PlaySignatureAsync(winner.PlaceId, winner.StrangenessScore);
     }
-
-    public ValueTask DisposeAsync() => new(Fx.StopDuelAsync(_seamHandle));
 
     private async Task<ComicDto?> TryGetAsync(string placeId)
     {

@@ -44,14 +44,7 @@
     {
       "label": "start-azurite",
       "type": "shell",
-      "command": "pwsh",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "docker start azurite 2>$null; if ($LASTEXITCODE -ne 0) { docker compose up -d azurite }"
-      ],
+      "command": "docker compose up -d azurite",
       "problemMatcher": []
     },
     {

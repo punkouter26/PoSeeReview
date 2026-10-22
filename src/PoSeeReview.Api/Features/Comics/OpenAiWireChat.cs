@@ -11,7 +11,7 @@ namespace PoSeeReview.Api.Features.Comics;
 internal static class OpenAiWireChat
 {
     /// <summary>One analysis call plus what it cost in tokens.</summary>
-    internal sealed record Result(StrangenessAnalysis Analysis, long InputTokens, long OutputTokens);
+    internal sealed record Result(StrangenessAnalysis Analysis, long InputTokens, long OutputTokens, long CachedInputTokens);
 
     public static async Task<Result> AnalyzeAsync(
         ChatClient client,
@@ -52,9 +52,10 @@ internal static class OpenAiWireChat
             ?? throw new InvalidOperationException("Failed to parse chat response");
 
         return new Result(
-            ChatPrompts.ToAnalysis(result),
+            ChatPrompts.ToAnalysis(result, validReviews.Count),
             completion.Usage?.InputTokenCount ?? 0,
-            completion.Usage?.OutputTokenCount ?? 0);
+            completion.Usage?.OutputTokenCount ?? 0,
+            completion.Usage?.InputTokenDetails?.CachedTokenCount ?? 0);
     }
 
     /// <summary>
@@ -98,6 +99,8 @@ internal static class OpenAiWireChat
     /// </summary>
     private static readonly JsonSerializerOptions LenientJsonOptions = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        // A small model writes "reviewIds": ["1"] as often as [1]; a quoted number is still a number.
+        NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
     };
 }

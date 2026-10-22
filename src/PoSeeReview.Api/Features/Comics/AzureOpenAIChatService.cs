@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using Azure.AI.OpenAI;
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Options;
@@ -56,7 +57,7 @@ public class AzureOpenAIChatService : IChatCompletionService
             cancellationToken);
 
         _telemetryClient.GetMetric("AzureOpenAI.Chat.Requests").TrackValue(1);
-        _costTracker.Track(ProviderLabel, _options.DeploymentName, result.InputTokens, result.OutputTokens);
+        _costTracker.Track(ProviderLabel, _options.DeploymentName, result.InputTokens, result.OutputTokens, result.CachedInputTokens);
 
         return result.Analysis;
     }

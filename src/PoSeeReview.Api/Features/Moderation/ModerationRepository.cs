@@ -181,11 +181,8 @@ public sealed class ModerationRepository(
     /// the content screen). A blind replace from a stale read could land after a moderator's
     /// Suppress and silently undo it; a lost race re-reads and re-decides instead.
     /// </summary>
-    private async Task MutateAsync(PlaceId placeId, Func<ModerationEntity, bool> mutate, CancellationToken cancellationToken)
-    {
-        const int MaxAttempts = 4;
-
-        for (var attempt = 1; ; attempt++)
+    private Task MutateAsync(PlaceId placeId, Func<ModerationEntity, bool> mutate, CancellationToken cancellationToken) =>
+        TableConcurrency.RetryAsync(maxAttempts: 4, async () =>
         {
             var existing = await TryGetAsync(placeId, cancellationToken);
             var row = existing ?? NewRow(placeId);
@@ -197,25 +194,15 @@ public sealed class ModerationRepository(
 
             row.UpdatedAt = timeProvider.GetUtcNow();
 
-            try
+            if (existing is null)
             {
-                if (existing is null)
-                {
-                    await _table.AddEntityAsync(row, cancellationToken);
-                }
-                else
-                {
-                    await _table.UpdateEntityAsync(row, existing.ETag, TableUpdateMode.Replace, cancellationToken);
-                }
-
-                return;
+                await _table.AddEntityAsync(row, cancellationToken);
             }
-            catch (RequestFailedException ex) when (ex.Status is 409 or 412 && attempt < MaxAttempts)
+            else
             {
-                // Somebody else wrote the row between the read and the write.
+                await _table.UpdateEntityAsync(row, existing.ETag, TableUpdateMode.Replace, cancellationToken);
             }
-        }
-    }
+        });
 
     private ModerationEntity NewRow(PlaceId placeId) => new()
     {

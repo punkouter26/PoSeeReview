@@ -26,7 +26,6 @@ az keyvault secret set --vault-name kv-poshared --name "PoSeeReview--GoogleMaps-
 
 ```powershell
 az deployment sub create -l westus2 -f infra/main.bicep -p environmentName=dev location=westus2
-# or: azd provision (azure.yaml + main.parameters.json)
 ```
 
 ## Alerts

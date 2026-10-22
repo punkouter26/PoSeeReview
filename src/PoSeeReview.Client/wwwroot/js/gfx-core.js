@@ -80,33 +80,15 @@ function detectWebGl2() {
     }
 }
 
-/**
- * The tier a device should get before the user has expressed any preference. Deliberately
- * conservative: a first visit that stutters is a worse introduction than one that is plain.
- */
-function detectDefaultTier() {
-    if (state.reducedMotion || !state.webgl2) {
-        return 'off';
-    }
-
+/** True when the page renders dark: an explicit [data-theme] on <html> beats the OS scheme. */
+export function prefersDark() {
     try {
-        // Save-Data is an explicit request to go easy on the device.
-        if (navigator.connection?.saveData) {
-            return 'lite';
-        }
-        // deviceMemory and core count are coarse, but a low-end phone should not run a
-        // fullscreen shader behind every page.
-        if (typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4) {
-            return 'lite';
-        }
-        if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4) {
-            return 'lite';
-        }
+        const explicit = document.documentElement.dataset.theme;
+        if (explicit) return explicit === 'dark';
+        return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
     } catch {
-        // Feature detection failing is not a reason to refuse a tier.
+        return false;
     }
-
-    return 'full';
 }
 
 function readStoredTier() {
@@ -253,12 +235,12 @@ export const gfx = {
         state.reducedMotion = detectReducedMotion();
         state.webgl2 = detectWebGl2();
 
-        const stored = readStoredTier();
+        // 'lite' until the user opts into 'full' in /settings: the simplest app is the default.
         // A stored preference is still overridden by an OS-level reduced-motion request and by
         // a device with no WebGL2 — neither is a preference we are entitled to ignore.
         state.tier = (state.reducedMotion || !state.webgl2)
             ? 'off'
-            : (stored ?? detectDefaultTier());
+            : (readStoredTier() ?? 'lite');
 
         return this.describe();
     },
@@ -443,80 +425,3 @@ void main() {
     vUv = pos;
     gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
 }`;
-
-// ── Shared helpers for effects that sample the comic itself ──────────────────────────────
-//
-// The comic's display URL is a SAS link to Blob Storage, served without CORS headers, so a
-// texture made from it would taint the canvas. `/api/comics/{placeId}/image` re-serves the same
-// blob from this origin, which is what every shader that reads the artwork loads instead. The
-// service worker keeps that route stale-while-revalidate, so the Save button then gets it free.
-
-/** Same-origin URL for a comic's artwork. Mirrors ComicImageUrl.SameOrigin in the client. */
-export function comicImageUrl(placeId) {
-    return `/api/comics/${encodeURIComponent(placeId)}/image`;
-}
-
-/**
- * Loads and decodes an image, giving up after `timeoutMs`. Resolves null on any failure: every
- * caller has a non-WebGL fallback, and a stalled fetch must not hold a reveal hostage.
- */
-export function loadImage(url, timeoutMs = 2500) {
-    return new Promise((resolve) => {
-        const image = new Image();
-        const timer = setTimeout(() => resolve(null), timeoutMs);
-        image.decoding = 'async';
-        image.onload = () => {
-            clearTimeout(timer);
-            (image.decode ? image.decode().catch(() => {}) : Promise.resolve()).then(() => resolve(image));
-        };
-        image.onerror = () => {
-            clearTimeout(timer);
-            resolve(null);
-        };
-        image.src = url;
-    });
-}
-
-/** Uploads an image (or canvas) as a clamped, linearly filtered RGBA8 texture. */
-export function createTexture(gl, source, { mipmaps = false } = {}) {
-    const texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    if (mipmaps) {
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    } else {
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    }
-    gl.bindTexture(gl.TEXTURE_2D, null);
-    return texture;
-}
-
-let gpuDevicePromise = null;
-
-/**
- * One shared WebGPU device, or null. Asked for lazily and once: requesting an adapter can take
- * tens of milliseconds, and most visits never reach an effect that wants one. A lost device
- * clears the cache so the next caller asks again.
- */
-export function getGpuDevice() {
-    if (!navigator.gpu) return Promise.resolve(null);
-    gpuDevicePromise ??= (async () => {
-        try {
-            const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-            if (!adapter) return null;
-            const device = await adapter.requestDevice();
-            device.lost.then(() => { gpuDevicePromise = null; });
-            return device;
-        } catch {
-            gpuDevicePromise = null;
-            return null;
-        }
-    })();
-    return gpuDevicePromise;
-}

@@ -12,6 +12,7 @@
             data-testid="restaurant-card"
             data-comic-card
             data-cached="@(IsCached ? "ready" : "new")"
+            data-forecast="@ForecastState"
             @onclick="OnClickIfEnabled">
     <div class="card-header">
         <h2 class="restaurant-name">@Restaurant.Name</h2>
@@ -31,7 +32,25 @@
         }
         @Restaurant.TotalReviews review@(Restaurant.TotalReviews == 1 ? "" : "s")
     </p>
-    @if (IsEnabled)
+    @if (IsTooNormal)
+    {
+        <p class="forecast-hint" data-testid="forecast-hint">
+            Its reviews scored @Forecast — under the @ForecastFloor needed to draw.
+        </p>
+    }
+    else if (Forecast is { } forecast)
+    {
+        <p class="forecast-chip" data-testid="forecast-chip" title="What these reviews scored last time someone tried. Drawing keeps that score.">
+            Forecast: <strong>@forecast</strong> weird
+        </p>
+    }
+    @if (IsTooNormal)
+    {
+        <div class="cta-wrap" @onclick:stopPropagation="true">
+            <button type="button" class="btn btn-secondary cta-btn" disabled>Too normal to draw</button>
+        </div>
+    }
+    else if (IsEnabled)
     {
         @* The whole card is clickable too, so the button's click must not also bubble up to it.
            stopPropagation is only valid on an HTML element, hence the wrapper. *@
@@ -89,9 +108,29 @@
     /// </summary>
     private bool IsEnabled => Restaurant.TotalReviews > 0;
 
+    /// <summary>
+    /// The weirdness forecast for an undrawn place: what its reviews scored the last time anyone
+    /// tried, under the current prompt. Null when nobody has. Like <see cref="IsCached"/> it is a
+    /// best-effort hint, but a stale one costs at most a refunded attempt.
+    /// </summary>
+    [Parameter]
+    public int? Forecast { get; set; }
+
+    /// <summary>The server's too-ordinary cutoff (Comics:MinimumStrangenessScore).</summary>
+    [Parameter]
+    public int ForecastFloor { get; set; }
+
+    /// <summary>
+    /// Already known to be refused. The server would spend nothing — the attempt is refunded —
+    /// but the visitor would wait for a sad trombone; saying so on the card saves the trip.
+    /// </summary>
+    private bool IsTooNormal => !IsCached && Forecast is { } f && f < ForecastFloor;
+
+    private string? ForecastState => IsCached || Forecast is null ? null : IsTooNormal ? "ordinary" : "weird";
+
     private string GetCardClass()
     {
-        if (!IsEnabled) return "disabled";
+        if (!IsEnabled || IsTooNormal) return "disabled";
         return GetTierClass();
     }
 
@@ -113,7 +152,7 @@
     /// </summary>
     private async Task OnClickIfEnabled(MouseEventArgs args)
     {
-        if (IsEnabled && !IsLoading)
+        if (IsEnabled && !IsLoading && !IsTooNormal)
         {
             // A click is a trusted gesture, so this is also a valid point to unlock audio.
             await Fx.UnlockAudioAsync();

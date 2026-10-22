@@ -23,6 +23,11 @@ internal static class ComicMapping
         ExpiresAt = comic.ExpiresAt,
         IsCached = isCached ?? comic.CacheState == ComicCacheState.Cached,
         Captions = comic.Captions,
-        Scenes = comic.Scenes
+        Scenes = comic.Scenes,
+        Breakdown = comic.Breakdown is { } b
+            ? new ScoreBreakdownDto { Absurdity = b.Absurdity, Specificity = b.Specificity, StoryPotential = b.StoryPotential }
+            : null,
+        Sources = [.. comic.Sources.Select(s => new ComicSourceDto { Panel = s.Panel, ReviewNumber = s.ReviewNumber, Rating = s.Rating })],
+        IsRemastered = comic.RemasterState == RemasterState.Remastered
     };
 }

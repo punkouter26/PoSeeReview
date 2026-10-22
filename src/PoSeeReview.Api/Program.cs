@@ -12,7 +12,6 @@ using PoSeeReview.Api.HostedServices;
 using PoSeeReview.Api.Identity;
 using PoSeeReview.Api.Middleware;
 using PoSeeReview.Api.Telemetry;
-using PoSeeReview.Shared;
 using PoSeeReview.Api.Configuration;
 using Scalar.AspNetCore;
 using Serilog.Events;

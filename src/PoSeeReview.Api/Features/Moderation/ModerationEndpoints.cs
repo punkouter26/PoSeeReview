@@ -42,6 +42,7 @@ internal static class ModerationEndpoints
         group.MapPost("/{placeId}/restore", RestoreAsync);
         group.MapPost("/{placeId}/suppress", SuppressAsync);
         group.MapDelete("/{placeId}", RemoveAsync);
+        group.MapPost("/{placeId}/triage", TriageAsync);
 
         // The keyed takedown route. Same slice, different gate: a shared X-Api-Key for machine
         // callers rather than the Moderator role above.
@@ -57,6 +58,35 @@ internal static class ModerationEndpoints
         ModerationQueueReader reader,
         HttpContext http) =>
         Results.Ok(await reader.GetQueueAsync(http.RequestAborted));
+
+    /// <summary>
+    /// Asks the triage model for a second opinion on the live comic. Advice only — it changes no
+    /// moderation state. 503 when no AI provider is configured, 404 when there is no comic.
+    /// </summary>
+    private static async Task<IResult> TriageAsync(
+        string placeId,
+        ModerationTriageService triage,
+        ModerationQueueReader reader,
+        HttpContext http)
+    {
+        if (!triage.IsAvailable)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "Triage unavailable",
+                detail: "AI triage needs the Azure OpenAI chat provider.");
+        }
+
+        // The queue row supplies the reports' side of the story without reading reporter details.
+        var item = (await reader.GetQueueAsync(http.RequestAborted)).Items.FirstOrDefault(i => i.PlaceId == placeId);
+
+        var result = await triage.TriageAsync(
+            PlaceId.From(placeId),
+            item?.ReportCount ?? 0,
+            item?.TopReason.ToString() ?? "none",
+            item?.Reason ?? string.Empty,
+            http.RequestAborted);
+
+        return result is null ? Results.NotFound() : Results.Ok(result);
+    }
 
     /// <summary>Withholds a comic pending review. Reversible, and does not block regeneration.</summary>
     private static async Task<IResult> HideAsync(

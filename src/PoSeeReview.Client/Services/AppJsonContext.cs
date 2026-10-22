@@ -11,6 +11,8 @@ namespace PoSeeReview.Client.Services;
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(NearbyRestaurantsResponse))]
 [JsonSerializable(typeof(ComicDto))]
+[JsonSerializable(typeof(ScoreBreakdownDto))]
+[JsonSerializable(typeof(ComicSourceDto))]
 [JsonSerializable(typeof(ComicGenerationEventDto))]
 [JsonSerializable(typeof(LeaderboardResponse))]
 [JsonSerializable(typeof(HallOfFameResponse))]
@@ -24,6 +26,7 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(ShareLinkDto))]
 [JsonSerializable(typeof(ModerationQueueDto))]
 [JsonSerializable(typeof(ModerationActionDto))]
+[JsonSerializable(typeof(ModerationTriageDto))]
 [JsonSerializable(typeof(CachedComicsResponse))]
 // Not a wire DTO: the locally-stored comic history (ComicHistoryService).
 [JsonSerializable(typeof(List<ComicHistoryEntry>))]

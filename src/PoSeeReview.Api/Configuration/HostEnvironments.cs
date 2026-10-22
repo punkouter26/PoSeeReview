@@ -1,8 +1,8 @@
-namespace PoSeeReview.Shared;
+namespace PoSeeReview.Api.Configuration;
 
 /// <summary>
 /// Environment names beyond the framework's built-in Development/Staging/Production
-/// (NET_RULES 1.5 — zero magic strings). Shared so the API host and the WASM client agree.
+/// (NET_RULES 1.5 — zero magic strings).
 /// </summary>
 public static class HostEnvironments
 {

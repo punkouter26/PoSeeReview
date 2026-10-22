@@ -110,10 +110,36 @@
                                         }
                                         <RadzenButton Text="Remove" Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Danger" Disabled="@_isBusy"
                                                       Click="@(() => ConfirmRemoveAsync(item))" />
+                                        @if (item.HasLiveComic)
+                                        {
+                                            <RadzenButton Text="@(_triaging == item.PlaceId ? "Reading…" : item.Triage is null ? "AI triage" : "Re-triage")"
+                                                          Size="ButtonSize.Small" ButtonStyle="ButtonStyle.Light"
+                                                          Disabled="@(_isBusy || _triaging is not null)"
+                                                          title="Ask an AI to compare the comic with its reviews. Advice only."
+                                                          Click="@(() => TriageAsync(item))" />
+                                        }
                                     </div>
                                     @if (!string.IsNullOrWhiteSpace(item.Reason))
                                     {
                                         <p class="moderation-note">@item.Reason</p>
+                                    }
+                                    @if (item.Triage is { } triage)
+                                    {
+                                        <div class="moderation-triage" data-suggestion="@triage.Suggestion" data-testid="moderation-triage">
+                                            <p class="moderation-triage-verdict">
+                                                AI suggests <strong>@triage.Suggestion</strong> · @triage.Confidence% sure
+                                            </p>
+                                            <p class="moderation-triage-summary">@triage.Summary</p>
+                                            @if (triage.Concerns.Length > 0)
+                                            {
+                                                <ul class="moderation-triage-concerns">
+                                                    @foreach (var concern in triage.Concerns)
+                                                    {
+                                                        <li>@concern</li>
+                                                    }
+                                                </ul>
+                                            }
+                                        </div>
                                     }
                                 </Template>
                             </RadzenDataGridColumn>
@@ -132,6 +158,32 @@
     private ModerationQueueDto? _queue;
     private string? _error;
     private bool _isBusy;
+    private string? _triaging;
+
+    /// <summary>
+    /// One at a time: each is a paid model call, and the answer lands on the row it was asked for
+    /// rather than reloading the queue under the moderator's eyes.
+    /// </summary>
+    private async Task TriageAsync(ModerationItemDto item)
+    {
+        _triaging = item.PlaceId;
+        _error = null;
+
+        try
+        {
+            item.Triage = await ModerationApi.TriageAsync(item.PlaceId);
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable
+                ? "AI triage is not available on this deployment."
+                : "The AI triage did not come back. Nothing was changed.";
+        }
+        finally
+        {
+            _triaging = null;
+        }
+    }
 
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
 

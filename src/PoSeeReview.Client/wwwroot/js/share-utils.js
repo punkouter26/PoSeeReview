@@ -45,6 +45,11 @@ window.shareUtils = {
         }
     },
 
+    /** The comic's bytes from this origin (see saveComic for why not the blob URL). */
+    fetchComic: function (placeId) {
+        return fetch(`/api/comics/${encodeURIComponent(placeId)}/image`, { credentials: 'same-origin' });
+    },
+
     /**
      * The comic PNG as a File, fetched through the app's own origin for the same CORS reason
      * saveComic is. Null on any failure (an expired comic 404s), so sharing falls back to the link.
@@ -53,9 +58,7 @@ window.shareUtils = {
      */
     comicFile: async function (placeId) {
         try {
-            const response = await fetch(`/api/comics/${encodeURIComponent(placeId)}/image`, {
-                credentials: 'same-origin'
-            });
+            const response = await this.fetchComic(placeId);
             if (!response.ok) {
                 return null;
             }
@@ -123,9 +126,7 @@ window.shareUtils = {
         }
 
         try {
-            const response = await fetch(`/api/comics/${encodeURIComponent(placeId)}/image`, {
-                credentials: 'same-origin'
-            });
+            const response = await this.fetchComic(placeId);
 
             if (!response.ok) {
                 return false;

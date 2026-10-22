@@ -1,7 +1,7 @@
 using Microsoft.ApplicationInsights;
 using Microsoft.Extensions.Options;
 
-namespace PoSeeReview.Api.Features.Comics;
+namespace PoSeeReview.Api.Telemetry;
 
 /// <summary>
 /// The single place a model call reports what it cost, tagged by provider and model.
@@ -24,10 +24,15 @@ public sealed class AiCostTracker(
     /// <summary>Total USD spent, dimensioned by <c>Provider</c> and <c>Model</c>.</summary>
     public const string CostMetricName = "Ai.Cost.Usd";
 
-    /// <summary>Tokens billed, dimensioned by <c>Provider</c> and <c>Direction</c> (input/output).</summary>
+    /// <summary>Tokens billed, dimensioned by <c>Provider</c> and <c>Direction</c> (input/cached/output).</summary>
     public const string TokensMetricName = "Ai.Tokens";
 
-    public void Track(string provider, string model, long inputTokens, long outputTokens)
+    /// <summary>
+    /// Records one call. <paramref name="cachedInputTokens"/> is the part of
+    /// <paramref name="inputTokens"/> served from the provider's prompt cache: it bills at the
+    /// cached rate, and the <c>cached</c> series is how to see whether the cache is hitting at all.
+    /// </summary>
+    public void Track(string provider, string model, long inputTokens, long outputTokens, long cachedInputTokens = 0)
     {
         var pricing = options.Value;
 
@@ -36,12 +41,18 @@ public sealed class AiCostTracker(
         var isFree = pricing.FreeProviders.Contains(provider);
         var rate = isFree ? null : pricing.Resolve(model);
 
-        var cost = isFree
-            ? 0
-            : inputTokens / 1000.0 * rate!.InputPer1KTokens + outputTokens / 1000.0 * rate!.OutputPer1KTokens;
+        var cached = Math.Clamp(cachedInputTokens, 0, inputTokens);
+        var cost = isFree ? 0 : PriceOf(rate!, inputTokens, outputTokens, cached);
 
         telemetryClient.GetMetric(CostMetricName, "Provider", "Model").TrackValue(cost, provider, model);
         telemetryClient.GetMetric(TokensMetricName, "Provider", "Direction").TrackValue(inputTokens, provider, "input");
+        telemetryClient.GetMetric(TokensMetricName, "Provider", "Direction").TrackValue(cached, provider, "cached");
         telemetryClient.GetMetric(TokensMetricName, "Provider", "Direction").TrackValue(outputTokens, provider, "output");
     }
+
+    /// <summary>USD for one call; <paramref name="cachedInputTokens"/> is a subset of <paramref name="inputTokens"/>.</summary>
+    internal static double PriceOf(AiModelRate rate, long inputTokens, long outputTokens, long cachedInputTokens) =>
+        (inputTokens - cachedInputTokens) / 1000.0 * rate.InputPer1KTokens
+        + cachedInputTokens / 1000.0 * (rate.CachedInputPer1KTokens ?? rate.InputPer1KTokens)
+        + outputTokens / 1000.0 * rate.OutputPer1KTokens;
 }

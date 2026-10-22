@@ -1,11 +1,15 @@
 namespace PoSeeReview.Api.Features.Comics;
 
 /// <summary>
-/// Service for generating comic strip images using an AI image model: Gemini
-/// or gpt-image via Azure, selected by <c>Ai:ImageProvider</c>.
+/// Service for generating comic strip images using an AI image model: gpt-image via Azure,
+/// Gemini, or a local server — selected by <c>Ai:ImageProvider</c> (drafts) and
+/// <c>Ai:RemasterProvider</c> (redraws of popular comics).
 /// </summary>
 public interface IImageGenerationService
 {
+    /// <summary>The model or deployment that draws; recorded on each comic so a remaster knows what it replaces.</summary>
+    string Model { get; }
+
     /// <summary>
     /// Generates a comic strip image from the panel scenes. One paid attempt: implementations
     /// never retry.

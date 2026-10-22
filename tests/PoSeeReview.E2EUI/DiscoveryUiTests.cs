@@ -127,7 +127,8 @@ public sealed class DiscoveryUiTests(PlaywrightFixture fixture)
     {
         var page = await HomeAsync(viewport);
 
-        var cards = page.Locator("[data-testid='restaurant-card']");
+        // Not a card the forecast already marks too ordinary: those have no generate button.
+        var cards = page.Locator("[data-testid='restaurant-card']:not([data-forecast='ordinary'])");
         if (await cards.CountAsync() == 0)
         {
             // Mocked/empty discovery is a legitimate environment state; nothing to assert.

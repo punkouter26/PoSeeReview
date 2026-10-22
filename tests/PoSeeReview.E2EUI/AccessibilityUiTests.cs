@@ -35,6 +35,7 @@ public sealed class AccessibilityUiTests(PlaywrightFixture fixture)
     [InlineData("/leaderboard", "#leaderboard-results[aria-busy='false']", null)]
     [InlineData("/leaderboard?view=week", "#leaderboard-results[aria-busy='false']", null)]
     [InlineData("/my-comics", "main", null)]
+    [InlineData("/settings", "[data-testid='settings-sound']", null)]
     public async Task Page_HasNoSeriousAccessibilityViolations(string route, string readySelector, string? discoveryLayout)
     {
         var page = await fixture.NewPageAsync("desktop");

@@ -151,8 +151,8 @@ public sealed class FxService(IJSRuntime js)
     public Task<double> SetVolumeAsync(double volume) => SafeAsync("poseeFx.setVolume", volume, volume);
 
     /// <summary>
-    /// The whole count-up, scheduled on the audio clock in one call — the ticks used to cost an
-    /// interop round trip each. Ends on the same landing chord as <see cref="PlayScoreLandAsync"/>.
+    /// The whole count-up and its landing chord, scheduled on the audio clock in one call — the
+    /// ticks used to cost an interop round trip each.
     /// </summary>
     public Task PlayScoreRollAsync(int score, int durationMs) =>
         SafeVoidAsync("poseeFx.playScoreRoll", score, durationMs);
@@ -196,8 +196,6 @@ public sealed class FxService(IJSRuntime js)
     public Task PlayTapAtAsync(double clientX, bool cached) =>
         SafeVoidAsync("poseeFx.playTapCached", clientX, cached);
 
-    public Task PlayScoreTickAsync(int value, int target) => SafeVoidAsync("poseeFx.playScoreTick", value, target);
-    public Task PlayScoreLandAsync(int score) => SafeVoidAsync("poseeFx.playScoreLand", score);
     public Task PlayShareStingerAsync() => SafeVoidAsync("poseeFx.playShareStinger");
     public Task PlayErrorAsync() => SafeVoidAsync("poseeFx.playError");
 
@@ -221,39 +219,6 @@ public sealed class FxService(IJSRuntime js)
     /// place was rejected for being boring, which is a joke about the place, not a malfunction.
     /// </summary>
     public Task PlayFizzleAsync() => SafeVoidAsync("poseeFx.playFizzle");
-
-    // ── Generation wait ──────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// A stable-fluids ink simulation behind the storyboard for the ten-second wait; the pointer
-    /// stirs it. Full tier only — 0 elsewhere, and the storyboard alone carries the wait.
-    /// </summary>
-    public Task<int> StartInkAsync(ElementReference canvas) => SafeAsync("poseeFx.startInk", 0, canvas);
-
-    public Task InkPhaseAsync(int handle, int index, int total) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.inkPhase", handle, index, total);
-
-    /// <summary>Pulls the ink into the frame over about 700ms; the module then stops itself.</summary>
-    public Task DrainInkAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.drainInk", handle);
-
-    public Task StopInkAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopInk", handle);
-
-    // ── Score burst ──────────────────────────────────────────────────────────────────────
-
-    /// <summary>Builds the burst's GPU pipelines early; call when a comic is about to reveal.</summary>
-    public Task PrepareBurstAsync() => SafeVoidAsync("poseeFx.prepareBurst");
-
-    /// <summary>
-    /// Particles from the score ring, sized by the score — WebGPU compute where available, WebGL2
-    /// otherwise, nothing below the full tier. Above 50 the backdrop ripples and a thump lands.
-    /// </summary>
-    public Task<int> BurstScoreAsync(ElementReference ring, int score) =>
-        SafeAsync("poseeFx.burstScore", 0, ring, score);
-
-    /// <summary>Grey motes that pop and flop, from the element the selector finds.</summary>
-    public Task FizzleAtAsync(string selector) => SafeVoidAsync("poseeFx.fizzleAt", selector);
 
     // ── Soundtrack ───────────────────────────────────────────────────────────────────────
 
@@ -322,12 +287,8 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     /// <param name="container">The .comic-strip-container: the mask covers everything inside it.</param>
     /// <param name="bands">Panels to develop in sequence. Two matches the server's cap.</param>
-    /// <param name="placeId">
-    /// Lets the full tier print the comic instead — CMYK plates landing in register over the
-    /// same-origin copy of the artwork. Without it, or when that copy does not arrive, the mask runs.
-    /// </param>
-    public Task<int> StartComicRevealAsync(ElementReference container, int bands, string? placeId = null) =>
-        SafeAsync("poseeFx.startComicReveal", 0, container, bands, placeId);
+    public Task<int> StartComicRevealAsync(ElementReference container, int bands) =>
+        SafeAsync("poseeFx.startComicReveal", 0, container, bands);
 
     /// <summary>
     /// Ends a reveal with the comic fully visible. MUST be called on teardown: the mask only
@@ -366,43 +327,8 @@ public sealed class FxService(IJSRuntime js)
 
     // ── Hot off the press ────────────────────────────────────────────────────────────────
 
-    /// <summary>Prepares the curl while the share sheet is up, so it does not start cold.</summary>
-    public Task WarmPeelAsync() => SafeVoidAsync("poseeFx.warmPeel");
-
-    /// <summary>
-    /// A printed copy of the comic on the page curls off and flies into
-    /// <paramref name="targetSelector"/>, then a CERTIFIED STRANGE stamp lands on the original.
-    /// </summary>
-    public Task PeelComicAsync(string placeId, string targetSelector) =>
-        SafeVoidAsync("poseeFx.peelComic", placeId, targetSelector);
-
-    // ── 3D mode ──────────────────────────────────────────────────────────────────────────
-
-    /// <summary>WebGL2 and a tier above Off: whether the 3D toggle is worth showing.</summary>
-    public Task<bool> IsDepthSupportedAsync() => SafeAsync("poseeFx.depthSupported", false);
-
-    /// <summary>
-    /// Turns the strip into a tilting 2.5D diorama. <paramref name="listener"/> is told through
-    /// <c>DepthEnded</c> when the effect stops on its own, so the toggle does not stay pressed.
-    /// </summary>
-    public Task<int> StartDepthAsync<T>(string placeId, DotNetObjectReference<T> listener) where T : class =>
-        SafeAsync("poseeFx.startDepth", 0, placeId, listener);
-
-    public Task StopDepthAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopDepth", handle);
-
-    // ── Duel ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Strikes the arc between the two halves of the duel card, leaning toward the stranger
-    /// comic, then floods the winner's side while each comic's motif answers the other. Full
-    /// tier only; below it the page's CSS seam stands in.
-    /// </summary>
-    public Task<int> StartDuelAsync(ElementReference canvas, string seedA, int scoreA, string seedB, int scoreB) =>
-        SafeAsync("poseeFx.startDuel", 0, canvas, seedA, scoreA, seedB, scoreB);
-
-    public Task StopDuelAsync(int handle) =>
-        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopDuel", handle);
+    /// <summary>After a share or save, a CERTIFIED STRANGE stamp lands on the comic. Lite tier and up.</summary>
+    public Task StampComicAsync() => SafeVoidAsync("poseeFx.stampComic");
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
 

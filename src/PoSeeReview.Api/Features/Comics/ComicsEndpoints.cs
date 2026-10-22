@@ -304,11 +304,19 @@ internal static class ComicsEndpoints
     /// Point reads rather than a query: the ids come from the caller, and a filter built from
     /// caller input over a single partition is a scan waiting to be abused.
     /// </para>
+    /// <para>
+    /// It also carries the weirdness forecast for the places that are not drawn: the score their
+    /// reviews last got, from the analysis cache. Nothing is computed for the request — search
+    /// results carry no reviews, and fetching them per pin would cost more than the comic — so
+    /// each sighting of a forecast place is also counted as demand for the nightly pre-draw.
+    /// </para>
     /// </summary>
     private static async Task<IResult> GetCachedPlaceIds(
         string? placeIds,
         IComicGenerationService comicGenerationService,
         IContentModerationGate moderationGate,
+        IAnalysisRepository analyses,
+        Microsoft.Extensions.Options.IOptions<ComicOptions> comicOptions,
         HttpContext http)
     {
         var ids = (placeIds ?? string.Empty)
@@ -318,31 +326,45 @@ internal static class ComicsEndpoints
             .Take(MaxCachedLookupIds)
             .ToList();
 
-        var cached = new List<string>(ids.Count);
-        var scores = new Dictionary<string, int>(ids.Count, StringComparer.Ordinal);
+        var options = comicOptions.Value;
         var now = DateTimeOffset.UtcNow;
 
-        foreach (var id in ids)
+        // Concurrent: each id is two or three independent point reads, and a screenful of them in
+        // series was most of this endpoint's latency.
+        var probes = await Task.WhenAll(ids.Select(async id =>
         {
             var placeId = PlaceId.From(id);
 
             // A withheld comic must not be advertised as instantly available: the pin would
             // promise a free result and the tap would land on a 451.
-            var verdict = await moderationGate.EvaluateAsync(placeId, http.RequestAborted);
-            if (!verdict.IsServable)
+            if (!(await moderationGate.EvaluateAsync(placeId, http.RequestAborted)).IsServable)
             {
-                continue;
+                return (Id: id, Score: (int?)null, Forecast: (int?)null);
             }
 
             var comic = await comicGenerationService.GetCachedComicAsync(placeId, http.RequestAborted);
             if (comic is not null && comic.ExpiresAt > now)
             {
-                cached.Add(id);
-                scores[id] = comic.StrangenessScore;
+                return (id, comic.StrangenessScore, null);
             }
-        }
 
-        return Results.Ok(new CachedComicsResponse { CachedPlaceIds = cached, Scores = scores });
+            if (await analyses.GetAsync(placeId, http.RequestAborted) is { } analysis
+                && analysis.PromptVersion == options.PromptVersion)
+            {
+                await analyses.RecordDemandAsync(placeId, http.RequestAborted);
+                return (id, null, analysis.Analysis.StrangenessScore);
+            }
+
+            return (id, null, null);
+        }));
+
+        return Results.Ok(new CachedComicsResponse
+        {
+            CachedPlaceIds = [.. probes.Where(p => p.Score is not null).Select(p => p.Id)],
+            Scores = probes.Where(p => p.Score is not null).ToDictionary(p => p.Id, p => p.Score!.Value, StringComparer.Ordinal),
+            Forecasts = probes.Where(p => p.Forecast is not null).ToDictionary(p => p.Id, p => p.Forecast!.Value, StringComparer.Ordinal),
+            ForecastFloor = options.MinimumStrangenessScore
+        });
     }
 
     /// <summary>
@@ -581,18 +603,27 @@ internal static class ComicsEndpoints
 
     /// <summary>
     /// Serves a comic from the local table cache. Free read — no Maps call, no AI generation.
-    /// Returns 404 when expired, triggering a fresh generation on the client if desired.
+    /// Returns 404 when expired, triggering a fresh generation on the client if desired. A miss
+    /// is someone opening a place with no comic behind it — the strongest pre-draw demand there is.
     /// </summary>
     private static async Task<IResult> GetCachedComic(
         string placeId,
         IComicGenerationService comicGenerationService,
-        HttpContext http) =>
-        await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted) is { } comic
-            ? Results.Ok(comic.ToDto(isCached: true))
-            : Results.Problem(
-                type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
-                title: "Not Found",
-                statusCode: StatusCodes.Status404NotFound,
-                detail: "No cached comic found",
-                instance: http.Request.Path);
+        IAnalysisRepository analyses,
+        HttpContext http)
+    {
+        if (await comicGenerationService.GetCachedComicAsync(PlaceId.From(placeId), http.RequestAborted) is { } comic)
+        {
+            return Results.Ok(comic.ToDto(isCached: true));
+        }
+
+        await analyses.RecordDemandAsync(PlaceId.From(placeId), http.RequestAborted);
+
+        return Results.Problem(
+            type: "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+            title: "Not Found",
+            statusCode: StatusCodes.Status404NotFound,
+            detail: "No cached comic found",
+            instance: http.Request.Path);
+    }
 }

@@ -1,3 +1,4 @@
+using PoSeeReview.Api.Telemetry;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -34,6 +35,9 @@ public sealed class GeminiComicService : IImageGenerationService
     private readonly AiCostTracker _costTracker;
     private readonly string _apiKey;
     private readonly string _model;
+
+    /// <inheritdoc />
+    public string Model => _model;
 
     public GeminiComicService(
         IHttpClientFactory httpClientFactory,

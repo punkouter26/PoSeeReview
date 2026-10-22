@@ -2189,14 +2189,15 @@
 }
 
 /* ============================================================================================
-   CERTIFIED STRANGE (js/page-curl.js)
+   CERTIFIED STRANGE (fx.js stampComic)
    ============================================================================================ */
 
 @layer shared {
-    /* CERTIFIED STRANGE — the rubber stamp page-curl.js slams onto a comic after Share/Save.
-       page-curl.js positions it (left/top = the comic's centre), sizes it (--fx-stamp-w = the
-       comic's width) and drives `scale`/`opacity` per frame; everything else is here. */
+    /* CERTIFIED STRANGE — the rubber stamp slammed onto a comic after Share/Save. fx.js positions
+       it (left/top = the comic's centre) and sizes it (--fx-stamp-w = the comic's width); the
+       slam, hold and fade are the animation below, and fx.js removes it on animationend. */
     .fx-stamp {
+        animation: fx-stamp-slam 1620ms linear both;
         position: absolute;
         z-index: 4;
         translate: -50% -50%;
@@ -2246,29 +2247,34 @@
         border-block-end: 0.08em solid currentColor;
     }
 
-    .fx-stamp-splatter {
-        z-index: 4;
-        mix-blend-mode: multiply;
-    }
-
     /* The dark theme's danger token is a light coral, which multiply washes out to nothing on
        the artwork; there the ink is laid on normally. */
     @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="light"]) :is(.fx-stamp, .fx-stamp-splatter) {
+        :root:not([data-theme="light"]) .fx-stamp {
             mix-blend-mode: normal;
         }
     }
 
-    :root[data-theme="dark"] :is(.fx-stamp, .fx-stamp-splatter) {
+    :root[data-theme="dark"] .fx-stamp {
         mix-blend-mode: normal;
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .fx-stamp,
-        .fx-stamp-splatter {
+        .fx-stamp {
             display: none;
         }
     }
+}
+
+/* Falls in 150ms (scale changes fastest at the end, which makes the landing hard), squashes and
+   springs back once, holds, then fades. Percentages are of 1620ms. */
+@keyframes fx-stamp-slam {
+    0%    { scale: 2;    opacity: 0.12; animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+    9.3%  { scale: 1;    opacity: 1; animation-timing-function: ease-out; }
+    13%   { scale: 0.94; opacity: 1; }
+    20%   { scale: 1;    opacity: 0.96; }
+    80%   { scale: 1;    opacity: 0.94; }
+    100%  { scale: 1;    opacity: 0; }
 }
 
 /* ============================================================================================
@@ -2331,12 +2337,5 @@
     .rz-tabview-nav {
         overflow-x: auto;
         scrollbar-width: none;
-    }
-}
-
-/* 3D mode (js/depth-diorama.js): sideways drags tilt the diorama; vertical drags still scroll. */
-@layer shared {
-    .comic-strip-container[data-depth-diorama] {
-        touch-action: pan-y;
     }
 }
