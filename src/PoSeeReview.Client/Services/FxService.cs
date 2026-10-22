@@ -22,10 +22,8 @@ public enum FxTier
 /// <param name="WebGl2">Whether a WebGL2 context could be created at all.</param>
 /// <param name="AutoDowngraded">The tier was lowered by the frame-budget watchdog, not by the user.</param>
 /// <param name="Haptics">The Vibration API exists. Absent on every iOS browser.</param>
-/// <param name="Narration">speechSynthesis exists, so the narrative can be read aloud.</param>
 public readonly record struct FxCapabilities(
-    FxTier Tier, bool ReducedMotion, bool WebGl2, bool AutoDowngraded,
-    bool Haptics, bool Narration);
+    FxTier Tier, bool ReducedMotion, bool WebGl2, bool AutoDowngraded, bool Haptics);
 
 /// <param name="Supported">Whether the underlying API exists on this device at all.</param>
 /// <param name="Enabled">Whether it is actually active right now.</param>
@@ -117,9 +115,8 @@ public sealed class FxService(IJSRuntime js)
 
         var raw = await SafeAsync<CapabilitiesPayload?>("poseeFx.describe", null);
         var result = raw is null
-            ? new FxCapabilities(FxTier.Off, true, false, false, false, false)
-            : new FxCapabilities(ParseTier(raw.Tier), raw.ReducedMotion, raw.Webgl2, raw.AutoDowngraded,
-                raw.Haptics, raw.Narration);
+            ? new FxCapabilities(FxTier.Off, true, false, false, false)
+            : new FxCapabilities(ParseTier(raw.Tier), raw.ReducedMotion, raw.Webgl2, raw.AutoDowngraded, raw.Haptics);
 
         _capabilities = result;
         return result;
@@ -239,22 +236,6 @@ public sealed class FxService(IJSRuntime js)
     /// <summary>Must be called when the comic leaves the screen, or the loop follows the user.</summary>
     public Task StopSoundtrackAsync() => SafeVoidAsync("poseeFx.stopSoundtrack");
 
-    // ── Narration ────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Whether speechSynthesis exists. Independent of whether audio has been unlocked.</summary>
-    public Task<bool> CanNarrateAsync() => SafeAsync("poseeFx.canNarrate", false);
-
-    /// <summary>
-    /// Reads text aloud. Gated on the audio preference but NOT on the AudioContext — speech is a
-    /// separate output that never enters the graph, so it works before the first gesture.
-    /// </summary>
-    public Task<bool> NarrateAsync(string text) => SafeAsync("poseeFx.narrate", false, text);
-
-    public Task StopNarrationAsync() => SafeVoidAsync("poseeFx.stopNarration");
-
-    /// <summary>Completes when the current utterance ends, is cancelled, or was never started.</summary>
-    public Task WaitNarrationEndAsync() => SafeVoidAsync("poseeFx.narrationEnded");
-
     // ── Haptics ──────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -347,6 +328,5 @@ public sealed class FxService(IJSRuntime js)
         public bool Webgl2 { get; set; }
         public bool AutoDowngraded { get; set; }
         public bool Haptics { get; set; }
-        public bool Narration { get; set; }
     }
 }

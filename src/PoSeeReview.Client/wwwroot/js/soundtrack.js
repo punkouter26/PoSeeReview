@@ -20,8 +20,6 @@
 // on the audio clock, which is what keeps timing tight whatever the main thread is doing. It is
 // a timer, not an animation frame, so it does not belong on gfx-core's rAF loop. A hidden tab
 // fades the loop out rather than letting a throttled timer stutter it.
-//
-// It never knows about narration: fx.js ducks it while the narrative is being read.
 
 import { hashString, seededRandom, SCALES, SEMITONE } from './audio.js';
 
@@ -183,7 +181,7 @@ function begin(bus, seed, score) {
     const { ctx, makeOutput } = bus;
     const music = compose(seed, score);
 
-    // The loop's own small bus: fader (fades and ducking) → grit → tone → the shared output
+    // The loop's own small bus: fader (fades) → grit → tone → the shared output
     // stage, which sends into the app's one reverb — more of it the stranger the comic.
     const fader = ctx.createGain();
     fader.gain.value = 0.0001;
@@ -200,7 +198,6 @@ function begin(bus, seed, score) {
     const loop = {
         ctx, music, input: fader, fader, step: 0,
         nextAt: ctx.currentTime + 0.08,
-        ducked: false,
         timer: 0,
         dispose: () => {
             for (const node of [fader, grit, tone]) {
@@ -254,7 +251,7 @@ document.addEventListener('visibilitychange', () => {
         } else if (!loop.timer) {
             loop.nextAt = loop.ctx.currentTime + 0.08;
             loop.timer = setInterval(() => tick(loop), TICK_MS);
-            fadeTo(loop, loop.ducked ? LEVEL * 0.2 : LEVEL, 0.8);
+            fadeTo(loop, LEVEL, 0.8);
         }
     } catch {
         halt();
@@ -299,17 +296,5 @@ export const soundtrack = {
         halt();
     },
 
-    halt,
-
-    /** Pulled under narration, back up when it ends. */
-    duck(on) {
-        const loop = state.playing;
-        if (!loop) return;
-        loop.ducked = !!on;
-        try {
-            fadeTo(loop, on ? LEVEL * 0.2 : LEVEL, on ? 0.25 : 0.9);
-        } catch {
-            // Fine to stay where it is.
-        }
-    }
+    halt
 };

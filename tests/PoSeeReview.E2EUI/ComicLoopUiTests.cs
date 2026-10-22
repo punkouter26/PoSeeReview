@@ -89,15 +89,15 @@ public sealed class ComicLoopUiTests(PlaywrightFixture fixture)
         }
 
         // Loop reset: back on discovery, and the comic's palette must not follow. A win has no
-        // back button — the comic page's actions are share/save/keep/redraw — so the way out is
-        // the primary nav, which is the route a real user takes. A loss offers Back explicitly.
+        // back button — the comic page's one action is Share — so the way out is the brand link,
+        // which is the route a real user takes. A loss offers Back explicitly.
         if (await page.Locator(".error-container").CountAsync() > 0)
         {
             await page.GetByRole(AriaRole.Button, new() { NameRegex = BackButton }).ClickAsync();
         }
         else
         {
-            await page.Locator("nav.nav-links a.nav-link").First.ClickAsync();
+            await page.Locator("a.navbar-brand").ClickAsync();
         }
         await Assertions.Expect(page.Locator(".index-container")).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
         await Assertions.Expect(page.Locator("#blazor-error-ui")).ToBeHiddenAsync();

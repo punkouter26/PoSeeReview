@@ -1,89 +1,36 @@
-@* The comic page's action bar.
-
-   Share is first and visually dominant — for the Content Creator persona it is the entire
-   product. *@
+@* The comic page's action bar. Share is the one action — for the Content Creator persona it is
+   the entire product. *@
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
-@using Microsoft.JSInterop
 @using Microsoft.AspNetCore.Components.Web
 @inject ShareService ShareService
-@inject IJSRuntime JS
-@inject NavigationManager Navigation
 @inject FxService Fx
-@inject ToastService Toasts
-@inject ComicHistoryService History
 
-@* One delegating handler rather than a tap call wired into each button. Clicks
-   bubble, MouseEventArgs already carries ClientX, and the panned click is the cheapest spatial
-   cue in the app — a bar-wide handler gives every control in it one without an edit per button and
-   without a per-button ElementReference. *@
-<div class="comic-actions" role="group" aria-label="Comic actions" @onclick="OnBarClickAsync">
+<div class="comic-actions">
     <button type="button" class="btn btn-primary action-share" @onclick="ShareAsync" disabled="@_isBusy">
         <span aria-hidden="true">📤</span> Share
     </button>
-
-    <button type="button" class="btn btn-secondary action-save" @onclick="SaveAsync" disabled="@_isBusy" title="Save image" aria-label="Save image">
-        <span aria-hidden="true">💾</span><span class="action-label"> Save</span>
-    </button>
-
-    @* A duel needs a second comic, and the only ones this browser knows are its own history. *@
-    @if (_rivals.Count > 0)
-    {
-        <button type="button" class="btn btn-secondary" popovertarget="challenge-menu" title="Challenge another comic" aria-label="Challenge another comic">
-            <span aria-hidden="true">⚔️</span><span class="action-label"> Challenge</span>
-        </button>
-        <div id="challenge-menu" class="popover-menu" popover>
-            <p class="popover-menu-title">Which is stranger? Pick a rival</p>
-            @foreach (var rival in _rivals)
-            {
-                <button type="button" class="popover-menu-item" popovertarget="challenge-menu" popovertargetaction="hide"
-                        @onclick="() => ChallengeAsync(rival)">
-                    @rival.RestaurantName · @rival.StrangenessScore
-                </button>
-            }
-        </div>
-    }
-
-    @ChildContent
 </div>
 
 @code {
     [Parameter, EditorRequired]
     public ComicDto Comic { get; set; } = default!;
 
-    /// <summary>Page-owned controls that belong in the bar (read aloud).</summary>
-    [Parameter]
-    public RenderFragment? ChildContent { get; set; }
-
-    private const int MaxRivals = 8;
-
     private bool _isBusy;
-    private List<ComicHistoryEntry> _rivals = [];
-
-    /// <summary>Live comics only: the duel card 404s when either side has expired.</summary>
-    protected override async Task OnInitializedAsync() =>
-        _rivals = (await History.GetAllAsync())
-            .Where(e => e.PlaceId != Comic.PlaceId && !e.IsExpired)
-            .Take(MaxRivals)
-            .ToList();
 
     /// <summary>
-    /// Panned click for anything in the action bar. Also the unlock point: an AudioContext only
-    /// leaves 'suspended' from a trusted event, and for a user arriving on a shared comic link
-    /// this bar is often the first real gesture on the page.
+    /// Also the unlock point: an AudioContext only leaves 'suspended' from a trusted event, and
+    /// for a user arriving on a shared comic link this is often the first real gesture on the page.
     /// </summary>
-    private async Task OnBarClickAsync(MouseEventArgs e)
-    {
-        await Fx.UnlockAudioAsync();
-        await Fx.PlayTapAtAsync(e.ClientX);
-    }
-
-    private async Task ShareAsync()
+    private async Task ShareAsync(MouseEventArgs e)
     {
         _isBusy = true;
 
         try
         {
+            await Fx.UnlockAudioAsync();
+            await Fx.PlayTapAtAsync(e.ClientX);
+
             var outcome = await ShareService.ShareComicAsync(Comic.PlaceId, Comic.RestaurantName, Comic.StrangenessScore);
             if (outcome is ShareOutcome.Shared or ShareOutcome.Copied)
             {
@@ -94,39 +41,5 @@
         {
             _isBusy = false;
         }
-    }
-
-    private Task ChallengeAsync(ComicHistoryEntry rival) => ShareService.ShareAsync(
-        $"{Comic.RestaurantName} vs {rival.RestaurantName}",
-        $"{Comic.RestaurantName} ({Comic.StrangenessScore}) vs {rival.RestaurantName} ({rival.StrangenessScore}): which is stranger?",
-        Navigation.ToAbsoluteUri($"/duel/{Uri.EscapeDataString(Comic.PlaceId)}/{Uri.EscapeDataString(rival.PlaceId)}").ToString());
-
-    private async Task SaveAsync()
-    {
-        _isBusy = true;
-
-        try
-        {
-            // Routed through the app's own origin by shareUtils.saveComic — a cross-origin
-            // download attribute is ignored by every browser, and the blob host sends no CORS.
-            if (await JS.InvokeAsync<bool>("shareUtils.saveComic", Comic.PlaceId))
-            {
-                await Fx.PlayConfirmAsync();
-                await Fx.StampComicAsync();
-                Toasts.Show("Saved to your device");
-                return;
-            }
-        }
-        catch (JSException)
-        {
-            // Reported below, the same as a save the browser refused.
-        }
-        finally
-        {
-            _isBusy = false;
-        }
-
-        await Fx.PlayErrorAsync();
-        Toasts.Show("Couldn't save that one — try long-pressing the comic instead.");
     }
 }

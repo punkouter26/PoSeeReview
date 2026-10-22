@@ -48,7 +48,6 @@
 
     .comic-container ::deep .comic-actions,
     .comic-narrative,
-    .comic-why,
     .comic-disclosure {
         grid-column: 2;
         margin-top: 0;

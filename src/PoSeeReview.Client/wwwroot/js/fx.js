@@ -105,11 +105,10 @@ export const fx = {
     // ── Capability + tier ────────────────────────────────────────────────────────────────
     describe: () => guard(() => ({
         ...gfx.describe(),
-        haptics: haptics.describe().supported,
-        narration: audio.canNarrate()
+        haptics: haptics.describe().supported
     }), {
         tier: 'off', reducedMotion: true, webgl2: false, autoDowngraded: false,
-        haptics: false, narration: false
+        haptics: false
     }),
     setTier: (tier) => guard(() => gfx.setTier(tier), 'off'),
     stats: () => guard(() => gfx.stats(), null),
@@ -222,21 +221,6 @@ export const fx = {
         if (active) toggleTick();
         return active;
     }, false),
-
-    // ── Narration ────────────────────────────────────────────────────────────────────────
-    canNarrate: () => guard(() => audio.canNarrate(), false),
-    /** Reads the narrative aloud through speechSynthesis, ducking the soundtrack while it speaks. */
-    narrate: (text) => guard(() => {
-        const speaking = audio.narrate(text);
-        if (speaking) {
-            soundtrack.duck(true);
-            audio.narrationEnded().then(() => guard(() => soundtrack.duck(false)));
-        }
-        return speaking;
-    }, false),
-    stopNarration: () => guard(() => audio.stopNarration()),
-    /** Resolves when the current utterance is over, or at once if nothing is speaking. */
-    narrationEnded: () => guardAsync(() => audio.narrationEnded()),
 
     // ── Background gradient ──────────────────────────────────────────────────────────────
     // The backdrop's audio meter is handed over here: gradient.js does not import audio.js.

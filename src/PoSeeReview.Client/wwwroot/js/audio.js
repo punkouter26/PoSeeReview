@@ -36,8 +36,7 @@ const state = {
     volume: 1,
     unlocked: false,
     // Guards against a burst of identical sounds (a fast count-up) stacking into clipping.
-    lastPlayedAt: new Map(),
-    utterance: null    // Held so the engine cannot collect it mid-sentence.
+    lastPlayedAt: new Map()
 };
 
 // Only an explicit "true" is on: an absent key, or a browser that blocks localStorage, is quiet.
@@ -59,45 +58,6 @@ function readStoredVolume() {
 }
 
 const on = () => state.enabled && !state.silenced;
-
-// narrationEnded() hands out this promise; endNarration resolves it. Resolving twice is harmless.
-let narrationDone = Promise.resolve();
-let endNarration = () => { };
-
-function canSpeak() {
-    try {
-        return typeof window.speechSynthesis !== 'undefined'
-            && typeof window.SpeechSynthesisUtterance === 'function';
-    } catch {
-        return false;
-    }
-}
-
-/** One utterance through speechSynthesis, ending `done` however it ends. */
-function speakUtterance(value, done) {
-    if (!canSpeak()) return false;
-    try {
-        // Always cancel first. Chrome queues utterances indefinitely, so a user tapping
-        // narrate twice would otherwise hear the whole thing twice, back to back.
-        window.speechSynthesis.cancel();
-
-        const spoken = value.slice(0, 800);
-        const utterance = new SpeechSynthesisUtterance(spoken);
-        utterance.rate = 1.02;
-        utterance.volume = 0.9 * state.volume;
-        utterance.onend = done;
-        utterance.onerror = done;
-        // Chrome can collect an utterance mid-speech and then never fires its events, and a
-        // backgrounded tab can stall the queue outright. Nothing may wait on this forever.
-        setTimeout(done, 10000 + spoken.length * 150);
-        state.utterance = utterance;
-
-        window.speechSynthesis.speak(utterance);
-        return true;
-    } catch {
-        return false;
-    }
-}
 
 /**
  * A room, synthesised rather than downloaded. Exponentially decaying stereo noise is the
@@ -529,10 +489,6 @@ export const audio = {
         if (on()) {
             await this.unlock();
         } else {
-            // Narration is a separate output that does not pass through the context, so
-            // suspending the graph would leave a voice mid-sentence talking over a muted app.
-            this.stopNarration();
-
             if (state.ctx && state.ctx.state === 'running') {
                 try {
                     await state.ctx.suspend();
@@ -956,42 +912,5 @@ export const audio = {
     bus() {
         if (!canPlay()) return null;
         return { ctx: state.ctx, makeOutput };
-    },
-
-    // ── Narration ────────────────────────────────────────────────────────────────────────
-    //
-    // speechSynthesis is a separate output from the AudioContext — it does not pass through the
-    // graph or the master trim, and it works even before unlock. So it is gated on
-    // the enabled preference alone, and it is cancelled rather than mixed: two voices reading
-    // over each other is worse than either.
-
-    canNarrate() {
-        return canSpeak();
-    },
-
-    /**
-     * Reads the comic's narrative aloud. An accessibility win before it is a flourish: the
-     * narrative is the joke, and it currently exists only as text under an image that a screen
-     * reader describes as a comic strip.
-     */
-    narrate(text) {
-        if (!on() || !this.canNarrate()) return false;
-
-        const value = String(text ?? '').trim();
-        if (!value) return false;
-
-        this.stopNarration();
-        narrationDone = new Promise((resolve) => { endNarration = resolve; });
-        if (speakUtterance(value, endNarration)) return true;
-        endNarration();
-        return false;
-    },
-
-    stopNarration() {
-        try { window.speechSynthesis?.cancel(); } catch { /* nothing speaking */ }
-        endNarration();
-    },
-
-    /** Resolves when the current utterance ends, errors or is cancelled. Never rejects. */
-    narrationEnded: () => narrationDone
+    }
 };

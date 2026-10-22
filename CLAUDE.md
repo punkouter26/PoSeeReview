@@ -211,7 +211,7 @@ POST; the host serves the client, so there is no older API to fall back to.
 drops citations of reviews that were never sent). `ComicTextOverlayService` is text-in/pixels-out.
 The painter draws the scorer's shot list: each panel's `scene` is a numbered line of
 `ComicImagePrompt`. The comic keeps the three ratings (`Breakdown`) and per-panel `Sources`
-(review position + stars, never text or author) for the page's "Why 54?" panel.
+(review position + stars, never text or author); neither is shown in the UI any more.
 
 **The verdict is cached apart from the comic** (`AnalysisRepository`, table `PoSeeReviewAnalyses`,
 keyed by place + a hash of the masked reviews + `PromptVersion`). A redraw keeps its score; a
@@ -287,9 +287,8 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   after `MaxConcurrencyRetries`. Table Storage 409/412 retries (budget, moderation) go through
   `Storage/TableConcurrency`. `GET /api/comics/budget` is free so the UI greys out the button
   before a tap.
-- **`GET /api/comics/{placeId}/image`** re-serves the blob from this origin so it can be saved (the
-  `download` attribute is ignored cross-origin). Not used for display; Share attaches the image
-  file from it too — the SAS blob sends no CORS.
+- **`GET /api/comics/{placeId}/image`** re-serves the blob from this origin. Not used for display;
+  Share attaches the image file from it — the SAS blob sends no CORS.
 - **Reports** (`/api/reports`): session required, rate limited, deduped by reporter (RowKey is the
   principal), only ever writes a row.
 - **Moderation** is graded: **Hide** (reversible, what auto-hide at 3 distinct reporters does),
@@ -329,7 +328,7 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   `/my-comics`; `BoardMemoryService` keeps last-seen ranks per region. Both degrade to no-ops when
   storage throws, and both types are in `AppJsonContext`.
 - **Account menu.** `/my-comics` and `/settings` are linked from the identity badge's native
-  `popover`, never from `nav.nav-links`, which `HeaderContractUiTests` pins at exactly two items. Under 40rem every
+  `popover`, never from `nav.nav-links`, which `HeaderContractUiTests` pins at exactly one item (Hall of Fame — the brand link is the way home). Under 40rem every
   `.popover-menu` is a bottom sheet over a scrim (shared layer, so callers' placement loses). `/diagnostics` and
   `/moderation` have no nav entry.
 - **Components.** `ComicRow` is every list of comics; `StateCard` is every empty/error/404 screen;
@@ -421,8 +420,7 @@ is `lite` until the user picks Full, and the soundtrack is opt-in. Every switch 
   runtime gate that never overwrites the stored preference. Master volume is `0.22 × volume`
   (`posee_audio_volume`). The score count-up is one `playScoreRoll` scheduled on the audio clock.
   `signature(placeId, score)` seeds a per-restaurant motif (seed by place id, never name);
-  `panel-scrub.js` replays its notes as panels cross mid-screen. Narration (`speechSynthesis`) must
-  `cancel()` before `speak()` and on teardown — the queue is browser-global.
+  `panel-scrub.js` replays its notes as panels cross mid-screen.
 - **Haptics** follow the sound preference and can be switched off on their own, never on on their
   own. Three fixed patterns (tap / confirm / error). Sound, haptics, music, volume and the tier all
   live on `/settings`.
@@ -431,14 +429,15 @@ is `lite` until the user picks Full, and the soundtrack is opt-in. Every switch 
   **Every exit path must clear `data-comic-reveal`**, which is why `ComicStrip.DisposeAsync`
   finishes the reveal first.
 - **"Too normal"** plays a sad trombone (`playFizzle`), not the error cue.
-- **Share / save**: a CERTIFIED STRANGE stamp lands on the comic (`stampComic` in fx.js, `.fx-stamp`
+- **Share**: a CERTIFIED STRANGE stamp lands on the comic (`stampComic` in fx.js, `.fx-stamp`
   and its `fx-stamp-slam` keyframes in app.css), `lite` and up.
 - **Board** moves are damped springs (climbers overshoot, fallers bounce) in `animateBoardMoves`;
   a climb into #1 fires `confetti.js` (2D canvas, tiny inked panels) and `audio.crown`.
-- **Duel**: CSS only — the card slams, a seam pulses and the winner's half floods once the card has
+- **Duel** (reachable only from links shared before the Challenge button was removed): CSS only — the card slams, a seam pulses and the winner's half floods once the card has
   loaded **and** both scores are in, whichever comes last; the winner's motif plays.
 - **Removed (2026-10):** the ink-fluid wait, score particles, halftone print reveal, page curl,
-  duel arc shader, 3D mode, sticker maker and AI voice. If one comes back, it goes behind a
+  duel arc shader, 3D mode, sticker maker and AI voice; then read-aloud narration, Save, Challenge and
+  the "Why 54?" score panel (the comic page's one action is Share). If one comes back, it goes behind a
   `/settings` switch that starts off.
 - **Map** heat glow is a MapLibre custom layer in MapLibre's own context; it pulses only at `full`.
 - **Liquid glass** (`glass.js`): a generated lens-edge displacement map applied as an SVG backdrop
@@ -447,7 +446,7 @@ is `lite` until the user picks Full, and the soundtrack is opt-in. Every switch 
   (`--glass-lx/-ly`, a `fixed` gradient) follows the pointer or a permission-free tilt.
 - **Soundtrack** (`soundtrack.js`) is opt-in even with sound on (`posee_soundtrack`, the
   "Comic soundtrack" switch on `/settings`): a four-bar loop seeded by place id, scheduled look-ahead on the audio clock,
-  ducked under narration, released when the comic page is disposed.
+  released when the comic page is disposed.
 - **View transitions**: forward is the halftone dot mask; back is an ink blot (`--ink-blot`) growing
   from the tap point (`--vt-x/-y`). Never await rAF inside the update callback (rendering is suppressed while it
   is pending); the click is taken from Blazor in a capture-phase listener and `Blazor.navigateTo` is

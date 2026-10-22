@@ -41,7 +41,7 @@ public sealed class HeaderContractUiTests(PlaywrightFixture fixture)
 
         var nav = page.Locator("nav.nav-links");
         await Assertions.Expect(nav).ToBeVisibleAsync(new() { Timeout = RenderTimeout });
-        await Assertions.Expect(nav.Locator(".nav-item")).ToHaveCountAsync(2);
+        await Assertions.Expect(nav.Locator(".nav-item")).ToHaveCountAsync(1);
     }
 
     /// <summary>

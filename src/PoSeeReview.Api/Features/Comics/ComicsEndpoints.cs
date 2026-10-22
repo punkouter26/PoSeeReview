@@ -537,13 +537,11 @@ internal static class ComicsEndpoints
     }
 
     /// <summary>
-    /// Re-serves a comic image from this origin so the browser will actually save it.
+    /// Re-serves a comic image from this origin, so Share can attach it as a file and
+    /// <c>/my-comics</c> can cache it offline.
     /// <para>
-    /// The comic lives in Blob Storage on a different host, and a <c>download</c> attribute is
-    /// ignored on a cross-origin href — the browser navigates to the image instead of saving
-    /// it. The storage account sends no CORS headers either, so fetching it into a blob URL
-    /// fails as well. Proxying the bytes is what makes "Save Image" a real action rather than
-    /// "open the picture in a new tab and figure it out".
+    /// The comic lives in Blob Storage on a different host that sends no CORS headers, so
+    /// fetching it into a blob from the page fails outright.
     /// </para>
     /// <para>
     /// Deliberately not used for <em>displaying</em> the comic: that would put every view on the
