@@ -36,6 +36,7 @@ uniform float uAmbient;
 uniform vec2  uPointer;    // 0..1, origin bottom-left, eased
 uniform float uScroll;     // 0..1 down the page, eased
 uniform float uLevel;      // 0..1 audio level, eased
+uniform vec4  uShock;      // xy origin (uv, bottom-left), z age in seconds, w strength 0..1
 `;
 
 const BACKDROP_GLSL = `
@@ -166,7 +167,21 @@ void main() {
     PoseeScene s = posee_scene();
     vec2 p = uv * vec2(s.aspect, 1.0);
 
+    // Shockwave from a score that landed big: an expanding ring that pushes the field outward
+    // as it passes and leaves a brief bright crest. Zero cost when no shock is live (w = 0).
+    float crest = 0.0;
+    if (uShock.w > 0.0) {
+        vec2 toPixel = p - uShock.xy * vec2(s.aspect, 1.0);
+        float dist = length(toPixel);
+        float radius = uShock.z * 1.15;
+        float band = exp(-pow((dist - radius) * 9.0, 2.0));
+        float fade = uShock.w * exp(-uShock.z * 1.6);
+        p -= normalize(toPixel + 1e-5) * band * fade * 0.09;
+        crest = band * fade;
+    }
+
     vec3 color = posee_backdrop(p, s);
+    color += uColorC * crest * 0.55;
 
     // Vignette keeps the centre of the page readable; content sits on top of this.
     float vignette = smoothstep(1.25, 0.25, length(uv - 0.5) * 1.4);
@@ -298,7 +313,9 @@ export function start(canvas, options = {}) {
         targetPointer: [0.5, 0.5],
         scroll: 0,
         targetScroll: 0,
-        audioLevel: 0
+        audioLevel: 0,
+        shock: [0.5, 0.5, 0, 0],
+        shockStarted: 0
     };
 
     canvas.addEventListener('webglcontextlost', onContextLost);
@@ -327,7 +344,7 @@ function resume() {
 
     s.uniforms = Object.fromEntries(
         ['Time', 'Resolution', 'Strange', 'ColorA', 'ColorB', 'ColorC', 'KeyLight', 'Ambient',
-            'Pointer', 'Scroll', 'Level']
+            'Pointer', 'Scroll', 'Level', 'Shock']
             .map((name) => [name, gl.getUniformLocation(s.program, `u${name}`)]));
 
     // WebGL2 requires a bound VAO even when every vertex is generated from gl_VertexID.
@@ -389,6 +406,11 @@ function draw(now) {
     gl.uniform2fv(u.Pointer, s.pointer);
     gl.uniform1f(u.Scroll, s.scroll);
     gl.uniform1f(u.Level, s.audioLevel);
+    if (s.shock[3] > 0) {
+        s.shock[2] = (now - s.shockStarted) / 1000;
+        if (s.shock[2] > 2.5) s.shock[3] = 0;
+    }
+    gl.uniform4fv(u.Shock, s.shock);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
 
@@ -439,6 +461,20 @@ function onScroll() {
     const page = document.scrollingElement;
     const range = page ? page.scrollHeight - page.clientHeight : 0;
     scene.targetScroll = range > 0 ? clamp01(page.scrollTop / range) : 0;
+}
+
+/**
+ * Sends a ring through the field from a viewport point. `strength` 0..1. A no-op while the
+ * shader is not drawing — the CSS ground has nothing to ripple.
+ */
+export function shock(clientX, clientY, strength = 1) {
+    const s = scene;
+    if (!s?.task) return;
+    s.shock[0] = clamp01(clientX / (window.innerWidth || 1));
+    s.shock[1] = 1 - clamp01(clientY / (window.innerHeight || 1));
+    s.shock[2] = 0;
+    s.shock[3] = clamp01(strength);
+    s.shockStarted = performance.now();
 }
 
 export function setScore(id, score) {

@@ -228,8 +228,8 @@ public partial class ComicGenerationService : IComicGenerationService
         // Pre-publish content screen. Positioned here for two reasons: it is the first point at
         // which the model-authored prose exists, and it is still before the paid image call, so
         // a refusal costs nothing. The captions are screened with the narrative: they are the
-        // words actually painted onto the image.
-        var screen = await _contentSafetyScreener.ScreenAsync(string.Join('\n', [narrative, .. captions]), cancellationToken);
+        // words actually painted onto the image. So are the scenes, which publish as alt text.
+        var screen = await _contentSafetyScreener.ScreenAsync(string.Join('\n', [narrative, .. captions, .. scenes]), cancellationToken);
 
         if (screen.IsBlocked)
         {
@@ -315,6 +315,7 @@ public partial class ComicGenerationService : IComicGenerationService
             ExpiresAt = _timeProvider.GetUtcNow().AddDays(_options.CacheDurationDays),
             CacheState = ComicCacheState.Generated,
             Captions = [.. captions],
+            Scenes = [.. scenes],
             PromptVersion = _options.PromptVersion
         };
 
@@ -332,7 +333,9 @@ public partial class ComicGenerationService : IComicGenerationService
                 Region = restaurant.Region,
                 StrangenessScore = strangenessScore,
                 ComicBlobUrl = blobUrl,
-                LastUpdated = DateTimeOffset.UtcNow
+                LastUpdated = DateTimeOffset.UtcNow,
+                Latitude = restaurant.Latitude,
+                Longitude = restaurant.Longitude
             };
 
             await _leaderboardService.UpsertEntryAsync(leaderboardEntry);

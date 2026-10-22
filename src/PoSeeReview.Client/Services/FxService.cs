@@ -216,6 +216,31 @@ public sealed class FxService(IJSRuntime js)
     public Task PlaySignatureAsync(string seed, int score) =>
         SafeVoidAsync("poseeFx.playSignature", seed, score);
 
+    /// <summary>
+    /// "Too normal to draw": a deflating sad trombone. Not <see cref="PlayErrorAsync"/> — the
+    /// place was rejected for being boring, which is a joke about the place, not a malfunction.
+    /// </summary>
+    public Task PlayFizzleAsync() => SafeVoidAsync("poseeFx.playFizzle");
+
+    // ── Soundtrack ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>The comic's generated loop is opt-in, unlike every other sound.</summary>
+    public Task<bool> IsSoundtrackEnabledAsync() => SafeAsync("poseeFx.soundtrackEnabled", false);
+
+    /// <summary>Call from the click itself: switching it on may be what unlocks the audio.</summary>
+    public Task<bool> SetSoundtrackEnabledAsync(bool enabled) =>
+        SafeAsync("poseeFx.setSoundtrackEnabled", false, enabled);
+
+    /// <summary>
+    /// Asks for this comic's four-bar loop, seeded by place id and voiced by score. Remembered
+    /// when it cannot play yet, so switching music on later picks it up.
+    /// </summary>
+    public Task StartSoundtrackAsync(string seed, int score) =>
+        SafeVoidAsync("poseeFx.startSoundtrack", seed, score);
+
+    /// <summary>Must be called when the comic leaves the screen, or the loop follows the user.</summary>
+    public Task StopSoundtrackAsync() => SafeVoidAsync("poseeFx.stopSoundtrack");
+
     // ── Narration ────────────────────────────────────────────────────────────────────────
 
     /// <summary>Whether speechSynthesis exists. Independent of whether audio has been unlocked.</summary>
@@ -301,6 +326,19 @@ public sealed class FxService(IJSRuntime js)
     /// </summary>
     public Task AnimateBoardMovesAsync(ElementReference container) =>
         SafeVoidAsync("poseeFx.animateBoardMoves", container);
+
+    // ── Duel ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Strikes the arc between the two halves of the duel card, leaning toward the stranger
+    /// comic, then floods the winner's side while each comic's motif answers the other. Full
+    /// tier only; below it the page's CSS seam stands in.
+    /// </summary>
+    public Task<int> StartDuelAsync(ElementReference canvas, string seedA, int scoreA, string seedB, int scoreB) =>
+        SafeAsync("poseeFx.startDuel", 0, canvas, seedA, scoreA, seedB, scoreB);
+
+    public Task StopDuelAsync(int handle) =>
+        handle == 0 ? Task.CompletedTask : SafeVoidAsync("poseeFx.stopDuel", handle);
 
     // ── Route transitions ────────────────────────────────────────────────────────────────
 

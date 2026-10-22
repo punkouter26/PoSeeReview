@@ -10,7 +10,9 @@
     border-left: 3px solid var(--card-accent, color-mix(in srgb, var(--color-brand) 15%, transparent));
     border-radius: var(--radius-card);
     background: var(--color-card);
-    animation: cardSlideIn 0.3s ease-out both;
+    /* Motion tokens, not a literal: reduced motion zeroes them, and a hardcoded 0.3s kept
+       fading the card in for people who asked for no animation. */
+    animation: cardSlideIn var(--duration-base) var(--ease-out) both;
     box-shadow: var(--shadow-sm);
 }
 
@@ -30,10 +32,15 @@
     transition-duration: var(--duration-instant);
 }
 
-/* Disabled state for restaurants with no reviews at all */
+/* Disabled state for restaurants with no reviews at all. No opacity: fading the card took its
+   muted text under 4.5:1 (axe, AccessibilityUiTests). The surface, the grey accent and the
+   missing button already say "inactive"; text tokens stay paired with a surface they pass on. */
 .restaurant-card.disabled {
-    opacity: 0.65;
     background: var(--color-surface-alt);
+}
+
+.restaurant-card.disabled .restaurant-name {
+    color: var(--color-text-secondary);
 }
 
 /* Rating tier accents, as custom properties so the three places that consume them stay

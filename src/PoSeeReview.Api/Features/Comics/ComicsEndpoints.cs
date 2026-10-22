@@ -319,6 +319,7 @@ internal static class ComicsEndpoints
             .ToList();
 
         var cached = new List<string>(ids.Count);
+        var scores = new Dictionary<string, int>(ids.Count, StringComparer.Ordinal);
         var now = DateTimeOffset.UtcNow;
 
         foreach (var id in ids)
@@ -337,10 +338,11 @@ internal static class ComicsEndpoints
             if (comic is not null && comic.ExpiresAt > now)
             {
                 cached.Add(id);
+                scores[id] = comic.StrangenessScore;
             }
         }
 
-        return Results.Ok(new CachedComicsResponse { CachedPlaceIds = cached });
+        return Results.Ok(new CachedComicsResponse { CachedPlaceIds = cached, Scores = scores });
     }
 
     /// <summary>

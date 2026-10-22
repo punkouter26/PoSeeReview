@@ -161,6 +161,68 @@
     font-size: var(--text-sm);
 }
 
+.layout-toggle {
+    display: flex;
+    gap: var(--space-2xs);
+}
+
+/* The picked place's card, at card width rather than stretched under a full-width map. */
+.map-selection {
+    width: min(24rem, 100%);
+}
+
+/* Laid over the map (MapView's overlay slot), so they carry their own shadow to read on tiles. */
+.map-overlay-btn {
+    --btn-pad-x: var(--space-md);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Both fit one row across a phone's map, between its edge and the zoom buttons. */
+@media (max-width: 40rem) {
+    .map-overlay-btn {
+        --btn-pad-x: var(--space-sm);
+    }
+}
+
+.map-overlay-surface {
+    display: inline-flex;
+    border-radius: var(--radius-pill);
+    background: var(--color-card);
+}
+
+.map-overlay-hint {
+    padding: var(--space-2xs) var(--space-sm);
+    border-radius: var(--radius-pill);
+    background: var(--color-card);
+    color: var(--color-text-secondary);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    box-shadow: var(--shadow-sm);
+}
+
+.nearest {
+    display: grid;
+    gap: var(--space-xs);
+}
+
+.nearest-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2xs) var(--space-sm);
+}
+
+.nearest-head .results-info {
+    margin: 0;
+}
+
+.nearest-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+    gap: var(--space-sm);
+}
+
 .results-count,
 .results-info {
     color: var(--color-text-muted);

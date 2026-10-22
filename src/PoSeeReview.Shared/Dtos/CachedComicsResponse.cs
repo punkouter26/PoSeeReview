@@ -14,4 +14,10 @@ public class CachedComicsResponse
     /// The subset of the requested place ids with an unexpired comic. Order is not meaningful.
     /// </summary>
     public List<string> CachedPlaceIds { get; set; } = [];
+
+    /// <summary>
+    /// Strangeness score of each cached place, keyed by place id. The map colours its pins from
+    /// it; a place that is not drawn yet has no score to show and is absent.
+    /// </summary>
+    public Dictionary<string, int> Scores { get; set; } = [];
 }

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using PoSeeReview.Client.Components;
 using PoSeeReview.Shared.Dtos;
 
 namespace PoSeeReview.Client.Services;
@@ -28,4 +29,6 @@ namespace PoSeeReview.Client.Services;
 [JsonSerializable(typeof(List<ComicHistoryEntry>))]
 // Not a wire DTO: the remembered leaderboard ranks (BoardMemoryService).
 [JsonSerializable(typeof(Dictionary<string, int>))]
+// Not a wire DTO: the pins handed to map-view.js (MapView).
+[JsonSerializable(typeof(List<MapPin>))]
 internal sealed partial class AppJsonContext : JsonSerializerContext;

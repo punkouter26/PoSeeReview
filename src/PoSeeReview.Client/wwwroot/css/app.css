@@ -18,7 +18,11 @@
    because that is the only way to place framework-generated CSS into a layer.
    ============================================================================================ */
 
-@layer reset, tokens, base, page, shared, utilities;
+@layer reset, tokens, base, vendor, page, shared, utilities;
+
+/* `vendor` holds third-party CSS that must be layered rather than linked: MapLibre's stylesheet,
+   injected by js/map-view.js the first time a map opens. Above `base` so element defaults do
+   not unstyle its controls; below `page` and `shared` so the app's own styles win. */
 
 /* WHY THERE ARE TWO APP LAYERS, `base` AND `shared`:
      base   — bare element defaults (a, code, body). Pages MUST be able to override these.
@@ -376,6 +380,9 @@
         --glass-edge: rgba(255, 255, 255, 0.85);
         --glass-shade: rgba(124, 58, 237, 0.10);
         --glass-blur: 14px;
+        /* The specular light glass panes catch (js/glass.js moves it with the pointer). Under
+           text, so it is kept faint: white on a light pane only lightens the ground further. */
+        --glass-light: rgba(255, 255, 255, 0.55);
     }
 
     /* Dark palette, applied twice on purpose:
@@ -441,6 +448,7 @@
             --glass-tint: rgba(28, 25, 38, 0.55);
             --glass-edge: rgba(167, 139, 250, 0.28);
             --glass-shade: rgba(0, 0, 0, 0.40);
+            --glass-light: rgba(196, 181, 253, 0.10);
         }
     }
 
@@ -504,6 +512,7 @@
         --glass-tint: rgba(28, 25, 38, 0.55);
         --glass-edge: rgba(167, 139, 250, 0.28);
         --glass-shade: rgba(0, 0, 0, 0.40);
+        --glass-light: rgba(196, 181, 253, 0.10);
     }
 }
 
@@ -1092,7 +1101,11 @@
     @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
         :root[data-fx-tier="full"] .glass,
         :root[data-fx-tier="lite"] .glass {
-            background: var(--glass-tint);
+            /* One light for the whole viewport (`fixed`), so every pane it passes over picks it
+               up from the same place — see js/glass.js. */
+            background:
+                radial-gradient(circle at var(--glass-lx, 30%) var(--glass-ly, 12%), var(--glass-light), transparent 34%) fixed,
+                var(--glass-tint);
             border-color: var(--glass-edge);
             -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
             backdrop-filter: blur(var(--glass-blur)) saturate(150%);
@@ -1113,6 +1126,15 @@
             mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
             mask-composite: exclude;
             pointer-events: none;
+        }
+
+        /* Liquid glass: the rim bends what is behind the pane (an SVG displacement filter built
+           by js/glass.js). Chromium at the full tier only — data-glass is set nowhere else,
+           because other engines parse url() here and then draw no backdrop at all. Less blur,
+           so the bend is visible through it. */
+        :root[data-glass="liquid"] .glass {
+            -webkit-backdrop-filter: url(#posee-liquid-glass) blur(calc(var(--glass-blur) * 0.4)) saturate(165%) brightness(1.04);
+            backdrop-filter: url(#posee-liquid-glass) blur(calc(var(--glass-blur) * 0.4)) saturate(165%) brightness(1.04);
         }
 
         .is-scrolling .glass {
@@ -1363,11 +1385,26 @@
             posee-slide-from-right 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    /* Coming back is an ink blot instead: the page you return to spreads out from where you
+       tapped, as a splat with drips rather than a circle. Forward keeps the halftone, so the two
+       directions are told apart by material as well as by slide. The mask's position is the
+       tap point as a percentage, which makes that point the fixed centre of the growth. */
     :root[data-nav-direction="back"]::view-transition-new(root) {
+        -webkit-mask-image: var(--ink-blot);
+        mask-image: var(--ink-blot);
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: var(--vt-x, 50%) var(--vt-y, 50%);
+        mask-position: var(--vt-x, 50%) var(--vt-y, 50%);
         animation:
-            posee-halftone-in 480ms cubic-bezier(0.45, 0, 0.55, 1) both,
+            posee-ink-blot 560ms cubic-bezier(0.6, 0, 0.3, 1) both,
             posee-slide-from-left 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
+}
+
+@keyframes posee-ink-blot {
+    from { -webkit-mask-size: 0 0; mask-size: 0 0; }
+    to   { -webkit-mask-size: 420vmax 420vmax; mask-size: 420vmax 420vmax; }
 }
 
 @keyframes posee-halftone-in {
@@ -1458,6 +1495,14 @@
     syntax: "<integer>";
     inherits: true;
     initial-value: 0;
+}
+
+/* The ink blot the back transition grows. Only its alpha is read (it is a mask), so the fill
+   colour is irrelevant. A lumpy splat with satellite droplets: a circle reads as a spotlight. */
+@layer tokens {
+    :root {
+        --ink-blot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Cpath d='M100 22c14 0 18 14 30 12s22-10 30 2-4 22 4 32 26 6 26 22-20 14-22 26 16 22 6 32-22-4-32 4-6 26-22 26-14-20-26-22-22 16-32 6 4-22-4-32-26-6-26-22 20-14 22-26-16-22-6-32 22 4 32-4 6-26 22-26z'/%3E%3Ccircle cx='170' cy='40' r='7'/%3E%3Ccircle cx='28' cy='168' r='9'/%3E%3Ccircle cx='184' cy='150' r='5'/%3E%3Ccircle cx='22' cy='34' r='5'/%3E%3C/svg%3E");
+    }
 }
 
 /* Halftone route transition: the dot radius. Typed, or the keyframes would snap 0 -> 14px. */
@@ -1949,3 +1994,151 @@
     exit 100%  { transform: rotateX(-12deg) scale(0.96); }
 }
 
+
+/* ============================================================================================
+   MAP VIEW — discovery and the Hall of Fame (MapView.razor + js/map-view.js)
+   ============================================================================================ */
+
+@layer shared {
+    /* Here rather than in a scoped sheet: the pins are created by map-view.js, and elements made
+       in JS carry no scope attribute. */
+    .map-view {
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-card);
+        background: var(--color-surface-alt);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .map-view-canvas {
+        height: clamp(18rem, 55dvh, 34rem);
+    }
+
+    /* MapLibre positions a marker with `transform`, so nothing here may set one on the pin: the
+       face inside carries the hover and selection scale. The button is the full tap target. */
+    .map-pin {
+        display: grid;
+        place-items: end center;   /* the stem's foot sits on the anchor */
+        min-width: var(--tap-target);
+        min-height: var(--tap-target);
+        padding: 0;
+        cursor: pointer;
+    }
+
+    /* A round badge on a short stem; the stem's foot is the marker's anchor point. The band
+       sets one edge colour (--pin-edge) that the border and the stem share. */
+    .map-pin-face {
+        --pin-edge: var(--color-border-strong);
+        position: relative;
+        display: grid;
+        place-items: center;
+        min-width: 2rem;
+        height: 2rem;
+        margin-bottom: 0.5rem;
+        padding-inline: var(--space-3xs);
+        border: 2px solid var(--pin-edge);
+        border-radius: var(--radius-pill);
+        background: var(--color-card);
+        color: var(--color-text-secondary);
+        font-family: var(--font-display);
+        font-size: var(--text-sm);
+        letter-spacing: 0.04em;
+        font-variant-numeric: tabular-nums;
+        box-shadow: var(--shadow-sm);
+        transform-origin: 50% calc(100% + 0.5rem);
+        transition: scale var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast);
+    }
+
+    .map-pin-face::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        width: 2px;
+        height: 0.5rem;
+        translate: -50% 0;
+        background: var(--pin-edge);
+    }
+
+    /* Undrawn: a small dashed pin with no number, so the already-drawn (free, instant) places
+       read first. */
+    .map-pin[data-band="new"] .map-pin-face {
+        min-width: 1.25rem;
+        height: 1.25rem;
+        border-style: dashed;
+        background: var(--color-surface);
+    }
+
+    .map-pin[data-band="low"] .map-pin-face {
+        color: var(--color-text-primary);
+    }
+
+    .map-pin[data-band="mid"] .map-pin-face {
+        --pin-edge: var(--color-brand);
+        color: var(--color-brand-ink);
+    }
+
+    .map-pin[data-band="high"] .map-pin-face {
+        --pin-edge: var(--color-comic-ink);
+        background: var(--color-accent);
+        color: var(--color-on-accent);
+    }
+
+    .map-pin:hover .map-pin-face,
+    .map-pin:focus-visible .map-pin-face {
+        scale: 1.15;
+    }
+
+    .map-pin[data-selected] {
+        z-index: 2;
+    }
+
+    .map-pin[data-selected] .map-pin-face {
+        --pin-edge: var(--color-comic-ink);
+        scale: 1.25;
+        box-shadow: 0 0 0 3px var(--color-brand), var(--shadow-sm);
+    }
+
+    /* Page controls laid over the map ("search this area", "near me"). Kept clear of the zoom
+       buttons top-right; the strip itself lets drags through to the map. */
+    .map-view-overlay {
+        position: absolute;
+        inset: var(--space-xs) 3.25rem auto;
+        z-index: 3;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: var(--space-2xs);
+        pointer-events: none;
+    }
+
+    .map-view-overlay > * {
+        pointer-events: auto;
+    }
+
+    /* A phone's map is too narrow to centre two controls between symmetric insets; start them at
+       the left edge so they share one row beside the zoom buttons. */
+    @media (max-width: 40rem) {
+        .map-view-overlay {
+            left: var(--space-xs);
+            justify-content: flex-start;
+        }
+    }
+
+    /* "You are here": the brand dot with a card-coloured ring, so it reads on light and dark tiles. */
+    .map-origin {
+        width: 1.125rem;
+        height: 1.125rem;
+        border: 3px solid var(--color-card);
+        border-radius: 50%;
+        background: var(--color-brand);
+        box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-brand) 25%, transparent), var(--shadow-sm);
+    }
+
+    /* The controls sit on the map's own light or dark tiles, so they take the card surface. */
+    .map-view .maplibregl-ctrl-group {
+        background: var(--color-card);
+        box-shadow: var(--shadow-sm);
+    }
+}

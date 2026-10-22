@@ -244,7 +244,9 @@ internal static partial class LeaderboardEndpoints
                     Region = e.Region.Value,
                     StrangenessScore = e.StrangenessScore,
                     ComicBlobUrl = e.ComicBlobUrl,
-                    LastUpdated = e.LastUpdated
+                    LastUpdated = e.LastUpdated,
+                    Latitude = e.Latitude,
+                    Longitude = e.Longitude
                 }).ToList(),
                 LastUpdated = DateTimeOffset.UtcNow
             };

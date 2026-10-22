@@ -13,7 +13,7 @@
 <div class="comic-strip-tilt">
     <div @ref="_container" class="comic-strip-container" data-panels="@PanelCount">
         <img src="@ImageUrl"
-             alt="@AltText(RestaurantName, Captions)"
+             alt="@AltText(RestaurantName, Captions, Scenes)"
              class="comic-strip-image"
              @onload="OnImageLoadedAsync" />
     </div>
@@ -30,21 +30,33 @@
     [Parameter]
     public IReadOnlyList<string> Captions { get; set; } = [];
 
+    /// <summary>What each panel pictures, paired with <see cref="Captions"/> by index.</summary>
+    [Parameter]
+    public IReadOnlyList<string> Scenes { get; set; } = [];
+
     /// <summary>
-    /// Alt text that reads the strip panel by panel. The narrative is already visible text under
-    /// the image, so it is not repeated here — the captions are the part a screen reader could
-    /// not otherwise reach. Older comics have none and keep the plain title.
+    /// Alt text that reads the strip panel by panel: what the panel shows, then the caption
+    /// lettered on it, in quotes because it is written on the picture. The narrative is already
+    /// visible text under the image, so it is not repeated. Older comics have no scenes (captions
+    /// only) or neither (the plain title).
     /// </summary>
-    public static string AltText(string restaurantName, IReadOnlyList<string> captions)
+    public static string AltText(string restaurantName, IReadOnlyList<string> captions, IReadOnlyList<string>? scenes = null)
     {
-        var panels = captions
-            .Where(c => !string.IsNullOrWhiteSpace(c))
-            .Select((c, i) => $"Panel {i + 1}: {c.Trim()}")
+        scenes ??= [];
+        var panels = Enumerable.Range(0, Math.Max(captions.Count, scenes.Count))
+            .Select(i => (Scene: At(scenes, i), Caption: At(captions, i)))
+            .Where(p => p.Scene.Length > 0 || p.Caption.Length > 0)
+            .Select((p, i) => $"Panel {i + 1}: " + (p.Scene.Length == 0 ? p.Caption
+                : p.Caption.Length == 0 ? Sentence(p.Scene)
+                : $"{Sentence(p.Scene)} “{p.Caption}”"))
             .ToList();
 
         return panels.Count == 0
             ? $"Comic strip for {restaurantName}"
             : $"Comic strip for {restaurantName}. {string.Join(" ", panels)}";
+
+        static string At(IReadOnlyList<string> items, int i) => i < items.Count ? items[i]?.Trim() ?? "" : "";
+        static string Sentence(string text) => text[^1] is '.' or '!' or '?' or '…' ? text : text + ".";
     }
 
     /// <summary>

@@ -2,7 +2,9 @@
 @attribute [Authorize]
 @using PoSeeReview.Client.Services
 @using PoSeeReview.Shared.Dtos
+@implements IAsyncDisposable
 @inject ApiClient ApiClient
+@inject FxService Fx
 
 <PageTitle>Duel - PoSeeReview</PageTitle>
 
@@ -18,10 +20,18 @@
     {
         @* The card is drawn by the server (the same image a link preview shows); width and
            height reserve its box before it loads. *@
-        <img class="duel-card" width="1200" height="630"
-             src="@($"/share/duel/{Uri.EscapeDataString(A)}/{Uri.EscapeDataString(B)}/card.png")"
-             alt="@($"{NameOf(_a, "The first comic")} versus {NameOf(_b, "the second comic")}, side by side with their strangeness scores")"
-             @onerror="() => _failed = true" />
+        @* The stage carries the clash: an arc shader over the card at the full tier, and the
+           slam, shake and a CSS-only seam everywhere else motion is allowed. data-clash is set
+           once the card has loaded, so nothing slams onto an empty box. *@
+        <div class="duel-stage" data-clash="@(_clash ? "on" : "off")"
+             data-winner="@Winner">
+            <img class="duel-card" width="1200" height="630"
+                 src="@($"/share/duel/{Uri.EscapeDataString(A)}/{Uri.EscapeDataString(B)}/card.png")"
+                 alt="@($"{NameOf(_a, "The first comic")} versus {NameOf(_b, "the second comic")}, side by side with their strangeness scores")"
+                 @onload="OnCardLoadedAsync"
+                 @onerror="() => _failed = true" />
+            <canvas @ref="_seam" class="duel-seam" aria-hidden="true"></canvas>
+        </div>
         <div class="duel-links">
             <a class="btn btn-secondary" href="@($"/comic/{Uri.EscapeDataString(A)}")">@NameOf(_a, "First comic")</a>
             <a class="btn btn-secondary" href="@($"/comic/{Uri.EscapeDataString(B)}")">@NameOf(_b, "Second comic")</a>
@@ -36,6 +46,18 @@
     private ComicDto? _a;
     private ComicDto? _b;
     private bool _failed;
+    private bool _clash;
+    private int _seamHandle;
+    private ElementReference _seam;
+
+    /// <summary>Which half is stranger; the CSS floods that side. Empty until both scores are known.</summary>
+    private string Winner => (_a, _b) switch
+    {
+        ({ } a, { } b) when a.StrangenessScore > b.StrangenessScore => "left",
+        ({ } a, { } b) when a.StrangenessScore < b.StrangenessScore => "right",
+        ({ }, { }) => "tie",
+        _ => ""
+    };
 
     /// <summary>Only for the names on the two links; the page works without them.</summary>
     protected override async Task OnParametersSetAsync()
@@ -43,6 +65,23 @@
         _failed = false;
         (_a, _b) = (await TryGetAsync(A), await TryGetAsync(B));
     }
+
+    /// <summary>
+    /// The card is on screen: strike the arc. Needs both scores — the seam leans toward the
+    /// stranger comic — so a duel whose comics could not be read keeps the plain card.
+    /// </summary>
+    private async Task OnCardLoadedAsync()
+    {
+        if (_a is null || _b is null || _clash)
+        {
+            return;
+        }
+
+        _clash = true;
+        _seamHandle = await Fx.StartDuelAsync(_seam, _a.PlaceId, _a.StrangenessScore, _b.PlaceId, _b.StrangenessScore);
+    }
+
+    public ValueTask DisposeAsync() => new(Fx.StopDuelAsync(_seamHandle));
 
     private async Task<ComicDto?> TryGetAsync(string placeId)
     {

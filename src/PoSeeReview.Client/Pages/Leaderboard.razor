@@ -40,6 +40,19 @@
                 </button>
             }
         </div>
+        @* Only once some entry carries coordinates: rows written before they were stored have
+           none, and a map of nothing is a broken-looking page. *@
+        @if (_scope == BoardScope.Live && BoardPins.Count > 0 && !_mapUnavailable)
+        {
+            <div class="board-scope" role="group" aria-label="Show the board as">
+                <button type="button" class="chip-toggle @(_layout == BoardLayout.List ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_layout == BoardLayout.List ? "true" : "false")"
+                        @onclick="() => _layout = BoardLayout.List">List</button>
+                <button type="button" class="chip-toggle @(_layout == BoardLayout.Map ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_layout == BoardLayout.Map ? "true" : "false")"
+                        @onclick="() => _layout = BoardLayout.Map">Map</button>
+            </div>
+        }
     </Header>
 
     <ChildContent>
@@ -104,6 +117,25 @@
             <Actions><a href="/" class="btn btn-primary">Find restaurants</a></Actions>
         </StateCard>
     }
+    else if (_layout == BoardLayout.Map && BoardPins.Count > 0)
+    {
+        <h2 class="visually-hidden">Top 10 strangest restaurants on a map</h2>
+        <MapView Pins="@BoardPins" SelectedId="@_selectedPlaceId" Label="The board on a map"
+                 OnSelect="id => _selectedPlaceId = id"
+                 OnUnavailable="() => { _mapUnavailable = true; _layout = BoardLayout.List; }" />
+        @if (leaderboardEntries.FirstOrDefault(e => e.PlaceId == _selectedPlaceId) is { } picked)
+        {
+            <ol class="comic-rows">
+                <ComicRow Href="@($"/comic/{picked.PlaceId}?from=leaderboard")"
+                          Name="@picked.RestaurantName"
+                          Score="@((int)Math.Round(picked.StrangenessScore))"
+                          ImageUrl="@ComicImageUrl.For(picked.ComicBlobUrl, picked.PlaceId)"
+                          Meta="@picked.Address">
+                    <Leading><span class="rank-badge medal @GetMedalClass(picked.Rank)">@GetMedal(picked.Rank)</span></Leading>
+                </ComicRow>
+            </ol>
+        }
+    }
     else
     {
         <h2 class="visually-hidden">Top 10 strangest restaurants</h2>
@@ -166,6 +198,28 @@
 
     private BoardScope _scope = BoardScope.Live;
     private HallOfFameResponse? _archive;
+
+    private enum BoardLayout { List, Map }
+
+    private BoardLayout _layout = BoardLayout.List;
+    private string? _selectedPlaceId;
+    private bool _mapUnavailable;
+
+    /// <summary>Live entries that carry a location; the pin shows the score, the label the rank too.</summary>
+    private List<MapPin> BoardPins =>
+    [
+        .. (leaderboardEntries ?? [])
+            .Where(e => MapPin.HasCoordinates(e.Latitude, e.Longitude))
+            .Select(e => new MapPin
+            {
+                Id = e.PlaceId,
+                Name = e.RestaurantName,
+                Lat = e.Latitude!.Value,
+                Lng = e.Longitude!.Value,
+                Score = (int)Math.Round(e.StrangenessScore),
+                Label = $"Number {e.Rank}, {e.RestaurantName}, strangeness {(int)Math.Round(e.StrangenessScore)}"
+            })
+    ];
 
     private List<LeaderboardEntryDto>? leaderboardEntries;
     private string? errorMessage;

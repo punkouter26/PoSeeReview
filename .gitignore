@@ -191,3 +191,6 @@ tests/e2e/playwright-last.json
 # Local tool state (Aura visualizer graph + its MCP wiring) — machine-specific paths
 .aura/
 .vscode/mcp.json
+
+# Lighthouse CI reports (SCRIPTS/lighthouserc.json)
+.lighthouseci/

@@ -1,0 +1,147 @@
+@* A map of places, beside a list that already holds the same data — never instead of one. A
+   pin tap selects (the page renders the selected place under the map with its usual card or
+   row); it never navigates on its own, so a map tap cannot spend a generation by surprise.
+   Styles live in app.css, not a scoped sheet: map-view.js creates the pins, and elements made
+   in JS carry no scope attribute. *@
+@implements IAsyncDisposable
+@using System.Text.Json
+@inject IJSRuntime JS
+
+@if (_failed && !OnUnavailable.HasDelegate)
+{
+    <StateCard Icon="🗺️" Title="The map couldn't load">
+        <ChildContent>Everything on it is in the list too.</ChildContent>
+        <Actions><button type="button" class="btn btn-primary" @onclick="OnShowList">Show the list</button></Actions>
+    </StateCard>
+}
+else if (!_failed)
+{
+    <div class="map-view" role="region" aria-label="@Label" aria-busy="@(_handle == 0 ? "true" : "false")">
+        <div @ref="_host" class="map-view-canvas"></div>
+        @if (Overlay is not null && _handle != 0)
+        {
+            <div class="map-view-overlay">@Overlay</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<MapPin> Pins { get; set; } = [];
+
+    /// <summary>The pin drawn as selected. The page owns it, so a list tap can select too.</summary>
+    [Parameter] public string? SelectedId { get; set; }
+
+    [Parameter] public EventCallback<string> OnSelect { get; set; }
+
+    /// <summary>
+    /// Where the user is, drawn as a "you are here" dot and included when the view is framed.
+    /// Null when the results did not come from their location.
+    /// </summary>
+    [Parameter] public (double Lat, double Lng)? Origin { get; set; }
+
+    /// <summary>
+    /// Leave the camera alone when the pins change. Set for "search this area": the new results
+    /// belong in the view the user searched from, not a refit around them.
+    /// </summary>
+    [Parameter] public bool KeepCamera { get; set; }
+
+    /// <summary>The user panned or zoomed (code-driven framing is not reported).</summary>
+    [Parameter] public EventCallback<MapArea> OnAreaMoved { get; set; }
+
+    /// <summary>Controls laid over the top of the map, rendered by the page.</summary>
+    [Parameter] public RenderFragment? Overlay { get; set; }
+
+    /// <summary>
+    /// The map cannot start (no WebGL, CDN blocked, offline). With a handler the page falls back
+    /// on its own; without one the map offers <see cref="OnShowList"/>.
+    /// </summary>
+    [Parameter] public EventCallback OnUnavailable { get; set; }
+
+    [Parameter] public EventCallback OnShowList { get; set; }
+
+    [Parameter] public string Label { get; set; } = "Map";
+
+    private ElementReference _host;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<MapView>? _self;
+    private int _handle;
+    private bool _failed;
+    private string? _shownPins;
+    private string? _shownSelection;
+
+    /// <summary>The pins and the origin together: either changing means a redraw.</summary>
+    private string PinState() =>
+        JsonSerializer.Serialize(Pins.ToList(), AppJsonContext.Default.ListMapPin) + Origin;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_failed)
+        {
+            return;
+        }
+
+        var pins = PinState();
+
+        if (firstRender)
+        {
+            _self = DotNetObjectReference.Create(this);
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/map-view.js");
+                _handle = await _module.InvokeAsync<int>("mount", _host,
+                    JsonSerializer.Serialize(Pins.ToList(), AppJsonContext.Default.ListMapPin),
+                    _self, SelectedId, Origin?.Lat, Origin?.Lng);
+            }
+            catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException)
+            {
+                _handle = 0;
+            }
+
+            (_shownPins, _shownSelection) = (pins, SelectedId);
+            _failed = _handle == 0;
+            if (_failed && OnUnavailable.HasDelegate)
+            {
+                await OnUnavailable.InvokeAsync();
+            }
+
+            StateHasChanged();
+            return;
+        }
+
+        if (_handle == 0 || _module is null || (pins == _shownPins && SelectedId == _shownSelection))
+        {
+            return;
+        }
+
+        var pinsChanged = pins != _shownPins;
+        (_shownPins, _shownSelection) = (pins, SelectedId);
+        try
+        {
+            await _module.InvokeAsync<bool>("update", _handle,
+                JsonSerializer.Serialize(Pins.ToList(), AppJsonContext.Default.ListMapPin),
+                SelectedId, pinsChanged, !KeepCamera, Origin?.Lat, Origin?.Lng);
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException) { }
+    }
+
+    [JSInvokable]
+    public Task SelectPin(string placeId) => OnSelect.InvokeAsync(placeId);
+
+    [JSInvokable]
+    public Task AreaMoved(double lat, double lng, double zoom) => OnAreaMoved.InvokeAsync(new MapArea(lat, lng, zoom));
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("unmount", _handle);
+                await _module.DisposeAsync();
+            }
+            catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException) { }
+        }
+
+        _self?.Dispose();
+    }
+}

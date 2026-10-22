@@ -121,6 +121,7 @@
                         ImageUrl="@ComicImageUrl.For(_comic.BlobUrl, _comic.PlaceId)"
                         RestaurantName="@_comic.RestaurantName"
                         Captions="@_comic.Captions"
+                        Scenes="@_comic.Scenes"
                         PlaceId="@_comic.PlaceId"
                         StrangenessScore="@_comic.StrangenessScore"
                         Develop="@_freshlyDrawn" />
@@ -385,6 +386,8 @@
 
         _burstFired = true;   // Drops the conic sweep, which only means something while counting.
         await Fx.PlaySignatureAsync(_comic?.PlaceId ?? PlaceId, score);
+        // After the motif, so the loop enters on its own rather than under it.
+        await Fx.StartSoundtrackAsync(_comic?.PlaceId ?? PlaceId, score);
         Layout.MainLayout.RaiseScoreChanged(score);
         StateHasChanged();
     }
@@ -440,8 +443,10 @@
             Analytics.TrackGenerationAbandoned();
         }
 
-        // speechSynthesis is a browser-global queue and would follow the user to the next route.
+        // speechSynthesis is a browser-global queue and would follow the user to the next route,
+        // and so would the soundtrack.
         await Fx.StopNarrationAsync();
+        await Fx.StopSoundtrackAsync();
     }
 
     private async Task LoadComic(bool forceRegenerate)
@@ -577,10 +582,10 @@
 
             if (!_disposed)
             {
-                // "Too normal" is an answer, not a malfunction — the same cue as an empty search.
+                // "Too normal" is an answer, not a malfunction: it deflates rather than alarms.
                 if (_error is not null)
                 {
-                    await (_errorIcon == DefaultErrorIcon ? Fx.PlayErrorAsync() : Fx.PlayEmptyAsync());
+                    await (_errorIcon == DefaultErrorIcon ? Fx.PlayErrorAsync() : Fx.PlayFizzleAsync());
                 }
                 StateHasChanged();
             }

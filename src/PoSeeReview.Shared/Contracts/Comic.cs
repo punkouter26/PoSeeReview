@@ -77,4 +77,11 @@ public class Comic
     /// before they were persisted.
     /// </summary>
     public string[] Captions { get; set; } = [];
+
+    /// <summary>
+    /// What each panel shows, in panel order: the shot list the painter drew from. With the
+    /// captions it is the strip's alt text; the captions alone say what is written, not what is
+    /// pictured. Empty on rows written before scenes were persisted.
+    /// </summary>
+    public string[] Scenes { get; set; } = [];
 }

@@ -36,6 +36,8 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 
 **4. Comic image generation.** Google Gemini Imagen 4 renders the four-panel comic as a PNG. The `ComicTextOverlayService` then stamps the strangeness score and narrative directly onto the image, producing a single self-contained artifact. The image is stored in Azure Blob Storage with an 8-day SAS URL (outliving the 24-hour comic cache).
 
+**1a. Map-first discovery.** Results open on a map (List is the remembered alternative; devices without WebGL fall back to the list on their own). Pan or zoom and a **Search this area** button re-runs nearby search at the map's centre without moving the camera; **Near me** locates the user, draws a "you are here" dot and searches around it. Under the map, the three nearest drawable places are ready to pick as cards ("Nearest to you", or "In this area" for a panned or typed search, where distances are hidden because they are not from the user). The live Hall of Fame has the same List / Map toggle. Pins are coloured and numbered by the live comic's score (`GET /api/comics/cached` returns `scores` alongside `cachedPlaceIds`); an undrawn place is a small dashed pin. A pin tap only selects — the place's usual card or row appears under the map, so opening or paying for a comic is still that card's own button. Leaderboard rows carry `latitude` / `longitude` from the comic that wrote them; rows older than that have none and the board's toggle stays hidden until some do.
+
 **5. Global leaderboard.** Every generated comic is projected to a regional leaderboard (`PoSeeReviewLeaderboard` table) using an inverted RowKey pattern for zero-cost descending sort. The leaderboard is queryable by ISO region code (e.g., `US`, `GB`, `US-CA-SF`) and returns the top N entries sorted by strangeness descending.
 
 **6. Content takedown.** Restaurant owners or legal representatives can request removal of a specific comic via `POST /api/takedowns` authenticated with an `X-Api-Key` header. The controller atomically deletes the comic table row, the blob asset, and the leaderboard entry. Telemetry events are emitted for moderation audit trails.
@@ -79,6 +81,9 @@ The problem is not a lack of content; it is a lack of a lens that makes that con
 | External AI | Azure OpenAI GPT-4o-mini, Google Gemini Imagen 4, Google Maps Places |
 | Observability | Application Insights, OpenTelemetry, Serilog |
 | Imaging | SkiaSharp (caption overlay, lossy WebP, share and duel cards); Bangers and DM Sans embedded |
+| Maps | MapLibre GL JS 5.24.0 (UMD, jsDelivr, SRI-pinned, loaded only when a map opens) over OpenFreeMap vector tiles — no key, no per-load billing |
+| Alerting | `infra/alerts.bicep`: Http5xx, AI spend, in-band generation failures, fail-open guards, image refusals, moderation queue → email action group |
+| Quality gates | axe-core (`Deque.AxeCore.Playwright` 4.13.0) in the E2E UI suite; Lighthouse CI (`@lhci/cli` 0.15.1, `SCRIPTS/lighthouserc.json`) in the deploy smoke job |
 | Build stamp | `YYMMDD` from the HEAD commit date (`Directory.Build.targets`), shown bottom-right on every page and as `buildStamp` on `/diag` |
 
 ## Documentation Suite
@@ -207,7 +212,13 @@ $env:BASE_URL = "https://<fqdn>"
 node SCRIPTS/post-deploy-smoke.mjs
 ```
 
-The full C# Playwright UI suite targets a running app via `E2E_BASE_URL`:
+CI then runs Lighthouse against `/login` (three runs, median). Layout shift above 0.1 or an accessibility score under 0.9 fails the run; performance and LCP only warn, because an F1 cold start swings them. Reports are uploaded as the `lighthouse` artifact.
+
+```powershell
+npx @lhci/cli@0.15.1 autorun --config=SCRIPTS/lighthouserc.json --collect.url="https://<fqdn>/login"
+```
+
+The full C# Playwright UI suite targets a running app via `E2E_BASE_URL` (it includes `AccessibilityUiTests`, axe-core over the main pages):
 
 ```powershell
 $env:E2E_BASE_URL = "https://<fqdn>"

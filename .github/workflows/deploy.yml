@@ -120,3 +120,17 @@ jobs:
       # NET_RULES 5.4: Blazor render tree init, /health, and masked config from /diag.
       - name: Run smoke checks
         run: node SCRIPTS/post-deploy-smoke.mjs
+
+      # Budgets that fail the run: layout shift (the boot splash once cost 0.20 CLS on every
+      # load) and the accessibility score. Performance and LCP only warn: an F1 cold start and a
+      # WASM boot under mobile throttling swing them run to run (LCP 3.2s to 19s on one deploy).
+      # /login because it is the one page an anonymous run can render. Reports stay with the run.
+      - name: Lighthouse budgets
+        run: npx --yes @lhci/cli@0.15.1 autorun --config=SCRIPTS/lighthouserc.json --collect.url="$BASE_URL/login"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse
+          path: .lighthouseci
+          retention-days: 7

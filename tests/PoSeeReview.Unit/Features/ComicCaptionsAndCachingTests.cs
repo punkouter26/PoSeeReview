@@ -21,22 +21,31 @@ public sealed class ComicCaptionsAndCachingTests
         var comic = new Comic
         {
             PlaceId = PlaceId.From("place-1"),
-            Captions = ["A dog orders soup.", "The soup, \"orders\" back."]
+            Captions = ["A dog orders soup.", "The soup, \"orders\" back."],
+            Scenes = ["A dog at a diner counter", "A bowl of soup glaring at the dog"]
         };
 
-        Assert.Equal(comic.Captions, ComicEntity.FromDomain(comic).ToDomain().Captions);
+        var roundTripped = ComicEntity.FromDomain(comic).ToDomain();
+        Assert.Equal(comic.Captions, roundTripped.Captions);
+        Assert.Equal(comic.Scenes, roundTripped.Scenes);
         Assert.Empty(new ComicEntity { PlaceId = "place-1", CaptionsJson = "" }.ToDomain().Captions);
+        Assert.Empty(new ComicEntity { PlaceId = "place-1" }.ToDomain().Scenes);
         Assert.Empty(new ComicEntity { PlaceId = "place-1", CaptionsJson = "{not json" }.ToDomain().Captions);
     }
 
     [Fact]
-    public void AltText_ReadsPanelsInOrder_AndFallsBackToTitle()
+    public void AltText_ReadsScenesAndCaptionsInOrder_AndFallsBackToTitle()
     {
         Assert.Equal(
             "Comic strip for Joe's. Panel 1: A dog orders soup. Panel 2: The chef barks.",
             ComicStrip.AltText("Joe's", ["A dog orders soup.", " ", "The chef barks."]));
 
         Assert.Equal("Comic strip for Joe's", ComicStrip.AltText("Joe's", []));
+
+        // With scenes: the picture first, then the lettered caption in quotes.
+        Assert.Equal(
+            "Comic strip for Joe's. Panel 1: A dog at the counter. “Soup, please.” Panel 2: The chef barks!",
+            ComicStrip.AltText("Joe's", ["Soup, please.", ""], ["A dog at the counter", "The chef barks!"]));
     }
 
     [Theory]

@@ -83,6 +83,12 @@ public class LeaderboardEntity : ITableEntity
     /// </summary>
     public DateTimeOffset LastUpdated { get; set; }
 
+    /// <summary>Restaurant coordinates for the map. Absent on older rows, which read back as null.</summary>
+    public double? Latitude { get; set; }
+
+    /// <inheritdoc cref="Latitude"/>
+    public double? Longitude { get; set; }
+
     /// <summary>
     /// Converts domain LeaderboardEntry to Table Storage entity
     /// </summary>
@@ -100,7 +106,9 @@ public class LeaderboardEntity : ITableEntity
             Region = entry.Region.Value,
             StrangenessScore = entry.StrangenessScore,
             ComicBlobUrl = entry.ComicBlobUrl,
-            LastUpdated = entry.LastUpdated
+            LastUpdated = entry.LastUpdated,
+            Latitude = entry.Latitude,
+            Longitude = entry.Longitude
         };
     }
 
@@ -118,7 +126,9 @@ public class LeaderboardEntity : ITableEntity
             Region = RegionIdentifier.From(Region),
             StrangenessScore = StrangenessScore,
             ComicBlobUrl = ComicBlobUrl,
-            LastUpdated = LastUpdated
+            LastUpdated = LastUpdated,
+            Latitude = Latitude,
+            Longitude = Longitude
         };
     }
 

@@ -292,10 +292,11 @@ public class ApiClient
 
     /// <summary>
     /// Which of these places already have a live comic — the ones that will open instantly and
-    /// cost nothing. Returns an empty set on failure, so the map simply shows every pin as
-    /// undrawn rather than promising a free result it cannot confirm.
+    /// cost nothing — mapped to each one's strangeness score. Returns an empty map on failure, so
+    /// the map simply shows every pin as undrawn rather than promising a free result it cannot
+    /// confirm.
     /// </summary>
-    public async Task<HashSet<string>> GetCachedPlaceIdsAsync(
+    public async Task<Dictionary<string, int>> GetCachedScoresAsync(
         IEnumerable<string> placeIds,
         CancellationToken cancellationToken = default)
     {
@@ -319,7 +320,9 @@ public class ApiClient
             var payload = await response.Content.ReadFromJsonAsync(
                 AppJsonContext.Default.CachedComicsResponse, cancellationToken);
 
-            return payload is null ? [] : [.. payload.CachedPlaceIds];
+            return payload is null
+                ? []
+                : payload.CachedPlaceIds.ToDictionary(id => id, id => payload.Scores.GetValueOrDefault(id), StringComparer.Ordinal);
         }
         catch (HttpRequestException)
         {

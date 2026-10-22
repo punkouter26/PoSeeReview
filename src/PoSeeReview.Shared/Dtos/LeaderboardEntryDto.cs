@@ -45,4 +45,10 @@ public class LeaderboardEntryDto
     /// When this entry was last updated
     /// </summary>
     public DateTimeOffset LastUpdated { get; set; }
+
+    /// <summary>Restaurant latitude for the board's map; null on entries recorded before it was stored.</summary>
+    public double? Latitude { get; set; }
+
+    /// <summary>Restaurant longitude; null alongside <see cref="Latitude"/>.</summary>
+    public double? Longitude { get; set; }
 }

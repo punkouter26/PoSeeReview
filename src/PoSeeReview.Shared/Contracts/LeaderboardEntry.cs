@@ -48,4 +48,10 @@ public class LeaderboardEntry
     /// Last time this leaderboard entry was updated
     /// </summary>
     public DateTimeOffset LastUpdated { get; set; }
+
+    /// <summary>Where the restaurant is, for the board's map. Null on rows written before it was stored.</summary>
+    public double? Latitude { get; set; }
+
+    /// <inheritdoc cref="Latitude"/>
+    public double? Longitude { get; set; }
 }

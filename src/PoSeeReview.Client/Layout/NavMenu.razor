@@ -70,6 +70,11 @@
                                     Haptics
                                 </button>
                             }
+                            @* Opt-in, unlike the cues: a loop nobody asked for gets the whole app muted. *@
+                            <button type="button" class="chip-toggle @(_music ? "chip-toggle--active" : "")"
+                                    aria-pressed="@(_music ? "true" : "false")" disabled="@(!_sound)" @onclick="ToggleMusicAsync">
+                                Music
+                            </button>
                         </div>
                         <label class="nav-volume">
                             Volume
@@ -89,6 +94,7 @@
     private bool _isMockData;
     private bool _sound;
     private FxToggleState _haptics;
+    private bool _music;
     private int _volume = 100;
 
     protected override async Task OnInitializedAsync()
@@ -112,6 +118,7 @@
         {
             _sound = await Fx.IsAudioEnabledAsync();
             _haptics = await Fx.GetHapticsAsync();
+            _music = await Fx.IsSoundtrackEnabledAsync();
             _volume = (int)Math.Round(await Fx.GetVolumeAsync() * 100);
             StateHasChanged();
         }
@@ -129,6 +136,8 @@
         await Fx.SetHapticsEnabledAsync(!_haptics.Enabled);
         _haptics = await Fx.GetHapticsAsync();
     }
+
+    private async Task ToggleMusicAsync() => _music = await Fx.SetSoundtrackEnabledAsync(!_music);
 
     private Task ApplyVolumeAsync() => Fx.SetVolumeAsync(_volume / 100.0);
 

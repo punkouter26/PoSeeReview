@@ -1,4 +1,4 @@
-// Cost and outage alerts for the live app.
+// Cost, outage and needs-a-human alerts for the live app.
 //
 // Standalone rather than a module of main.bicep: main.bicep names resources from a resourceToken,
 // while the live app is app-poseereview in RG PoSeeReview and its telemetry lands in the SHARED
@@ -27,6 +27,12 @@ param dailyImageThreshold int = 50
 
 @description('Chat spend in 24h (Ai.Cost.Usd) that counts as a spend spike, in USD.')
 param dailyChatUsdThreshold string = '1.0'
+
+@description('Failed comic generations in an hour that count as an outage the 5xx alert cannot see.')
+param hourlyFailureThreshold int = 10
+
+@description('Image-model refusals in 24h that suggest a prompt or provider-filter change.')
+param dailyRefusalThreshold int = 5
 
 resource site 'Microsoft.Web/sites@2023-12-01' existing = {
   name: siteName
@@ -108,6 +114,155 @@ resource aiSpend 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
     }
     // One email per spike, not one an hour for the rest of the day.
     muteActionsDuration: 'PT12H'
+    // Azure requires this with muteActionsDuration: a muted rule cannot also auto-resolve.
+    autoMitigate: false
+    actions: {
+      actionGroups: [ actionGroup.id ]
+    }
+  }
+}
+
+// The comic stream answers 200 before generation can fail (the real status travels in the event
+// body), so a broken image provider or storage outage never shows up as Http5xx. The errors
+// counter (po.seereview.comics.errors, OTel) is what does.
+resource generationFailures 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'poseereview-generation-failures'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'PoSeeReview comic generation failing'
+    description: 'Comic generations are failing inside 200 responses (the stream reports errors in-band).'
+    severity: 1
+    enabled: true
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT1H'
+    criteria: {
+      allOf: [
+        {
+          query: 'customMetrics | where cloud_RoleName == "${roleName}" | where name == "po.seereview.comics.errors" | summarize failures = sum(valueSum) | where failures > ${hourlyFailureThreshold}'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    muteActionsDuration: 'PT2H'
+    // Azure requires this with muteActionsDuration: a muted rule cannot also auto-resolve.
+    autoMitigate: false
+    actions: {
+      actionGroups: [ actionGroup.id ]
+    }
+  }
+}
+
+// Two guards fail OPEN by design — the daily budget after contended retries, the moderation
+// gate on a storage read error — so the app stays up. That is only safe if someone hears about
+// it: a budget that is not counting is uncapped spend, a gate that is not reading serves
+// withheld comics. Matched on the log text both paths write.
+resource failOpen 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'poseereview-fail-open'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'PoSeeReview guard failed open'
+    description: 'The generation budget or the moderation gate let a request through without checking it.'
+    severity: 2
+    enabled: true
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT1H'
+    windowSize: 'PT1H'
+    criteria: {
+      allOf: [
+        {
+          query: 'union traces, exceptions | where cloud_RoleName == "${roleName}" | where * has "allowing the request uncounted" or * has "Moderation lookup failed"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    muteActionsDuration: 'PT6H'
+    // Azure requires this with muteActionsDuration: a muted rule cannot also auto-resolve.
+    autoMitigate: false
+    actions: {
+      actionGroups: [ actionGroup.id ]
+    }
+  }
+}
+
+// A refusal is never redrawn as a substitute scene, so a provider tightening its filter (or a
+// prompt change that trips it) shows up only as users getting 422s. One or two a day is normal.
+resource imageRefusals 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'poseereview-image-refusals'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'PoSeeReview image refusals climbing'
+    description: 'The image model is declining more scenes than usual; check ComicImagePrompt and the provider filter.'
+    severity: 3
+    enabled: true
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT6H'
+    windowSize: 'P1D'
+    criteria: {
+      allOf: [
+        {
+          query: 'customMetrics | where cloud_RoleName == "${roleName}" | where name == "Comics.ImageDeclined" | summarize refusals = sum(valueSum) | where refusals > ${dailyRefusalThreshold}'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    muteActionsDuration: 'PT12H'
+    // Azure requires this with muteActionsDuration: a muted rule cannot also auto-resolve.
+    autoMitigate: false
+    actions: {
+      actionGroups: [ actionGroup.id ]
+    }
+  }
+}
+
+// Flagged comics publish and wait for a person; an auto-hide (3 distinct reporters) waits for a
+// person to restore or remove. Nothing else tells that person there is something to look at.
+resource needsAHuman 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'poseereview-moderation-waiting'
+  location: resourceGroup().location
+  properties: {
+    displayName: 'PoSeeReview moderation queue has work'
+    description: 'A comic was flagged by the pre-publish screen or auto-hidden by reports; open /moderation.'
+    severity: 3
+    enabled: true
+    scopes: [ appInsightsId ]
+    evaluationFrequency: 'PT1H'
+    windowSize: 'PT1H'
+    criteria: {
+      allOf: [
+        {
+          query: 'union customEvents, customMetrics | where cloud_RoleName == "${roleName}" | where (itemType == "customEvent" and name == "ComicAutoHidden") or (itemType == "customMetric" and name == "Comics.ContentFlagged")'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    muteActionsDuration: 'PT6H'
+    // Azure requires this with muteActionsDuration: a muted rule cannot also auto-resolve.
+    autoMitigate: false
     actions: {
       actionGroups: [ actionGroup.id ]
     }

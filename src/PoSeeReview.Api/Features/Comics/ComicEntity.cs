@@ -52,6 +52,9 @@ public class ComicEntity : ITableEntity
     /// </summary>
     public string CaptionsJson { get; set; } = string.Empty;
 
+    /// <summary>Panel scenes as a JSON array, for the same reason as <see cref="CaptionsJson"/>.</summary>
+    public string ScenesJson { get; set; } = string.Empty;
+
     /// <summary>
     /// Converts from domain <see cref="Comic"/> to the Table Storage entity.
     /// </summary>
@@ -71,7 +74,8 @@ public class ComicEntity : ITableEntity
             CreatedAt = comic.CreatedAt,
             RequestedByUserId = comic.RequestedByUserId.Value,
             PromptVersion = comic.PromptVersion,
-            CaptionsJson = comic.Captions.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Captions)
+            CaptionsJson = comic.Captions.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Captions),
+            ScenesJson = comic.Scenes.Length == 0 ? string.Empty : JsonSerializer.Serialize(comic.Scenes)
         };
     }
 
@@ -92,14 +96,15 @@ public class ComicEntity : ITableEntity
             CreatedAt = CreatedAt,
             RequestedByUserId = UserId.From(RequestedByUserId),
             PromptVersion = PromptVersion,
-            Captions = ReadCaptions(CaptionsJson),
+            Captions = ReadStrings(CaptionsJson),
+            Scenes = ReadStrings(ScenesJson),
             // Cache provenance is a service-layer concern; storage never knows it.
             CacheState = ComicCacheState.Generated
         };
     }
 
     /// <summary>A corrupt column costs the alt text, never the comic.</summary>
-    private static string[] ReadCaptions(string json)
+    private static string[] ReadStrings(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {

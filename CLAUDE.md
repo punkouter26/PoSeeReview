@@ -287,6 +287,17 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
   (text searches also live in `?q=`); `ToastService` drives the one `<Toast />` in `MainLayout`;
   `ShareService.ShareComicAsync` is the only share path and always uses the short link.
 - **Live board.** `/leaderboard` re-fetches every 60s while the tab is visible. No SignalR.
+- **Map view.** `MapView` + `js/map-view.js` (its own module, not part of `fx.js`) back discovery —
+  map by default, List remembered in `posee_discovery_layout` — and the live board's toggle.
+  Discovery's map overlay holds "Search this area" (after a user pan/zoom, zoom ≥ 11; reported by
+  `AreaMoved`, which code-driven framing never fires) and "Near me"; both search quietly, keeping
+  results on screen, and an area search keeps the camera (`KeepCamera`) and zeroes distances. The
+  three nearest drawable places render as cards under the map. MapLibre 5.x UMD (6.x is ESM with a cross-origin worker,
+  which cannot start) loads from jsDelivr with SRI on first open; its CSS is fetched into the
+  `vendor` cascade layer, never linked. Pins are `<button>`s styled in app.css (JS-made elements
+  get no scope attribute) and must never set `transform` — MapLibre positions them with it. A pin
+  only selects; the page renders the place's card/row under the map. Pins within ~30m are fanned
+  out. No WebGL → `OnUnavailable`, and both pages drop to the list for the visit.
 - **Duel.** `/duel/{a}/{b}` shows `GET /share/duel/{a}/{b}/card.png` (404 if either comic is gone or
   withheld); crawlers get Open Graph HTML for it from `SocialPreviewMiddleware`.
 - **`AnalyticsService`** only writes debug logs; nothing is sent anywhere.
@@ -295,7 +306,7 @@ the scorer's `temperature: 0.3`. Reasoning deployments also reject `max_tokens`,
 
 Read its header comment before adding CSS.
 
-- **Cascade layers**: `reset, tokens, base, page, shared, utilities`. `page` (the scoped-CSS
+- **Cascade layers**: `reset, tokens, base, vendor, page, shared, utilities` (`vendor` = injected third-party CSS, today only MapLibre). `page` (the scoped-CSS
   bundle, pulled in via `@import … layer(page)`) sits **before** `shared`, so a scoped sheet cannot
   fork `.btn`. Element selectors go in `base`; class components in `shared` — layer order beats
   specificity. Never add a plain `<link>` for scoped or third-party CSS: unlayered CSS beats every layer.
@@ -373,6 +384,7 @@ its own 30-entry cache so `/my-comics` works offline, and a 404 or 451 evicts th
 
 ### Endpoints worth knowing
 
+`GET /api/comics/cached` (which places are drawn, plus their `scores` for map pins);
 `/health` (+ `/live`, `/ready`; the Google Maps check is key-presence only — it used to fire a
 billed call per anonymous hit; `skia_imaging` proves the native lib and fonts load). App Service
 probes `/health/live` (dependency-free); the deploy's smoke job polls `/health`, so an Unhealthy

@@ -22,6 +22,7 @@ internal static class ComicMapping
         GeneratedAt = comic.CreatedAt,
         ExpiresAt = comic.ExpiresAt,
         IsCached = isCached ?? comic.CacheState == ComicCacheState.Cached,
-        Captions = comic.Captions
+        Captions = comic.Captions,
+        Scenes = comic.Scenes
     };
 }

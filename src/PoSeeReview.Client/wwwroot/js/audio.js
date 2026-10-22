@@ -281,6 +281,29 @@ function noise({ duration = 0.12, peak = 0.5, filterHz = 1800, filterType = 'low
     };
 }
 
+/** White noise of a given length, for sources that need their own filter sweep. */
+function noiseBuffer(seconds) {
+    const ctx = state.ctx;
+    const frameCount = Math.max(1, Math.floor(ctx.sampleRate * seconds));
+    const buffer = ctx.createBuffer(1, frameCount, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+        data[i] = Math.random() * 2 - 1;
+    }
+    return buffer;
+}
+
+/** A soft-clipping transfer curve; `drive` 1 is nearly clean, 6 is fuzz. */
+function driveCurve(drive) {
+    const curve = new Float32Array(1024);
+    const norm = Math.tanh(drive);
+    for (let i = 0; i < curve.length; i++) {
+        const x = (i / (curve.length - 1)) * 2 - 1;
+        curve[i] = Math.tanh(x * drive) / norm;
+    }
+    return curve;
+}
+
 /**
  * Maps a screen x coordinate to a stereo position. Clamped to ±0.85 rather than ±1: a sound
  * hard-panned to one channel disappears entirely on a phone held with one speaker covered, and
@@ -345,7 +368,7 @@ const SEMITONE = Math.pow(2, 1 / 12);
  * scale, the tempo and the timbre — so two restaurants sound different from each other, and a
  * strange one sounds strange rather than merely different.
  */
-function motif(seed, score = 50) {
+function motif(seed, score = 50, { delay = 0, pan = null } = {}) {
     const strange = Math.min(1, Math.max(0, score / 100));
     const random = seededRandom(hashString(seed));
 
@@ -377,11 +400,13 @@ function motif(seed, score = 50) {
             attack: 0.006,
             decay: beat * (i === noteCount - 1 ? 3.2 : 1.5),
             peak: 0.20 - i * 0.015,
-            delay: i * beat,
+            delay: delay + i * beat,
             // Slight detune that grows with strangeness: at the top of the range the motif is
             // audibly out of tune with itself.
             detune: (random() - 0.5) * strange * 34,
-            pan: (random() - 0.5) * 1.2,
+            // A caller that places the motif (the duel's call and response) narrows it around
+            // that point; the random draw is still taken so the notes do not change.
+            pan: pan === null ? (random() - 0.5) * 1.2 : pan + (random() - 0.5) * 0.3,
             send: 0.2 + strange * 0.4
         });
     }
@@ -833,6 +858,228 @@ export const audio = {
     signature(seed, score = 50) {
         if (!canPlay() || throttled('signature', 600)) return;
         motif(seed, score);
+    },
+
+    // ── Cues for the shader moments ──────────────────────────────────────────────────────
+    //
+    // Each of these is driven by a callback from a graphics module, composed in fx.js. None of
+    // the graphics modules knows the app makes noise.
+
+    /**
+     * Ink blooming during the generation wait: a band of noise swept upward through a resonant
+     * filter, as loud as the splat that caused it. Barely there — it runs for ten seconds.
+     */
+    inkSwell(energy = 0.5) {
+        if (!canPlay() || throttled('inkSwell', 140)) return;
+        const e = Math.min(1, Math.max(0, energy));
+        const ctx = state.ctx;
+        const t0 = ctx.currentTime;
+        const duration = 0.5 + e * 0.5;
+        const source = ctx.createBufferSource();
+        source.buffer = noiseBuffer(duration);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.value = 6;
+        filter.frequency.setValueAtTime(260, t0);
+        filter.frequency.exponentialRampToValueAtTime(900 + e * 1600, t0 + duration);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.05 + e * 0.12, t0 + duration * 0.35);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+        const output = makeOutput((Math.random() - 0.5) * 0.8, 0.6);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(output.node);
+        source.start(t0);
+        source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); output.dispose(); };
+    },
+
+    /** The ink draining into the frame as the comic arrives: one falling breath into the room. */
+    inkDrain() {
+        if (!canPlay() || throttled('inkDrain', 800)) return;
+        voice({ type: 'sine', startFreq: 520, endFreq: 130, attack: 0.02, decay: 0.6, peak: 0.12, send: 0.7 });
+        noise({ duration: 0.55, peak: 0.07, filterHz: 700, send: 0.6 });
+    },
+
+    /**
+     * The particle burst's peak, for a score worth celebrating. A sub-bass drop under a
+     * clipped knock: the waveshaper is what makes it a hit rather than a hum. Scaled by score,
+     * so a 52 thuds and a 95 detonates.
+     */
+    thump(score = 50) {
+        if (!canPlay() || throttled('thump', 400)) return;
+        const strange = Math.min(1, Math.max(0, score / 100));
+        const ctx = state.ctx;
+        const t0 = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(110 + strange * 40, t0);
+        osc.frequency.exponentialRampToValueAtTime(38, t0 + 0.32);
+        const shaper = ctx.createWaveShaper();
+        shaper.curve = driveCurve(1 + strange * 5);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.5 + strange * 0.35, t0 + 0.006);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.45 + strange * 0.25);
+        const output = makeOutput(0, 0.15 + strange * 0.3);
+        osc.connect(shaper);
+        shaper.connect(gain);
+        gain.connect(output.node);
+        osc.start(t0);
+        osc.stop(t0 + 0.75);
+        osc.onended = () => { osc.disconnect(); shaper.disconnect(); gain.disconnect(); output.dispose(); };
+        noise({ duration: 0.08, peak: 0.25, filterHz: 3200, send: 0.2 });
+        if (strange >= 0.8) {
+            // The top band gets a debris tail: a long dark rumble that the room swallows.
+            noise({ duration: 1.1, peak: 0.12, filterHz: 260, delay: 0.04, send: 0.8 });
+        }
+    },
+
+    /**
+     * "Too normal to draw." A deflating sad-trombone: three falling sawtooth notes, the last one
+     * sagging off pitch with a wobble. Funny on purpose — the place was rejected for being boring,
+     * which is a joke, not a failure.
+     */
+    fizzle() {
+        if (!canPlay() || throttled('fizzle', 900)) return;
+        const notes = [293.66, 277.18, 261.63];
+        notes.forEach((freq, i) => voice({
+            type: 'sawtooth', freq, attack: 0.02, decay: 0.22, peak: 0.09, delay: i * 0.26, pan: 0, send: 0.12
+        }));
+        const ctx = state.ctx;
+        const t0 = ctx.currentTime + notes.length * 0.26;
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(246.94, t0);
+        osc.frequency.exponentialRampToValueAtTime(196, t0 + 0.9);
+        const wobble = ctx.createOscillator();
+        wobble.frequency.value = 6;
+        const depth = ctx.createGain();
+        depth.gain.value = 9;
+        wobble.connect(depth);
+        depth.connect(osc.frequency);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 1100;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.1, t0 + 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.0);
+        const output = makeOutput(0, 0.15);
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(output.node);
+        osc.start(t0);
+        wobble.start(t0);
+        osc.stop(t0 + 1.05);
+        wobble.stop(t0 + 1.05);
+        osc.onended = () => {
+            osc.disconnect(); wobble.disconnect(); depth.disconnect();
+            filter.disconnect(); gain.disconnect(); output.dispose();
+        };
+    },
+
+    /** The map flying to a pin: air moving past, panned to where the pin was tapped. */
+    whoosh(clientX) {
+        if (!canPlay() || throttled('whoosh', 300)) return;
+        const ctx = state.ctx;
+        const t0 = ctx.currentTime;
+        const source = ctx.createBufferSource();
+        source.buffer = noiseBuffer(0.7);
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.Q.value = 1.4;
+        filter.frequency.setValueAtTime(400, t0);
+        filter.frequency.exponentialRampToValueAtTime(2600, t0 + 0.3);
+        filter.frequency.exponentialRampToValueAtTime(500, t0 + 0.7);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.16, t0 + 0.28);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.7);
+        const output = makeOutput(panForClientX(clientX ?? window.innerWidth / 2), 0.3);
+        source.connect(filter);
+        filter.connect(gain);
+        gain.connect(output.node);
+        source.start(t0);
+        source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); output.dispose(); };
+    },
+
+    /** The duel's arc igniting: a dry electric crack with a falling zap behind it. */
+    duelIgnite() {
+        if (!canPlay() || throttled('duelIgnite', 600)) return;
+        noise({ duration: 0.09, peak: 0.4, filterHz: 5200, filterType: 'highpass', send: 0.2 });
+        voice({ type: 'sawtooth', startFreq: 2400, endFreq: 140, attack: 0.002, decay: 0.32, peak: 0.12, send: 0.35 });
+        voice({ type: 'square', startFreq: 1800, endFreq: 90, attack: 0.002, decay: 0.28, peak: 0.05, detune: 30, send: 0.2 });
+    },
+
+    /** The arc landing: a low boom under a buzz. */
+    duelStrike() {
+        if (!canPlay() || throttled('duelStrike', 600)) return;
+        this.thump(70);
+        voice({ type: 'sawtooth', freq: 55, attack: 0.01, decay: 0.5, peak: 0.08, send: 0.3 });
+    },
+
+    /**
+     * Call and response: each comic's own motif, panned to its side of the card, then the
+     * winner's side answers with a chord. A tie gets both motifs at once — a clash, not a duet.
+     */
+    duelWinner(side, seedA, scoreA, seedB, scoreB) {
+        if (!canPlay() || throttled('duelWinner', 1200)) return;
+        const tie = side === 'tie';
+        motif(seedA, scoreA, { pan: -0.7 });
+        motif(seedB, scoreB, { pan: 0.7, delay: tie ? 0 : 0.7 });
+        if (tie) return;
+        const winnerScore = side === 'left' ? scoreA : scoreB;
+        const pan = side === 'left' ? -0.5 : 0.5;
+        const room = 0.3 + (winnerScore / 100) * 0.4;
+        const root = 261.63;
+        [1, 1.26, 1.5, 2].forEach((ratio, i) => voice({
+            type: 'triangle', freq: root * ratio, attack: 0.01, decay: 1.1, peak: 0.16 - i * 0.02,
+            delay: 1.5 + i * 0.04, pan, send: room
+        }));
+    },
+
+    /** A printed sheet coming off the page: a short run of dry, bright paper crackle. */
+    paperLift() {
+        if (!canPlay() || throttled('paperLift', 600)) return;
+        for (let i = 0; i < 5; i++) {
+            noise({
+                duration: 0.05 + Math.random() * 0.06, peak: 0.08 + Math.random() * 0.06,
+                filterHz: 2800 + Math.random() * 3000, filterType: 'highpass',
+                delay: i * 0.07 + Math.random() * 0.03, pan: 0.2 + i * 0.1, send: 0.18
+            });
+        }
+    },
+
+    /** The rubber stamp landing: a wooden knock over a dull body thud. */
+    pressClunk() {
+        if (!canPlay() || throttled('pressClunk', 500)) return;
+        voice({ type: 'sine', startFreq: 160, endFreq: 55, attack: 0.002, decay: 0.22, peak: 0.55, send: 0.12 });
+        voice({ type: 'triangle', startFreq: 720, endFreq: 380, attack: 0.001, decay: 0.07, peak: 0.24, send: 0.1 });
+        noise({ duration: 0.12, peak: 0.22, filterHz: 1400, send: 0.15 });
+    },
+
+    /** A new number one on the board: a quick brass-ish fanfare, rising, panned to the row. */
+    crown(clientX) {
+        if (!canPlay() || throttled('crown', 1500)) return;
+        const pan = panForClientX(clientX ?? window.innerWidth / 2);
+        const figure = [392.0, 523.25, 659.25, 783.99, 1046.5];
+        figure.forEach((freq, i) => {
+            const last = i === figure.length - 1;
+            voice({ type: 'sawtooth', freq, attack: 0.008, decay: last ? 0.7 : 0.11, peak: last ? 0.14 : 0.1, delay: i * 0.085, pan, send: 0.35 });
+            voice({ type: 'triangle', freq: freq * 2, attack: 0.008, decay: last ? 0.6 : 0.09, peak: 0.05, delay: i * 0.085, pan: -pan * 0.5, send: 0.4 });
+        });
+        noise({ duration: 0.9, peak: 0.05, filterHz: 7000, filterType: 'highpass', delay: 0.34, pan, send: 0.6 });
+    },
+
+    /**
+     * The output stage for a long-running voice that lives outside this file (the comic
+     * soundtrack). Null until the context is running: such a voice has to wait for a gesture
+     * like everything else.
+     */
+    bus() {
+        if (!canPlay()) return null;
+        return { ctx: state.ctx, makeOutput };
     },
 
     // ── Narration ────────────────────────────────────────────────────────────────────────

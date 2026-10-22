@@ -11,6 +11,7 @@
 @inject FxService Fx
 @inject AnalyticsService Analytics
 @inject DiscoveryState Discovery
+@inject ToastService Toast
 
 <PageTitle>PoSeeReview - Discover Strange Restaurant Stories</PageTitle>
 
@@ -104,18 +105,95 @@
                     title="Search a different area">
                 <span aria-hidden="true">&#215;</span> New search
             </button>
+            @if (!_mapUnavailable)
+            {
+            <div class="layout-toggle" role="group" aria-label="Show results as">
+                <button type="button" class="chip-toggle @(_layout == ResultsLayout.List ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_layout == ResultsLayout.List ? "true" : "false")"
+                        @onclick="() => SetLayoutAsync(ResultsLayout.List)">List</button>
+                <button type="button" class="chip-toggle @(_layout == ResultsLayout.Map ? "chip-toggle--active" : "")"
+                        aria-pressed="@(_layout == ResultsLayout.Map ? "true" : "false")"
+                        @onclick="() => SetLayoutAsync(ResultsLayout.Map)">Map</button>
+            </div>
+            }
             <span class="results-count">@_restaurants.Count restaurant@(_restaurants.Count == 1 ? "" : "s") found</span>
         </div>
-        <div class="restaurants-grid">
-            @foreach (var restaurant in _restaurants)
+        @if (_layout == ResultsLayout.Map)
+        {
+            @* A pin only selects; the card under the map is the same card the list shows, so the
+               tap that opens (or pays for) a comic is still the card's own button. *@
+            <MapView Pins="@MapPins" SelectedId="@_selectedPlaceId" Label="Restaurants on a map"
+                     Origin="@_me" KeepCamera="@_keepCamera"
+                     OnSelect="SelectPlace" OnAreaMoved="area => _movedTo = area"
+                     OnUnavailable="MapUnavailable">
+                <Overlay>
+                    @if (_movedTo is { } area)
+                    {
+                        if (area.Zoom >= MinSearchZoom)
+                        {
+                            <button type="button" class="btn btn-primary map-overlay-btn" disabled="@_areaSearching"
+                                    @onclick="SearchThisAreaAsync">
+                                @(_areaSearching ? "Searching..." : "Search this area")
+                            </button>
+                        }
+                        else
+                        {
+                            <span class="map-overlay-hint">Zoom in to search here</span>
+                        }
+                    }
+                    @* The surface is a wrapper: a page sheet cannot give .btn-secondary a fill (layers). *@
+                    <span class="map-overlay-surface">
+                        <button type="button" class="btn btn-secondary map-overlay-btn" disabled="@_areaSearching"
+                                @onclick="LocateOnMapAsync" aria-label="Show restaurants near me">
+                            <span aria-hidden="true">📍</span> Near me
+                        </button>
+                    </span>
+                </Overlay>
+            </MapView>
+            @if (SelectedRestaurant is { } picked)
             {
-                <RestaurantCard
-                    Restaurant="restaurant"
-                    IsCached="@_cachedPlaceIds.Contains(restaurant.PlaceId)"
-                    IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
-                    OnRestaurantClick="HandleRestaurantClick" />
+                <div class="map-selection">
+                    <RestaurantCard
+                        Restaurant="picked"
+                        IsCached="@_cachedScores.ContainsKey(picked.PlaceId)"
+                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == picked.PlaceId)"
+                        OnRestaurantClick="HandleRestaurantClick" />
+                </div>
             }
-        </div>
+            else if (NearestPicks is { Count: > 0 } nearest)
+            {
+                @* Picking a place should not need the map: the closest few are right here. *@
+                <section class="nearest" aria-labelledby="nearest-title">
+                    <div class="nearest-head">
+                        <h2 id="nearest-title" class="comic-rows-heading">@(_origin == ResultsOrigin.Me ? "Nearest to you" : "In this area")</h2>
+                        <p class="results-info">Numbered pins are already drawn and open free.</p>
+                    </div>
+                    <div class="nearest-grid">
+                        @foreach (var restaurant in nearest)
+                        {
+                            <RestaurantCard
+                                Restaurant="restaurant"
+                                IsCached="@_cachedScores.ContainsKey(restaurant.PlaceId)"
+                                IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                                OnRestaurantClick="HandleRestaurantClick" />
+                        }
+                    </div>
+                </section>
+            }
+        }
+        else
+        {
+            <div class="restaurants-grid">
+                @foreach (var restaurant in _restaurants)
+                {
+                    <RestaurantCard
+                        Restaurant="restaurant"
+                        IsCached="@_cachedScores.ContainsKey(restaurant.PlaceId)"
+                        IsLoading="@(_isNavigatingToComic && _activeComicPlaceId == restaurant.PlaceId)"
+                        OnRestaurantClick="HandleRestaurantClick" />
+                }
+            </div>
+        }
     }
 
     @* The fold used to be blank below the search bar. The live top three show a first-time
@@ -162,8 +240,165 @@
     private bool _isNavigatingToComic;
     private string? _activeComicPlaceId;
 
-    private HashSet<string> _cachedPlaceIds = [];
+    /// <summary>Live comic score per place that already has one; absent means not drawn yet.</summary>
+    private Dictionary<string, int> _cachedScores = [];
     private List<LeaderboardEntryDto>? _topComics;
+
+    private enum ResultsLayout { List, Map }
+
+    private const string LayoutKey = "posee_discovery_layout";
+
+    /// <summary>The map is the default view; the list is the remembered alternative.</summary>
+    private ResultsLayout _layout = ResultsLayout.Map;
+    private string? _selectedPlaceId;
+
+    /// <summary>Where the current results were measured from, which decides what "nearest" means.</summary>
+    private enum ResultsOrigin { Me, Text, Area }
+
+    private ResultsOrigin _origin = ResultsOrigin.Me;
+
+    /// <summary>The user's position from their last location request, for the map's dot.</summary>
+    private (double Lat, double Lng)? _me;
+
+    /// <summary>Set once the user pans or zooms; offers "search this area" until it is used.</summary>
+    private MapArea? _movedTo;
+
+    /// <summary>
+    /// Below this the view spans a region, and the search radius (5 km around the centre) would
+    /// look like it ignored most of what is on screen.
+    /// </summary>
+    private const double MinSearchZoom = 11;
+
+    private bool _areaSearching;
+    private bool _keepCamera;
+
+    /// <summary>No WebGL (or the CDN is blocked): the list for the rest of the visit, not remembered.</summary>
+    private bool _mapUnavailable;
+
+    /// <summary>The closest few drawable places, in the order the results are already sorted.</summary>
+    private List<RestaurantDto> NearestPicks => [.. _restaurants.Where(r => r.TotalReviews > 0).Take(3)];
+
+    private void MapUnavailable()
+    {
+        _mapUnavailable = true;
+        _layout = ResultsLayout.List;
+    }
+
+    /// <summary>Re-runs nearby search at the map's centre, leaving the camera where the user put it.</summary>
+    private Task SearchThisAreaAsync() =>
+        _movedTo is { } area ? QuietNearbyAsync(area.Lat, area.Lng, ResultsOrigin.Area) : Task.CompletedTask;
+
+    /// <summary>"Near me" from the map: locate, then search around the user without leaving the map.</summary>
+    private async Task LocateOnMapAsync()
+    {
+        await Fx.UnlockAudioAsync();
+        _areaSearching = true;
+        var position = await GeolocationService.GetCurrentPositionAsync();
+        if (!position.Success)
+        {
+            _areaSearching = false;
+            Toast.Show(position.PermissionDenied
+                ? "Location is off. Pan the map and search this area instead."
+                : "Couldn't find your location. Try again.");
+            await Fx.PlayErrorAsync();
+            return;
+        }
+
+        _me = (position.Latitude, position.Longitude);
+        await QuietNearbyAsync(position.Latitude, position.Longitude, ResultsOrigin.Me);
+    }
+
+    /// <summary>
+    /// A nearby search from the map. Unlike the first search it keeps the current results on
+    /// screen while it runs, and a miss is a toast — the map and its pins stay put rather than
+    /// being replaced by an error state.
+    /// </summary>
+    private async Task QuietNearbyAsync(double latitude, double longitude, ResultsOrigin origin)
+    {
+        _areaSearching = true;
+        StateHasChanged();
+        try
+        {
+            var response = await ApiClient.GetNearbyRestaurantsAsync(latitude, longitude);
+            if (response is null || response.Stale || response.Restaurants.Count == 0)
+            {
+                Toast.Show(response?.Stale == true
+                    ? response.StaleReason ?? "Restaurant search is temporarily unavailable."
+                    : "No restaurants found here. Try another spot.");
+                await Fx.PlayEmptyAsync();
+                return;
+            }
+
+            _keepCamera = origin == ResultsOrigin.Area;
+            SetRestaurantResults(response.Restaurants);
+            if (origin == ResultsOrigin.Area)
+            {
+                // Measured from the map's centre, not from the user: "120m away" would be a lie.
+                foreach (var restaurant in _restaurants)
+                {
+                    restaurant.Distance = 0;
+                }
+            }
+
+            _origin = origin;
+            _movedTo = null;
+            await AfterResultsAsync(query: null);
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(DescribeFailure(ex, DiscoveryAttempt.Location, string.Empty));
+            await Fx.PlayErrorAsync();
+        }
+        finally
+        {
+            _areaSearching = false;
+        }
+    }
+
+    private RestaurantDto? SelectedRestaurant => _restaurants.FirstOrDefault(r => r.PlaceId == _selectedPlaceId);
+
+    /// <summary>
+    /// Places that can be drawn and have a real location. A zero-review place has nothing to draw
+    /// from, so a pin for it would be a tap that leads nowhere.
+    /// </summary>
+    private List<MapPin> MapPins =>
+    [
+        .. _restaurants
+            .Where(r => r.TotalReviews > 0 && MapPin.HasCoordinates(r.Latitude, r.Longitude))
+            .Select(r => new MapPin
+            {
+                Id = r.PlaceId,
+                Name = r.Name,
+                Lat = r.Latitude,
+                Lng = r.Longitude,
+                Score = _cachedScores.TryGetValue(r.PlaceId, out var score) ? score : null,
+                Label = _cachedScores.TryGetValue(r.PlaceId, out var s)
+                    ? $"{r.Name}, strangeness {s}, comic ready"
+                    : $"{r.Name}, not drawn yet"
+            })
+    ];
+
+    private void SelectPlace(string placeId) => _selectedPlaceId = placeId;
+
+    /// <summary>The choice outlives the visit; storage that throws just means it is not remembered.</summary>
+    private async Task SetLayoutAsync(ResultsLayout layout)
+    {
+        _layout = layout;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", LayoutKey, layout == ResultsLayout.Map ? "map" : "list");
+        }
+        catch (JSException) { }
+    }
+
+    private async Task RestoreLayoutAsync()
+    {
+        try
+        {
+            _layout = await JS.InvokeAsync<string?>("localStorage.getItem", LayoutKey) == "list" ? ResultsLayout.List : ResultsLayout.Map;
+        }
+        catch (JSException) { }
+    }
 
     /// <summary>
     /// Asks which of the current results are already drawn.
@@ -174,9 +409,9 @@
     /// </summary>
     private async Task RefreshCachedPlacesAsync()
     {
-        _cachedPlaceIds = _restaurants.Count == 0
+        _cachedScores = _restaurants.Count == 0
             ? []
-            : await ApiClient.GetCachedPlaceIdsAsync(_restaurants.Select(r => r.PlaceId));
+            : await ApiClient.GetCachedScoresAsync(_restaurants.Select(r => r.PlaceId));
     }
 
     /// <summary>Best-effort: the landing page works without it, so a failure just hides it.</summary>
@@ -212,12 +447,15 @@
     protected override async Task OnInitializedAsync()
     {
         Analytics.Track(FunnelSteps.AppOpened);
+        await RestoreLayoutAsync();
 
         if (Discovery.Restaurants.Count > 0 && (Q is null || Q == Discovery.Query))
         {
             _restaurants = Discovery.Restaurants;
             _searchQuery = _lastSearch = Discovery.Query ?? string.Empty;
             _lastAttempt = Discovery.Query is null ? DiscoveryAttempt.Location : DiscoveryAttempt.Search;
+            _origin = Discovery.Query is not null ? ResultsOrigin.Text
+                : _restaurants.Any(r => r.Distance > 0) ? ResultsOrigin.Me : ResultsOrigin.Area;
             _flowState = LocationFlowState.Ready;
 
             // The one thing that may have changed while away: the comic just drawn is now free.
@@ -293,6 +531,7 @@
         await Fx.PlayLocatingAsync();
 
         _lastAttempt = DiscoveryAttempt.Location;
+        _keepCamera = false;
         _flowState = LocationFlowState.Loading;
         _loadingMessage = "Getting your location...";
         StateHasChanged();
@@ -320,6 +559,8 @@
             }
 
             Analytics.Track(FunnelSteps.LocationGranted);
+            _me = (result.Latitude, result.Longitude);
+            _origin = ResultsOrigin.Me;
             await RememberDiscoveryModeAsync(GeoMode);
 
             _loadingMessage = "Finding nearby restaurants...";
@@ -390,6 +631,8 @@
 
         Analytics.Track(FunnelSteps.SearchPerformed);
         _lastAttempt = DiscoveryAttempt.Search;
+        _keepCamera = false;
+        _origin = ResultsOrigin.Text;
         _lastSearch = searchTerm;
         _flowState = LocationFlowState.Loading;
         _loadingMessage = $"Searching restaurants near {searchTerm}...";
@@ -549,7 +792,8 @@
             _ = LoadTopComicsAsync();
         }
 
-        _cachedPlaceIds = [];
+        _cachedScores = [];
+        _selectedPlaceId = null;
         _restaurants = new();
         _lastSearch = string.Empty;
         _searchQuery = string.Empty;
@@ -569,6 +813,7 @@
         // the sort chips are gone, and a single order belongs where the list is built rather
         // than in a projection the render has to remember to use.
         _restaurants = [.. restaurants.OrderBy(r => r.Distance)];
+        _selectedPlaceId = null;
 
         if (_restaurants.Count > 0)
         {

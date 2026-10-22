@@ -17,6 +17,9 @@ import * as gradient from './gradient.js';
 import * as panelScrub from './panel-scrub.js';
 import * as comicReveal from './comic-reveal.js';
 import * as viewTransitions from './view-transitions.js';
+import * as confetti from './confetti.js';
+import * as glass from './glass.js';
+import { soundtrack } from './soundtrack.js';
 
 function guard(fn, fallback = null) {
     try {
@@ -43,11 +46,16 @@ haptics.init(audioInfo.enabled);
 viewTransitions.init({
     onNavigate: (direction, clientX) => guard(() => audio.navigate(direction, clientX))
 });
+guard(() => glass.init());
 
 function propagateAudioState(enabled) {
     guard(() => haptics.syncAudio(enabled));
     if (!enabled) {
         guard(() => haptics.cancel());
+        guard(() => soundtrack.halt());
+    } else {
+        // A gesture that brought sound back may be the first moment the wanted loop can play.
+        guard(() => soundtrack.resume(audio.bus()));
     }
 }
 
@@ -123,6 +131,10 @@ export const fx = {
     }),
     /** Zero results. Not an error cue: an empty answer is an answer. */
     playEmpty: () => guard(() => audio.empty()),
+    /** "Too normal to draw": a deflating sad trombone. A joke about the place, not an error. */
+    playFizzle: () => guard(() => audio.fizzle()),
+    /** The map flying to a tapped pin; called by map-view.js through this surface. */
+    playMapFly: (clientX) => guard(() => audio.whoosh(clientX)),
 
     /**
      * Tap on a card, voiced by whether the comic already exists.
@@ -168,6 +180,21 @@ export const fx = {
      */
     playSignature: (seed, score) => guard(() => audio.signature(seed, score)),
 
+    // ── Soundtrack (opt-in) ──────────────────────────────────────────────────────────────
+    soundtrackEnabled: () => guard(() => soundtrack.isEnabled(), false),
+    /** From the account menu's click, so the context can unlock on the same gesture. */
+    setSoundtrackEnabled: (enabled) => guardAsync(async () => {
+        const applied = soundtrack.setEnabled(enabled);
+        if (applied) {
+            await audio.unlock();
+            soundtrack.resume(audio.bus());
+        }
+        return applied;
+    }, false),
+    /** The comic page asks for its loop; it starts now if it can, or when sound next unlocks. */
+    startSoundtrack: (seed, score) => guard(() => soundtrack.want(audio.bus(), seed, score)),
+    stopSoundtrack: () => guard(() => soundtrack.release()),
+
     // ── Haptics ──────────────────────────────────────────────────────────────────────────
     hapticsDescribe: () => guard(() => haptics.describe(), { supported: false, enabled: false, explicit: false }),
     setHapticsEnabled: (enabled) => guard(() => {
@@ -178,7 +205,14 @@ export const fx = {
 
     // ── Narration ────────────────────────────────────────────────────────────────────────
     canNarrate: () => guard(() => audio.canNarrate(), false),
-    narrate: (text) => guard(() => audio.narrate(text), false),
+    narrate: (text) => guard(() => {
+        const speaking = audio.narrate(text);
+        if (speaking) {
+            soundtrack.duck(true);
+            audio.narrationEnded().then(() => guard(() => soundtrack.duck(false)));
+        }
+        return speaking;
+    }, false),
     stopNarration: () => guard(() => audio.stopNarration()),
     /** Resolves when the current utterance is over, or at once if nothing is speaking. */
     narrationEnded: () => guardAsync(() => audio.narrationEnded()),
@@ -235,26 +269,85 @@ export const fx = {
     animateBoardMoves: (container) => guard(() => {
         if (!container || !gfx.allows('lite')) return;
         const rows = [...container.querySelectorAll('[data-delta]')];
+        const bodies = [];
         let voiced = 0;
         rows.forEach((row, order) => {
             const delta = Number(row.dataset.delta);
             if (!delta) return;
             const rect = row.getBoundingClientRect();
-            const height = rect.height;
             const delay = 250 + order * 70;
-            const duration = 650 + Math.min(6, Math.abs(delta)) * 70;
             row.style.zIndex = delta > 0 ? '2' : '1';
-            const animation = row.animate(
-                [{ transform: `translateY(${delta * height}px)` }, { transform: 'none' }],
-                { duration, delay, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' });
-            animation.finished.then(() => { row.style.zIndex = ''; }).catch(() => { });
-            // The cue and the buzz land as the row settles, not as it sets off: the arrival is
-            // the news. The per-row delay is what keeps several movers from stacking into noise.
-            const settle = delay + duration * 0.7;
-            if (voiced++ < MAX_VOICED_MOVES) {
-                audio.rankMove(delta, rect.left + rect.width / 2, settle / 1000);
+            // Each mover is a damped spring pulled from its old slot to its new one. A climber
+            // is launched with an extra upward kick so it overshoots its new rank and drops back
+            // in; a faller is a heavier body that lands short, bounces, and wobbles.
+            bodies.push({
+                row, delta, delay,
+                y: delta * rect.height,
+                v: delta > 0 ? -Math.min(6, delta) * 260 : 0,
+                stiffness: delta > 0 ? 210 : 260,
+                damping: delta > 0 ? 15 : 11,
+                started: false,
+                landed: false,
+                clientX: rect.left + rect.width / 2,
+                voice: voiced++ < MAX_VOICED_MOVES
+            });
+            row.style.transform = `translateY(${delta * rect.height}px)`;
+        });
+        if (bodies.length === 0) return;
+
+        // A climb into first place is a coronation: confetti from the row, and a fanfare.
+        const champion = rows[0];
+        const crowned = Number(champion?.dataset.delta) > 0;
+
+        const t0 = performance.now();
+        let last = t0;
+        const stop = gfx.addTask('board-springs', (now) => {
+            const dt = Math.min(1 / 30, (now - last) / 1000);
+            last = now;
+            let moving = 0;
+            for (const body of bodies) {
+                if (now - t0 < body.delay) {
+                    moving++;
+                    continue;
+                }
+                if (!body.row.isConnected) continue;
+                const force = -body.stiffness * body.y - body.damping * body.v;
+                body.v += force * dt;
+                body.y += body.v * dt;
+
+                // The cue and the buzz land as the row first reaches its slot, not as it sets
+                // off: the arrival is the news. The staggered delays keep movers from stacking.
+                const arrived = body.delta > 0 ? body.y <= 0 : body.y >= 0;
+                if (arrived && !body.landed) {
+                    body.landed = true;
+                    if (body.voice) audio.rankMove(body.delta, body.clientX, 0);
+                    if (Math.abs(body.delta) >= 3) haptics.tap();
+                    if (crowned && body.row === champion) {
+                        confetti.burst(champion);
+                        audio.crown(body.clientX);
+                        haptics.confirm();
+                    }
+                }
+
+                const settled = Math.abs(body.y) < 0.4 && Math.abs(body.v) < 6;
+                if (settled) {
+                    body.row.style.transform = '';
+                    body.row.style.zIndex = '';
+                    continue;
+                }
+                moving++;
+                // A little lean in the direction of travel sells the mass.
+                const lean = Math.max(-2.5, Math.min(2.5, body.v * 0.0035));
+                const lift = body.delta > 0 ? 1 + Math.min(0.03, Math.abs(body.v) * 0.00002) : 1;
+                body.row.style.transform = `translateY(${body.y.toFixed(2)}px) rotate(${lean.toFixed(3)}deg) scale(${lift.toFixed(4)})`;
             }
-            if (Math.abs(delta) >= 3) setTimeout(() => guard(() => haptics.tap()), settle);
+            if (moving === 0 || now - t0 > 6000) {
+                for (const body of bodies) {
+                    body.row.style.transform = '';
+                    body.row.style.zIndex = '';
+                }
+                stop();
+            }
         });
     }),
 

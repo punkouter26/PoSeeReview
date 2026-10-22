@@ -56,4 +56,10 @@ public class ComicDto
     /// strip but its title. Empty on comics drawn before captions were stored.
     /// </summary>
     public string[] Captions { get; set; } = [];
+
+    /// <summary>
+    /// What each panel pictures, in order. Paired with <see cref="Captions"/> in the alt text, so
+    /// a screen reader hears the picture as well as the words on it. Empty on older comics.
+    /// </summary>
+    public string[] Scenes { get; set; } = [];
 }
